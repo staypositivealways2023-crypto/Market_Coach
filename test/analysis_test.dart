@@ -1,6 +1,7 @@
 /// Quick test to verify Claude API and stock data fetching works
 ///
 /// Run this with: dart test/analysis_test.dart
+library;
 
 import 'package:market_coach/services/claude_analysis_service.dart';
 import 'package:market_coach/services/stock_data_service.dart';
@@ -12,7 +13,9 @@ void main() async {
   // Test 1: Check API configuration
   print('1️⃣ Checking API Configuration...');
   print('   API Key configured: ${APIConfig.isConfigured}');
-  print('   API Key starts with: ${APIConfig.claudeApiKey.substring(0, 15)}...');
+  print(
+    '   API Key starts with: ${APIConfig.claudeApiKey.substring(0, 15)}...',
+  );
   print('   Model: ${APIConfig.claudeModel}');
 
   if (!APIConfig.isConfigured) {
@@ -32,7 +35,9 @@ void main() async {
 
     print('   ✅ Stock data received:');
     print('      Symbol: ${stockData.symbol}');
-    print('      Current Price: \$${stockData.currentPrice.toStringAsFixed(2)}');
+    print(
+      '      Current Price: \$${stockData.currentPrice.toStringAsFixed(2)}',
+    );
     if (stockData.changePercent != null) {
       print('      Change: ${stockData.changePercent!.toStringAsFixed(2)}%');
     }
@@ -58,14 +63,15 @@ void main() async {
     print('      Timestamp: ${analysis.timestamp}');
     print('      Sentiment Score: ${analysis.sentimentScore}');
     print('      Recommendation: ${analysis.recommendation}');
-    print('      Summary: ${analysis.summaryText.substring(0, analysis.summaryText.length.clamp(0, 150))}...');
+    print(
+      '      Summary: ${analysis.summaryText.substring(0, analysis.summaryText.length.clamp(0, 150))}...',
+    );
     print('      Bullish factors: ${analysis.bullishFactors.length}');
     print('      Bearish factors: ${analysis.bearishFactors.length}');
     print('      Risk Level: ${analysis.riskLevel}');
     print('      Price Target: ${analysis.priceTarget?.target}');
     print('');
     print('   🎉 SUCCESS! Everything is working!\n');
-
   } catch (e) {
     print('   ❌ ERROR calling Claude API: $e');
     print('');

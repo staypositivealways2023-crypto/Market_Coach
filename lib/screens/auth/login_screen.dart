@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../providers/auth_provider.dart';
 import '../../services/auth_service.dart';
 import 'signup_screen.dart';
 import 'forgot_password_screen.dart';

@@ -1,4 +1,5 @@
 /// AI Analysis Card - Display AI-generated market analysis
+library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,10 +10,7 @@ import '../../providers/analysis_provider.dart';
 class AIAnalysisCard extends ConsumerWidget {
   final AIAnalysis analysis;
 
-  const AIAnalysisCard({
-    super.key,
-    required this.analysis,
-  });
+  const AIAnalysisCard({super.key, required this.analysis});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -27,11 +25,7 @@ class AIAnalysisCard extends ConsumerWidget {
           // Header
           Row(
             children: [
-              Icon(
-                Icons.psychology,
-                color: colorScheme.primary,
-                size: 20,
-              ),
+              Icon(Icons.psychology, color: colorScheme.primary, size: 20),
               const SizedBox(width: 8),
               Text(
                 'AI Analysis',
@@ -53,11 +47,7 @@ class AIAnalysisCard extends ConsumerWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     if (analysis.isCached)
-                      Icon(
-                        Icons.cached,
-                        size: 14,
-                        color: colorScheme.primary,
-                      ),
+                      Icon(Icons.cached, size: 14, color: colorScheme.primary),
                     if (analysis.isCached) const SizedBox(width: 4),
                     Text(
                       analysis.isCached
@@ -121,11 +111,7 @@ class AIAnalysisCard extends ConsumerWidget {
 
           Row(
             children: [
-              Icon(
-                Icons.info_outline,
-                size: 16,
-                color: Colors.white60,
-              ),
+              Icon(Icons.info_outline, size: 16, color: Colors.white60),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -283,13 +269,15 @@ class _MarkdownAnalysis extends StatelessWidget {
     for (var i = 0; i < parts.length; i++) {
       if (i.isOdd) {
         // Bold text
-        spans.add(TextSpan(
-          text: parts[i],
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            color: theme.colorScheme.primary,
+        spans.add(
+          TextSpan(
+            text: parts[i],
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: theme.colorScheme.primary,
+            ),
           ),
-        ));
+        );
       } else {
         // Regular text
         spans.add(TextSpan(text: parts[i]));

@@ -1,4 +1,5 @@
 /// Analysis Error Card - Display error states
+library;
 
 import 'package:flutter/material.dart';
 import '../../widgets/glass_card.dart';
@@ -8,11 +9,7 @@ class AnalysisErrorCard extends StatelessWidget {
   final Object error;
   final VoidCallback? onRetry;
 
-  const AnalysisErrorCard({
-    super.key,
-    required this.error,
-    this.onRetry,
-  });
+  const AnalysisErrorCard({super.key, required this.error, this.onRetry});
 
   @override
   Widget build(BuildContext context) {
@@ -50,11 +47,7 @@ class AnalysisErrorCard extends StatelessWidget {
           // Error header
           Row(
             children: [
-              Icon(
-                icon,
-                color: errorColor,
-                size: 24,
-              ),
+              Icon(icon, color: errorColor, size: 24),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
@@ -106,11 +99,7 @@ class AnalysisErrorCard extends StatelessWidget {
 
           Row(
             children: [
-              Icon(
-                Icons.help_outline,
-                size: 16,
-                color: Colors.white60,
-              ),
+              Icon(Icons.help_outline, size: 16, color: Colors.white60),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(

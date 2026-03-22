@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/firebase_provider.dart';
 import '../providers/auth_provider.dart';
+import 'notification_service.dart';
 
 /// Authentication service handling all Firebase Auth operations
 class AuthService {
@@ -27,8 +28,15 @@ class AuthService {
       // Update display name
       await credential.user?.updateDisplayName(displayName);
 
-      // Create user profile in Firestore
-      await _createUserProfile(credential.user!);
+      // Create user profile in Firestore (non-fatal — auth still succeeded)
+      try {
+        await _createUserProfile(credential.user!);
+      } catch (_) {
+        // Firestore write failed but auth account was created; ignore
+      }
+
+      // Save FCM token (non-fatal, platform-guarded inside getToken)
+      _saveFcmToken(credential.user!.uid);
 
       return credential;
     } on FirebaseAuthException catch (e) {
@@ -49,6 +57,9 @@ class AuthService {
 
       // Update last login timestamp
       await _updateLastLogin(credential.user!);
+
+      // Save FCM token (non-fatal, platform-guarded inside getToken)
+      _saveFcmToken(credential.user!.uid);
 
       return credential;
     } on FirebaseAuthException catch (e) {
@@ -167,6 +178,17 @@ class AuthService {
       {'last_login_at': FieldValue.serverTimestamp()},
       SetOptions(merge: true),
     );
+  }
+
+  /// Save FCM token to Firestore for the given user (fire-and-forget).
+  void _saveFcmToken(String uid) {
+    NotificationService.getToken().then((token) {
+      if (token == null) return;
+      _db.collection('users').doc(uid).set(
+        {'fcm_token': token},
+        SetOptions(merge: true),
+      );
+    }).catchError((_) {});
   }
 
   /// Convert FirebaseAuthException to user-friendly error message

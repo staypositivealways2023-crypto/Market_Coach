@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../providers/auth_provider.dart';
 import '../../services/auth_service.dart';
 
 class ForgotPasswordScreen extends ConsumerStatefulWidget {
@@ -68,7 +67,9 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
         child: SafeArea(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(24),
-            child: _emailSent ? _buildSuccessView(theme) : _buildFormView(theme, colorScheme),
+            child: _emailSent
+                ? _buildSuccessView(theme)
+                : _buildFormView(theme, colorScheme),
           ),
         ),
       ),
@@ -111,9 +112,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
 
           Text(
             'Enter your email address and we\'ll send you instructions to reset your password',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: Colors.white60,
-            ),
+            style: theme.textTheme.bodyMedium?.copyWith(color: Colors.white60),
             textAlign: TextAlign.center,
           ),
 
@@ -139,9 +138,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(
-                  color: Colors.white.withOpacity(0.1),
-                ),
+                borderSide: BorderSide(color: Colors.white.withOpacity(0.1)),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -152,7 +149,9 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
               if (value == null || value.isEmpty) {
                 return 'Please enter your email';
               }
-              if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
+              if (!RegExp(
+                r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
+              ).hasMatch(value)) {
                 return 'Please enter a valid email';
               }
               return null;
@@ -182,10 +181,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                   )
                 : const Text(
                     'Send Reset Email',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                   ),
           ),
 
@@ -240,9 +236,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
 
         Text(
           'We\'ve sent password reset instructions to\n${_emailController.text}',
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: Colors.white60,
-          ),
+          style: theme.textTheme.bodyMedium?.copyWith(color: Colors.white60),
           textAlign: TextAlign.center,
         ),
 

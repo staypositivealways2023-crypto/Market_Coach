@@ -2,6 +2,7 @@
 ///
 /// This model provides a clear, structured representation of AI analysis
 /// instead of just markdown text.
+library;
 
 class EnhancedAIAnalysis {
   final String symbol;
@@ -9,7 +10,8 @@ class EnhancedAIAnalysis {
   final bool isCached;
 
   // Overall Assessment
-  final int sentimentScore; // 0-100 (0=very bearish, 50=neutral, 100=very bullish)
+  final int
+  sentimentScore; // 0-100 (0=very bearish, 50=neutral, 100=very bullish)
   final Recommendation recommendation;
   final String summaryText;
 
@@ -157,27 +159,21 @@ class EnhancedAIAnalysis {
 }
 
 /// Trading recommendation
-enum Recommendation {
-  STRONG_BUY,
-  BUY,
-  HOLD,
-  SELL,
-  STRONG_SELL,
-}
+enum Recommendation { STRONG_BUY, BUY, HOLD, SELL, STRONG_SELL }
 
 extension RecommendationExtension on Recommendation {
   String get displayName {
     switch (this) {
       case Recommendation.STRONG_BUY:
-        return 'Strong Buy';
+        return 'Bullish signal (high confidence)';
       case Recommendation.BUY:
-        return 'Buy';
+        return 'Bullish signal';
       case Recommendation.HOLD:
-        return 'Hold';
+        return 'Neutral';
       case Recommendation.SELL:
-        return 'Sell';
+        return 'Bearish signal';
       case Recommendation.STRONG_SELL:
-        return 'Strong Sell';
+        return 'Bearish signal (high confidence)';
     }
   }
 
@@ -235,12 +231,7 @@ class PriceTarget {
 }
 
 /// Risk level assessment
-enum RiskLevel {
-  LOW,
-  MEDIUM,
-  HIGH,
-  VERY_HIGH,
-}
+enum RiskLevel { LOW, MEDIUM, HIGH, VERY_HIGH }
 
 extension RiskLevelExtension on RiskLevel {
   String get displayName {

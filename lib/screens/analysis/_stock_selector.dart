@@ -1,4 +1,5 @@
 /// Stock Selector Widget - Dropdown for selecting symbols
+library;
 
 import 'package:flutter/material.dart';
 import '../../widgets/glass_card.dart';
@@ -36,11 +37,7 @@ class StockSelector extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
         children: [
-          Icon(
-            Icons.show_chart,
-            color: colorScheme.primary,
-            size: 20,
-          ),
+          Icon(Icons.show_chart, color: colorScheme.primary, size: 20),
           const SizedBox(width: 12),
           Text(
             'Analyze:',
@@ -64,10 +61,7 @@ class StockSelector extends StatelessWidget {
                   fontWeight: FontWeight.w700,
                   color: colorScheme.primary,
                 ),
-                icon: Icon(
-                  Icons.arrow_drop_down,
-                  color: colorScheme.primary,
-                ),
+                icon: Icon(Icons.arrow_drop_down, color: colorScheme.primary),
                 isExpanded: true,
                 items: symbols.map((item) {
                   final symbol = item['symbol']!;

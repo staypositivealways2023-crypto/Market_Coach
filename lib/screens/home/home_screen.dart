@@ -1,47 +1,68 @@
 import 'dart:async';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/mock_data.dart';
 import '../../data/watchlist_repository.dart';
-import '../../models/lesson.dart';
 import '../../models/market_index.dart';
 import '../../models/quote.dart';
 import '../../models/stock_summary.dart';
 import '../../services/quote_service.dart';
 import '../../utils/crypto_helper.dart';
 import '../../widgets/glass_card.dart';
-import '../lesson_detail/lesson_detail_screen.dart';
-import '../stock_detail/stock_detail_screen_enhanced.dart';
+import '../../widgets/iq_score_card.dart';
+import '../learn/learn_screen.dart';
+import '../profile/profile_screen.dart';
+import '../../features/chart/screens/asset_chart_screen.dart';
 
-class HomeScreen extends StatefulWidget {
+// ── Ticker symbols used as live index proxies ──────────────────────────────────
+const _indexStockSymbols = {'SPY', 'QQQ'};
+const _indexCryptoSymbols = {'BTC', 'ETH'};
+
+const _indexNames = {
+  'SPY': 'S&P 500',
+  'QQQ': 'NASDAQ',
+  'BTC': 'Bitcoin',
+  'ETH': 'Ethereum',
+};
+
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends ConsumerState<HomeScreen> {
   late WatchlistRepository _repository;
-  final _mockService = MockQuoteService();
+  final _yahooService = YahooQuoteService();
   final _binanceService = BinanceQuoteService();
-  StreamSubscription<Map<String, Quote>>? _mockSubscription;
+
+  StreamSubscription<Map<String, Quote>>? _stockSubscription;
   StreamSubscription<Map<String, Quote>>? _binanceSubscription;
+  StreamSubscription<Map<String, Quote>>? _indexStockSubscription;
+  StreamSubscription<Map<String, Quote>>? _indexCryptoSubscription;
+
   Set<String> _symbols = {};
-  Map<String, Quote> _quotes = {};
+  final Map<String, Quote> _quotes = {};
+  final Map<String, Quote> _indexQuotes = {};
   bool _loading = true;
 
   @override
   void initState() {
     super.initState();
     _initWatchlist();
+    _initIndexQuotes();
   }
+
+  // ── Watchlist quotes ────────────────────────────────────────────────────────
 
   Future<void> _initWatchlist() async {
     _repository = await WatchlistRepository.create();
     final symbols = await _repository.getWatchlist();
 
-    // If watchlist is empty, add default symbols
     if (symbols.isEmpty) {
       await _repository.addSymbol('AAPL');
       await _repository.addSymbol('BHP');
@@ -51,60 +72,114 @@ class _HomeScreenState extends State<HomeScreen> {
       _symbols = symbols;
     }
 
-    // Separate crypto from stock symbols
     final cryptoSymbols = _symbols.where((s) => isCryptoSymbol(s)).toSet();
     final stockSymbols = _symbols.where((s) => !isCryptoSymbol(s)).toSet();
 
-    // Stream quotes from Binance for crypto
     if (cryptoSymbols.isNotEmpty) {
-      _binanceSubscription = _binanceService.streamQuotes(cryptoSymbols).listen(
-        (quotes) {
-          if (mounted) {
-            setState(() {
-              _quotes.addAll(quotes);
-              _loading = false;
-            });
-          }
-        },
-      );
-    }
-
-    // Stream quotes from Mock service for stocks
-    if (stockSymbols.isNotEmpty) {
-      _mockSubscription = _mockService.streamQuotes(stockSymbols).listen((
-        quotes,
-      ) {
-        if (mounted) {
-          setState(() {
-            _quotes.addAll(quotes);
-            _loading = false;
-          });
-        }
+      _binanceSubscription =
+          _binanceService.streamQuotes(cryptoSymbols).listen((quotes) {
+        if (mounted) setState(() { _quotes.addAll(quotes); _loading = false; });
       });
     }
-
-    // Handle edge case: only crypto symbols
+    if (stockSymbols.isNotEmpty) {
+      _stockSubscription =
+          _yahooService.streamQuotes(stockSymbols).listen((quotes) {
+        if (mounted) setState(() { _quotes.addAll(quotes); _loading = false; });
+      });
+    }
     if (stockSymbols.isEmpty && cryptoSymbols.isNotEmpty) {
       setState(() => _loading = false);
     }
   }
 
+  // ── Live index quotes (SPY, QQQ, BTC, ETH) ─────────────────────────────────
+
+  void _initIndexQuotes() {
+    _indexStockSubscription =
+        _yahooService.streamQuotes(_indexStockSymbols).listen((quotes) {
+      if (mounted) setState(() => _indexQuotes.addAll(quotes));
+    });
+    _indexCryptoSubscription =
+        _binanceService.streamQuotes(_indexCryptoSymbols).listen((quotes) {
+      if (mounted) setState(() => _indexQuotes.addAll(quotes));
+    });
+  }
+
   @override
   void dispose() {
-    _mockSubscription?.cancel();
+    _stockSubscription?.cancel();
     _binanceSubscription?.cancel();
-    _mockService.dispose();
+    _indexStockSubscription?.cancel();
+    _indexCryptoSubscription?.cancel();
+    _yahooService.dispose();
     _binanceService.dispose();
     super.dispose();
+  }
+
+  // ── Build live MarketIndex list from index quotes ───────────────────────────
+
+  List<MarketIndex> _buildIndexList() {
+    final tickers = ['SPY', 'QQQ', 'BTC', 'ETH'];
+    final result = <MarketIndex>[];
+    for (final t in tickers) {
+      final q = _indexQuotes[t];
+      if (q != null && q.price > 0) {
+        result.add(MarketIndex(
+          name: _indexNames[t] ?? t,
+          ticker: t,
+          value: q.price,
+          changePercent: q.changePercent,
+        ));
+      }
+    }
+    // Fall back to mock data for any missing entries
+    if (result.isEmpty) return [...mockIndices, ...mockCryptoIndices];
+    return result;
+  }
+
+  // ── Derived sentiment from live index quotes ────────────────────────────────
+
+  String _sentimentLabel(double change) {
+    if (change > 1.0) return 'Bullish';
+    if (change > 0.2) return 'Leaning Bullish';
+    if (change < -1.0) return 'Bearish';
+    if (change < -0.2) return 'Leaning Bearish';
+    return 'Neutral';
+  }
+
+  Color _sentimentColor(double change) {
+    if (change > 0.2) return Colors.green[400]!;
+    if (change < -0.2) return Colors.red[400]!;
+    return Colors.amber[400]!;
+  }
+
+  String _volatilityLabel(List<MarketIndex> indices) {
+    final maxChange = indices.fold<double>(
+        0, (m, idx) => idx.changePercent.abs() > m ? idx.changePercent.abs() : m);
+    if (maxChange > 2.5) return 'High — stay cautious, size down';
+    if (maxChange > 1.2) return 'Medium — balanced approach';
+    return 'Low — steady environment';
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final liveMarkets = [...mockIndices, ...mockCryptoIndices];
-    final stockChange = _averageChange(mockIndices);
-    final cryptoChange = _averageChange(mockCryptoIndices);
+
+    // Live index data (falls back to mock if not yet loaded)
+    final liveMarkets = _buildIndexList();
+    final stockIndices =
+        liveMarkets.where((m) => m.ticker == 'SPY' || m.ticker == 'QQQ').toList();
+    final cryptoIndices =
+        liveMarkets.where((m) => m.ticker == 'BTC' || m.ticker == 'ETH').toList();
+    final stockChange = _averageChange(
+        stockIndices.isEmpty ? mockIndices : stockIndices);
+    final cryptoChange = _averageChange(
+        cryptoIndices.isEmpty ? mockCryptoIndices : cryptoIndices);
+
+    // Greeting — use Firebase auth display name
+    final user = FirebaseAuth.instance.currentUser;
+    final firstName = _extractFirstName(user);
 
     return CustomScrollView(
       physics: const BouncingScrollPhysics(),
@@ -127,9 +202,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         title: 'Stocks overview',
                         change: stockChange,
                         accentColor: colorScheme.primary,
-                        toneLabel: stockChange >= 0
-                            ? 'Leaning bullish'
-                            : 'Leaning defensive',
+                        toneLabel: _sentimentLabel(stockChange),
+                        toneColor: _sentimentColor(stockChange),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -138,27 +212,49 @@ class _HomeScreenState extends State<HomeScreen> {
                         title: 'Crypto overview',
                         change: cryptoChange,
                         accentColor: Colors.deepPurple,
-                        toneLabel: cryptoChange >= 0
-                            ? 'Momentum building'
-                            : 'Risk-off tone',
+                        toneLabel: _sentimentLabel(cryptoChange),
+                        toneColor: _sentimentColor(cryptoChange),
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 18),
-                Text(
-                  'Hi, Sandip',
-                  style: theme.textTheme.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Hi, $firstName',
+                            style: theme.textTheme.headlineMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            "Here's your market coach for today.",
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: Colors.white70,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.account_circle_outlined,
+                          color: Colors.white54, size: 28),
+                      tooltip: 'Profile',
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                            builder: (_) => const ProfileScreen()),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  "Here's your market coach for today.",
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: Colors.white70,
-                  ),
-                ),
+                const SizedBox(height: 16),
+                const IQScoreCard(),
                 const SizedBox(height: 20),
                 GlassCard(
                   padding: const EdgeInsets.all(16),
@@ -174,32 +270,26 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                           ),
                           const Spacer(),
-                          Icon(
-                            Icons.info_outline,
-                            size: 18,
-                            color: Colors.white54,
-                          ),
+                          const Icon(Icons.info_outline, size: 18, color: Colors.white54),
                         ],
                       ),
                       const SizedBox(height: 12),
                       Row(
                         children: [
-                          Text(
-                            'Overall sentiment:',
-                            style: theme.textTheme.bodyMedium,
-                          ),
+                          Text('Overall sentiment:', style: theme.textTheme.bodyMedium),
                           const SizedBox(width: 8),
                           Text(
-                            'Neutral',
+                            _sentimentLabel(_averageChange(liveMarkets)),
                             style: theme.textTheme.bodyMedium?.copyWith(
                               fontWeight: FontWeight.w600,
+                              color: _sentimentColor(_averageChange(liveMarkets)),
                             ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Volatility: Medium - Keep a balanced approach',
+                        'Volatility: ${_volatilityLabel(liveMarkets)}',
                         style: theme.textTheme.bodyMedium?.copyWith(
                           color: Colors.white70,
                         ),
@@ -230,7 +320,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   final quote = _quotes[symbol];
                   if (quote == null) return const SizedBox.shrink();
 
-                  // Map mock data for additional info (name, sector, etc.)
                   final mockStock = mockWatchlist.firstWhere(
                     (s) => s.ticker == symbol,
                     orElse: () => StockSummary(
@@ -241,7 +330,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   );
 
-                  // Create live stock with current quote
                   final liveStock = StockSummary(
                     ticker: symbol,
                     name: mockStock.name,
@@ -255,10 +343,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   );
 
                   return Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 6,
-                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
                     child: StockCard(stock: liveStock),
                   );
                 },
@@ -266,13 +351,37 @@ class _HomeScreenState extends State<HomeScreen> {
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-            child: TodayLessonCard(lesson: mockLessons[1]), // Support & Resistance (Beginner)
+            child: const TodayLessonCard(),
           ),
         ),
       ],
     );
   }
 }
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
+String _extractFirstName(User? user) {
+  if (user == null) return 'there';
+  if (user.displayName != null && user.displayName!.isNotEmpty) {
+    return user.displayName!.split(' ').first;
+  }
+  if (user.email != null && user.email!.isNotEmpty) {
+    return user.email!.split('@').first;
+  }
+  return 'there';
+}
+
+double _averageChange(List<MarketIndex> markets) {
+  if (markets.isEmpty) return 0;
+  final total = markets.fold<double>(0, (sum, item) => sum + item.changePercent);
+  return total / markets.length;
+}
+
+double _normalizedChange(double changePercent) =>
+    ((changePercent + 4) / 8).clamp(0.0, 1.0);
+
+// ── Widgets ────────────────────────────────────────────────────────────────────
 
 class _LiveMarketsStrip extends StatelessWidget {
   final List<MarketIndex> markets;
@@ -289,9 +398,8 @@ class _LiveMarketsStrip extends StatelessWidget {
         physics: const BouncingScrollPhysics(),
         itemBuilder: (context, index) {
           final market = markets[index];
-          final changeColor = market.isPositive
-              ? Colors.green[600]!
-              : Colors.red[600]!;
+          final changeColor =
+              market.isPositive ? Colors.green[600]! : Colors.red[600]!;
           return _LiveMarketCard(
             market: market,
             changeColor: changeColor,
@@ -335,54 +443,44 @@ class _LiveMarketCard extends StatelessWidget {
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: changeColor.withOpacity(0.4),
-                      blurRadius: 8,
-                      spreadRadius: 1,
-                    ),
+                        color: changeColor.withValues(alpha: 0.4),
+                        blurRadius: 8,
+                        spreadRadius: 1)
                   ],
                 ),
               ),
               const SizedBox(width: 6),
-              Text(
-                'Live',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: accent,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+              Text('Live',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                      color: accent, fontWeight: FontWeight.w600)),
               const Spacer(),
               Icon(Icons.show_chart, size: 16, color: accent),
             ],
           ),
           const SizedBox(height: 10),
-          Text(
-            market.ticker,
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
+          Text(market.ticker,
+              style: theme.textTheme.titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w700)),
           const SizedBox(height: 2),
-          Text(
-            market.name,
-            style: theme.textTheme.bodySmall?.copyWith(color: Colors.white70),
-          ),
+          Text(market.name,
+              style: theme.textTheme.bodySmall?.copyWith(color: Colors.white70)),
           const Spacer(),
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text(
-                market.value.toStringAsFixed(2),
-                style: theme.textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w700,
+              Expanded(
+                child: Text(
+                  market.value >= 10000
+                      ? '\$${(market.value / 1000).toStringAsFixed(1)}K'
+                      : '\$${market.value.toStringAsFixed(market.value < 10 ? 4 : 2)}',
+                  style: theme.textTheme.titleLarge
+                      ?.copyWith(fontWeight: FontWeight.w700),
                 ),
               ),
-              const SizedBox(width: 8),
               Text(
                 '${market.isPositive ? '+' : ''}${market.changePercent.toStringAsFixed(2)}%',
                 style: theme.textTheme.bodyMedium?.copyWith(
-                  color: changeColor,
-                  fontWeight: FontWeight.w600,
-                ),
+                    color: changeColor, fontWeight: FontWeight.w600),
               ),
             ],
           ),
@@ -397,12 +495,14 @@ class _MarketOverviewCard extends StatelessWidget {
   final double change;
   final Color accentColor;
   final String toneLabel;
+  final Color toneColor;
 
   const _MarketOverviewCard({
     required this.title,
     required this.change,
     required this.accentColor,
     required this.toneLabel,
+    required this.toneColor,
   });
 
   @override
@@ -412,31 +512,25 @@ class _MarketOverviewCard extends StatelessWidget {
     final normalized = _normalizedChange(change);
 
     return GlassCard(
-      color: accentColor.withOpacity(0.15),
+      color: accentColor.withValues(alpha: 0.15),
       padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
+          Text(title,
+              style: theme.textTheme.titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w700)),
           const SizedBox(height: 6),
-          Text(
-            toneLabel,
-            style: theme.textTheme.bodySmall?.copyWith(color: Colors.white70),
-          ),
+          Text(toneLabel,
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: toneColor, fontWeight: FontWeight.w600)),
           const SizedBox(height: 10),
           _ChangeBar(normalizedValue: normalized, fillColor: changeColor),
           const SizedBox(height: 8),
           Text(
             '${change >= 0 ? '+' : ''}${change.toStringAsFixed(2)}% today',
             style: theme.textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-              color: changeColor,
-            ),
+                fontWeight: FontWeight.w600, color: changeColor),
           ),
         ],
       ),
@@ -461,9 +555,9 @@ class _ChangeBar extends StatelessWidget {
               borderRadius: BorderRadius.circular(999),
               gradient: LinearGradient(
                 colors: [
-                  Colors.red.withOpacity(0.3),
-                  Colors.amber.withOpacity(0.4),
-                  Colors.green.withOpacity(0.3),
+                  Colors.red.withValues(alpha: 0.3),
+                  Colors.amber.withValues(alpha: 0.4),
+                  Colors.green.withValues(alpha: 0.3),
                 ],
               ),
             ),
@@ -473,7 +567,7 @@ class _ChangeBar extends StatelessWidget {
             child: Container(
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(999),
-                color: fillColor.withOpacity(0.7),
+                color: fillColor.withValues(alpha: 0.7),
               ),
             ),
           ),
@@ -483,59 +577,82 @@ class _ChangeBar extends StatelessWidget {
   }
 }
 
+// ── Stock watchlist card ───────────────────────────────────────────────────────
+
 class StockCard extends StatelessWidget {
   final StockSummary stock;
 
   const StockCard({super.key, required this.stock});
 
+  String _sentimentLabel(double change) {
+    if (change > 1.5) return 'Bullish';
+    if (change > 0.3) return 'Mild Up';
+    if (change < -1.5) return 'Bearish';
+    if (change < -0.3) return 'Mild Down';
+    return 'Neutral';
+  }
+
+  Color _sentimentColor(double change) {
+    if (change > 0.3) return const Color(0xFF22C55E);
+    if (change < -0.3) return const Color(0xFFEF4444);
+    return const Color(0xFFF59E0B);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final changeColor = stock.isPositive ? Colors.green[600] : Colors.red[600];
+    final changeColor =
+        stock.isPositive ? Colors.green[600] : Colors.red[600];
+    final sentiment = _sentimentLabel(stock.changePercent);
+    final sentimentColor = _sentimentColor(stock.changePercent);
 
     return GlassCard(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      onTap: () {
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => StockDetailScreenEnhanced(stock: stock)),
-        );
-      },
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => AssetChartScreen(stock: stock),
+        ),
+      ),
       child: Row(
         children: [
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  stock.ticker,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+                Row(
+                  children: [
+                    Text(
+                      stock.ticker,
+                      style: theme.textTheme.titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(width: 8),
+                    // Sentiment chip
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 7, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: sentimentColor.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(5),
+                        border: Border.all(
+                            color: sentimentColor.withValues(alpha: 0.35)),
+                      ),
+                      child: Text(
+                        sentiment,
+                        style: TextStyle(
+                          color: sentimentColor,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 2),
                 Text(
                   stock.name,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: Colors.white70,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Text(
-                      'Tap to see simple analysis',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.primary,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    Icon(
-                      Icons.arrow_forward,
-                      size: 14,
-                      color: theme.colorScheme.primary,
-                    ),
-                  ],
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: Colors.white70),
                 ),
               ],
             ),
@@ -544,18 +661,15 @@ class StockCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                '\$${stock.price.toStringAsFixed(2)}',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
+                '\$${stock.price.toStringAsFixed(stock.price < 1 ? 4 : 2)}',
+                style: theme.textTheme.titleMedium
+                    ?.copyWith(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 4),
               Text(
                 '${stock.isPositive ? '+' : ''}${stock.changePercent.toStringAsFixed(2)}%',
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: changeColor,
-                  fontWeight: FontWeight.w600,
-                ),
+                    color: changeColor, fontWeight: FontWeight.w600),
               ),
             ],
           ),
@@ -566,9 +680,7 @@ class StockCard extends StatelessWidget {
 }
 
 class TodayLessonCard extends StatelessWidget {
-  final Lesson lesson;
-
-  const TodayLessonCard({super.key, required this.lesson});
+  const TodayLessonCard({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -578,53 +690,41 @@ class TodayLessonCard extends StatelessWidget {
     return GlassCard(
       color: colorScheme.primary,
       padding: const EdgeInsets.all(18),
-      onTap: () {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => LessonDetailScreen(lessonId: lesson.id),
-          ),
-        );
-      },
+      onTap: () => Navigator.of(context)
+          .push(MaterialPageRoute(builder: (_) => const LearnScreen())),
       child: Row(
         children: [
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  "Today's lesson",
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: Colors.white70,
-                  ),
-                ),
+                Text('Learning Centre',
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: Colors.white70)),
                 const SizedBox(height: 6),
                 Text(
-                  lesson.title,
+                  'Browse lessons & build your edge',
                   style: theme.textTheme.titleMedium?.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                  ),
+                      color: Colors.white, fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 10),
                 Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
+                      horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.18),
+                    color: Colors.white.withValues(alpha: 0.18),
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.schedule, size: 14, color: Colors.white),
+                      const Icon(Icons.school_outlined,
+                          size: 14, color: Colors.white),
                       const SizedBox(width: 6),
                       Text(
-                        '${lesson.minutes} min ${lesson.level}',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: Colors.white,
-                        ),
+                        'Beginner · Intermediate · Advanced',
+                        style: theme.textTheme.bodySmall
+                            ?.copyWith(color: Colors.white),
                       ),
                     ],
                   ),
@@ -637,27 +737,11 @@ class TodayLessonCard extends StatelessWidget {
             width: 40,
             height: 40,
             decoration: const BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.white24,
-            ),
+                shape: BoxShape.circle, color: Colors.white24),
             child: const Icon(Icons.arrow_forward, color: Colors.white),
           ),
         ],
       ),
     );
   }
-}
-
-double _averageChange(List<MarketIndex> markets) {
-  if (markets.isEmpty) return 0;
-  final total = markets.fold<double>(
-    0,
-    (sum, item) => sum + item.changePercent,
-  );
-  return total / markets.length;
-}
-
-double _normalizedChange(double changePercent) {
-  // Map change from -4%..+4% into 0..1 for the color bar fill.
-  return ((changePercent + 4) / 8).clamp(0.0, 1.0);
 }

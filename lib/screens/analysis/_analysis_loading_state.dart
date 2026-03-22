@@ -1,4 +1,5 @@
 /// Analysis Loading State - Shimmer skeleton while generating analysis
+library;
 
 import 'package:flutter/material.dart';
 import '../../widgets/glass_card.dart';
@@ -6,10 +7,7 @@ import '../../widgets/glass_card.dart';
 class AnalysisLoadingState extends StatefulWidget {
   final String symbol;
 
-  const AnalysisLoadingState({
-    super.key,
-    required this.symbol,
-  });
+  const AnalysisLoadingState({super.key, required this.symbol});
 
   @override
   State<AnalysisLoadingState> createState() => _AnalysisLoadingStateState();
@@ -28,9 +26,10 @@ class _AnalysisLoadingStateState extends State<AnalysisLoadingState>
       vsync: this,
     )..repeat(reverse: true);
 
-    _animation = Tween<double>(begin: 0.3, end: 0.7).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-    );
+    _animation = Tween<double>(
+      begin: 0.3,
+      end: 0.7,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
   }
 
   @override
@@ -57,7 +56,9 @@ class _AnalysisLoadingStateState extends State<AnalysisLoadingState>
                 height: 20,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(colorScheme.primary),
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    colorScheme.primary,
+                  ),
                 ),
               ),
               const SizedBox(width: 12),

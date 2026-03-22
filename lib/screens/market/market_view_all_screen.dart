@@ -8,6 +8,7 @@ import '../../services/quote_service.dart';
 import '../../utils/crypto_helper.dart';
 import '../../widgets/glass_card.dart';
 import '../stock_detail/stock_detail_screen_enhanced.dart';
+import '../../features/chart/screens/asset_chart_screen.dart';
 
 enum SortCriteria { price, changePercent, volume, marketCap, name }
 
@@ -316,7 +317,7 @@ class _AssetListTile extends StatelessWidget {
       onTap: () {
         Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (_) => StockDetailScreenEnhanced(
+            builder: (_) => AssetChartScreen(
               stock: asset.copyWith(
                 price: price,
                 changePercent: changePercent,
@@ -373,7 +374,7 @@ class _AssetListTile extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                '\$${price.toStringAsFixed(price < 1 ? 4 : 2)}',
+                price > 0 ? '\$${price.toStringAsFixed(price < 1 ? 4 : 2)}' : '—',
                 style: theme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w600,
                 ),

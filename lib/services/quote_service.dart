@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:http/http.dart' as http;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../models/quote.dart';
@@ -45,6 +46,65 @@ class MockQuoteService implements QuoteService {
   void dispose() {}
 }
 
+/// Polls Yahoo Finance for real stock quotes every 30 seconds.
+class YahooQuoteService implements QuoteService {
+  static const _baseUrl = 'https://query1.finance.yahoo.com/v7/finance/quote';
+  static const _pollInterval = Duration(seconds: 30);
+
+  StreamController<Map<String, Quote>>? _controller;
+  Timer? _timer;
+  Set<String> _symbols = {};
+
+  @override
+  Stream<Map<String, Quote>> streamQuotes(Set<String> symbols) {
+    _symbols = symbols;
+    _controller = StreamController<Map<String, Quote>>.broadcast(
+      onListen: () {
+        _fetchAndEmit(); // immediate first fetch
+        _timer = Timer.periodic(_pollInterval, (_) => _fetchAndEmit());
+      },
+      onCancel: () {
+        _timer?.cancel();
+        _timer = null;
+      },
+    );
+    return _controller!.stream;
+  }
+
+  Future<void> _fetchAndEmit() async {
+    if (_symbols.isEmpty) return;
+    try {
+      final symbolList = _symbols.join(',');
+      final uri = Uri.parse('$_baseUrl?symbols=$symbolList&fields=regularMarketPrice,regularMarketChangePercent');
+      final response = await http.get(uri, headers: {'User-Agent': 'Mozilla/5.0'}).timeout(const Duration(seconds: 10));
+      if (response.statusCode != 200) return;
+
+      final body = jsonDecode(response.body);
+      final results = body['quoteResponse']?['result'] as List<dynamic>?;
+      if (results == null) return;
+
+      final quotes = <String, Quote>{};
+      for (final r in results) {
+        final symbol = r['symbol'] as String? ?? '';
+        final price = (r['regularMarketPrice'] as num?)?.toDouble() ?? 0.0;
+        final change = (r['regularMarketChangePercent'] as num?)?.toDouble() ?? 0.0;
+        if (symbol.isNotEmpty && price > 0) {
+          quotes[symbol] = Quote(symbol: symbol, price: price, changePercent: change);
+        }
+      }
+      if (quotes.isNotEmpty) _controller?.add(quotes);
+    } catch (_) {
+      // Network errors are non-fatal; next poll will retry
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _controller?.close();
+  }
+}
+
 class BinanceQuoteService implements QuoteService {
   static const _baseUrl = 'wss://stream.binance.com:9443/stream';
   static const _symbolMapping = {
@@ -55,6 +115,7 @@ class BinanceQuoteService implements QuoteService {
     'ADA': 'ADAUSDT',
     'XRP': 'XRPUSDT',
     'XLM': 'XLMUSDT',
+    'DOGE': 'DOGEUSDT',
   };
 
   WebSocketChannel? _channel;

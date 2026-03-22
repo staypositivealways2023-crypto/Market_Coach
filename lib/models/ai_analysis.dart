@@ -1,4 +1,5 @@
 /// AI Analysis Model - AI-generated market analysis from Claude
+library;
 
 class AIAnalysis {
   final String symbol;

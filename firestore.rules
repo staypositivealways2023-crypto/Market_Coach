@@ -65,7 +65,31 @@ service cloud.firestore {
         allow read, write: if isOwner(userId);
       }
 
+      match /guided_progress/{lessonId} {
+        allow read, write: if isOwner(userId);
+      }
+
       match /bookmarks/{lessonId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // Real portfolio holdings
+      match /holdings/{symbol} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // Paper trading account doc (users/{uid}/paper/account)
+      match /paper/{docId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // Paper trading positions
+      match /paper_holdings/{symbol} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // Paper trading transaction history
+      match /paper_transactions/{txId} {
         allow read, write: if isOwner(userId);
       }
     }

@@ -18,7 +18,7 @@ class LessonScreen {
   factory LessonScreen.fromMap(Map<String, dynamic> map, String documentId) {
     final rawContent = map['content'];
     final content = rawContent is Map
-        ? Map<String, dynamic>.from(rawContent as Map)
+        ? Map<String, dynamic>.from(rawContent)
         : <String, dynamic>{};
     return LessonScreen(
       id: documentId,

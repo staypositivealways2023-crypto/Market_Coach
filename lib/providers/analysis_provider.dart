@@ -1,4 +1,5 @@
 /// Analysis Providers - Riverpod providers for AI-powered analysis
+library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/enhanced_ai_analysis.dart';

@@ -51,7 +51,7 @@ class RsiSubChart extends StatelessWidget {
               const Spacer(),
               if (dataPoints.isNotEmpty)
                 Text(
-                  '${dataPoints.last.rsi.toStringAsFixed(1)}',
+                  dataPoints.last.rsi.toStringAsFixed(1),
                   style: theme.textTheme.bodyMedium?.copyWith(
                     fontWeight: FontWeight.w600,
                     color: _getRsiColor(dataPoints.last.rsi),
@@ -85,30 +85,32 @@ class RsiSubChart extends StatelessWidget {
                   fontSize: 10,
                 ),
               ),
-              annotations: dataPoints.isEmpty ? [] : [
-                // Overbought line (70)
-                CartesianChartAnnotation(
-                  widget: Container(
-                    height: 1,
-                    color: Colors.red.withValues(alpha: 0.5),
-                  ),
-                  coordinateUnit: CoordinateUnit.point,
-                  region: AnnotationRegion.plotArea,
-                  x: dataPoints.first.date,
-                  y: 70,
-                ),
-                // Oversold line (30)
-                CartesianChartAnnotation(
-                  widget: Container(
-                    height: 1,
-                    color: Colors.green.withValues(alpha: 0.5),
-                  ),
-                  coordinateUnit: CoordinateUnit.point,
-                  region: AnnotationRegion.plotArea,
-                  x: dataPoints.first.date,
-                  y: 30,
-                ),
-              ],
+              annotations: dataPoints.isEmpty
+                  ? []
+                  : [
+                      // Overbought line (70)
+                      CartesianChartAnnotation(
+                        widget: Container(
+                          height: 1,
+                          color: Colors.red.withValues(alpha: 0.5),
+                        ),
+                        coordinateUnit: CoordinateUnit.point,
+                        region: AnnotationRegion.plotArea,
+                        x: dataPoints.first.date,
+                        y: 70,
+                      ),
+                      // Oversold line (30)
+                      CartesianChartAnnotation(
+                        widget: Container(
+                          height: 1,
+                          color: Colors.green.withValues(alpha: 0.5),
+                        ),
+                        coordinateUnit: CoordinateUnit.point,
+                        region: AnnotationRegion.plotArea,
+                        x: dataPoints.first.date,
+                        y: 30,
+                      ),
+                    ],
               series: <CartesianSeries>[
                 SplineSeries<_RsiPoint, DateTime>(
                   dataSource: dataPoints,
@@ -168,10 +170,7 @@ class RsiSubChart extends StatelessWidget {
         const SizedBox(width: 4),
         Text(
           '$label $value',
-          style: const TextStyle(
-            fontSize: 9,
-            color: Colors.white54,
-          ),
+          style: const TextStyle(fontSize: 9, color: Colors.white54),
         ),
       ],
     );

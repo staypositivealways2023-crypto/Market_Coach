@@ -1,22 +1,34 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../widgets/glass_card.dart';
+import '../../providers/enhanced_analysis_provider.dart';
+import '_analysis_error_card.dart';
+import '_analysis_loading_state.dart';
+import '_enhanced_analysis_display.dart';
 import '_stock_selector.dart';
 
-class AnalysisScreen extends StatefulWidget {
+class AnalysisScreen extends ConsumerStatefulWidget {
   const AnalysisScreen({super.key});
 
   @override
-  State<AnalysisScreen> createState() => _AnalysisScreenState();
+  ConsumerState<AnalysisScreen> createState() => _AnalysisScreenState();
 }
 
-class _AnalysisScreenState extends State<AnalysisScreen> {
+class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   String _selectedSymbol = 'AAPL';
+
+  void _onSymbolChanged(String symbol) {
+    setState(() => _selectedSymbol = symbol);
+  }
+
+  void _refresh() {
+    ref.invalidate(enhancedAnalysisProvider(_selectedSymbol));
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final analysisAsync = ref.watch(enhancedAnalysisProvider(_selectedSymbol));
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -44,59 +56,27 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
                       ),
                     ),
                     const SizedBox(height: 14),
-
-                    // Stock selector
                     StockSelector(
                       selectedSymbol: _selectedSymbol,
-                      onChanged: (symbol) {
-                        setState(() {
-                          _selectedSymbol = symbol;
-                        });
-                      },
+                      onChanged: _onSymbolChanged,
                     ),
                   ],
                 ),
               ),
             ),
 
-            // AI Analysis - Coming Soon
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
               sliver: SliverToBoxAdapter(
-                child: GlassCard(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    children: [
-                      Icon(
-                        Icons.psychology_outlined,
-                        size: 48,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'AI Analysis',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Coming Soon',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.primary,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        'AI-powered sentiment scores, price targets, and market insights for $_selectedSymbol will be available here.',
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Colors.white70,
-                          height: 1.5,
-                        ),
-                      ),
-                    ],
+                child: analysisAsync.when(
+                  loading: () => AnalysisLoadingState(symbol: _selectedSymbol),
+                  error: (error, _) => AnalysisErrorCard(
+                    error: error,
+                    onRetry: _refresh,
+                  ),
+                  data: (analysis) => EnhancedAnalysisDisplay(
+                    analysis: analysis,
+                    onRefresh: _refresh,
                   ),
                 ),
               ),

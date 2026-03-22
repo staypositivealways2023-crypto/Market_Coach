@@ -1,14 +1,14 @@
-/// Stock Data Service - Fetch market data for analysis
+/// Stock Data Service - Fetch market data for AI analysis
 ///
-/// Uses free APIs (Yahoo Finance, Alpha Vantage) to gather:
-/// - Current price and price history
-/// - Company information
-/// - Recent news headlines
+/// Primary source: Python backend (Massive API) — accurate for stocks + crypto
+/// Fallback: Yahoo Finance with correct symbol mapping
+library;
 
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
-/// Stock market data for AI analysis
+import 'backend_service.dart';
+
 class StockData {
   final String symbol;
   final double currentPrice;
@@ -22,7 +22,7 @@ class StockData {
   final double? marketCap;
   final double? peRatio;
   final String? companyName;
-  final List<PricePoint> priceHistory; // Last 30 days
+  final List<PricePoint> priceHistory;
   final List<NewsHeadline> news;
 
   StockData({
@@ -42,7 +42,6 @@ class StockData {
     this.news = const [],
   });
 
-  /// Get price trend description
   String get priceTrend {
     if (changePercent == null) return 'neutral';
     if (changePercent! > 2) return 'strongly up';
@@ -52,7 +51,6 @@ class StockData {
     return 'neutral';
   }
 
-  /// Calculate relative position to 52-week range (0-100)
   double? get fiftyTwoWeekPosition {
     if (fiftyTwoWeekHigh == null || fiftyTwoWeekLow == null) return null;
     final range = fiftyTwoWeekHigh! - fiftyTwoWeekLow!;
@@ -64,7 +62,6 @@ class StockData {
 class PricePoint {
   final DateTime date;
   final double price;
-
   PricePoint(this.date, this.price);
 }
 
@@ -74,192 +71,147 @@ class NewsHeadline {
   final DateTime? publishedAt;
   final String? url;
 
-  NewsHeadline({
-    required this.title,
-    this.source,
-    this.publishedAt,
-    this.url,
-  });
+  NewsHeadline({required this.title, this.source, this.publishedAt, this.url});
 }
 
-/// Service to fetch stock market data
 class StockDataService {
-  /// Fetch comprehensive stock data for analysis
+  final _backend = BackendService();
+
+  /// Yahoo Finance symbol format for crypto (BTC → BTC-USD)
+  static String _yahooSymbol(String symbol) {
+    const cryptos = {
+      'BTC',
+      'ETH',
+      'BNB',
+      'SOL',
+      'ADA',
+      'XRP',
+      'DOGE',
+      'DOT',
+      'AVAX',
+      'MATIC',
+      'LINK',
+      'UNI',
+      'LTC',
+      'BCH',
+      'XLM',
+      'ALGO',
+      'ATOM',
+      'VET',
+      'FIL',
+      'TRX',
+    };
+    final upper = symbol.toUpperCase();
+    // Already has suffix (BTC-USD, ETH-USDT)
+    if (upper.contains('-') || upper.contains('/')) return upper;
+    return cryptos.contains(upper) ? '$upper-USD' : upper;
+  }
+
   Future<StockData> fetchStockData(String symbol) async {
-    try {
-      // Fetch quote data
-      final quoteData = await _fetchQuoteData(symbol);
+    final upper = symbol.toUpperCase();
 
-      // Fetch price history (last 30 days)
-      final priceHistory = await _fetchPriceHistory(symbol);
+    // 1. Get accurate price + range from backend (Massive API)
+    final range = await _backend.getPriceRange(upper);
 
-      // Fetch news headlines
-      final news = await _fetchNews(symbol);
+    // 2. Get real news from backend
+    final newsItems = await _backend.getTickerNews(upper, limit: 5);
 
-      return StockData(
-        symbol: symbol.toUpperCase(),
-        currentPrice: quoteData['price'] ?? 0.0,
-        changePercent: quoteData['changePercent'],
-        dayHigh: quoteData['dayHigh'],
-        dayLow: quoteData['dayLow'],
-        fiftyTwoWeekHigh: quoteData['fiftyTwoWeekHigh'],
-        fiftyTwoWeekLow: quoteData['fiftyTwoWeekLow'],
-        volume: quoteData['volume'],
-        avgVolume: quoteData['avgVolume'],
-        marketCap: quoteData['marketCap'],
-        peRatio: quoteData['peRatio'],
-        companyName: quoteData['companyName'],
-        priceHistory: priceHistory,
-        news: news,
+    // 3. Get 30-day price history from Yahoo Finance (fallback chain)
+    final priceHistory = await _fetchPriceHistory(_yahooSymbol(upper));
+
+    // 4. Resolve current price — backend first, then price history last point
+    final currentPrice = (range?.currentPrice ?? 0.0) > 0
+        ? range!.currentPrice!
+        : priceHistory.isNotEmpty
+        ? priceHistory.last.price
+        : 0.0;
+
+    if (currentPrice <= 0) {
+      throw Exception(
+        'Could not retrieve price for $upper. '
+        'Check the symbol and ensure the backend is running.',
       );
-    } catch (e) {
-      print('Error fetching stock data for $symbol: $e');
-      rethrow;
     }
+
+    // Compute change percent from price history if not in range data
+    double? changePercent;
+    if (priceHistory.length >= 2) {
+      final prev = priceHistory[priceHistory.length - 2].price;
+      if (prev > 0) {
+        changePercent = (currentPrice - prev) / prev * 100;
+      }
+    }
+
+    final news = newsItems
+        .map(
+          (a) => NewsHeadline(
+            title: a.title,
+            source: a.source,
+            publishedAt: DateTime.tryParse(a.publishedAt),
+            url: a.url,
+          ),
+        )
+        .toList();
+
+    return StockData(
+      symbol: upper,
+      currentPrice: currentPrice,
+      changePercent: changePercent,
+      dayHigh: range?.dayHigh,
+      dayLow: range?.dayLow,
+      fiftyTwoWeekHigh: range?.yearHigh,
+      fiftyTwoWeekLow: range?.yearLow,
+      volume: range?.volume,
+      priceHistory: priceHistory,
+      news: news.isNotEmpty ? news : _fallbackNews(upper),
+    );
   }
 
-  /// Fetch current quote data from Yahoo Finance
-  Future<Map<String, dynamic>> _fetchQuoteData(String symbol) async {
-    try {
-      // Use Yahoo Finance v8 API (no key required, but rate limited)
-      final url = Uri.parse(
-          'https://query1.finance.yahoo.com/v8/finance/chart/$symbol?interval=1d&range=5d');
-
-      final response = await http.get(url).timeout(
-            const Duration(seconds: 10),
-          );
-
-      if (response.statusCode != 200) {
-        throw Exception('Failed to fetch quote: ${response.statusCode}');
-      }
-
-      final data = jsonDecode(response.body);
-      final result = data['chart']['result'][0];
-      final meta = result['meta'];
-      final quote = result['indicators']['quote'][0];
-
-      // Get latest close price
-      final closes = (quote['close'] as List).cast<double?>();
-      final latestClose =
-          closes.lastWhere((c) => c != null, orElse: () => null);
-
-      return {
-        'price': latestClose ?? meta['regularMarketPrice'] ?? 0.0,
-        'changePercent': ((meta['regularMarketPrice'] -
-                    meta['chartPreviousClose']) /
-                meta['chartPreviousClose'] *
-                100)
-            .toDouble(),
-        'dayHigh': meta['regularMarketDayHigh']?.toDouble(),
-        'dayLow': meta['regularMarketDayLow']?.toDouble(),
-        'fiftyTwoWeekHigh': meta['fiftyTwoWeekHigh']?.toDouble(),
-        'fiftyTwoWeekLow': meta['fiftyTwoWeekLow']?.toDouble(),
-        'volume': meta['regularMarketVolume']?.toInt(),
-        'avgVolume': null, // Not available in this endpoint
-        'marketCap': null,
-        'peRatio': null,
-        'companyName': meta['symbol'],
-      };
-    } catch (e) {
-      print('Error fetching quote data: $e');
-      // Return minimal data if API fails
-      return {
-        'price': 0.0,
-        'companyName': symbol,
-      };
-    }
-  }
-
-  /// Fetch 30-day price history
-  Future<List<PricePoint>> _fetchPriceHistory(String symbol) async {
+  Future<List<PricePoint>> _fetchPriceHistory(String yahooSymbol) async {
     try {
       final url = Uri.parse(
-          'https://query1.finance.yahoo.com/v8/finance/chart/$symbol?interval=1d&range=1mo');
+        'https://query1.finance.yahoo.com/v8/finance/chart/$yahooSymbol'
+        '?interval=1d&range=1mo',
+      );
 
-      final response = await http.get(url).timeout(
-            const Duration(seconds: 10),
-          );
+      final response = await http
+          .get(url, headers: {'User-Agent': 'Mozilla/5.0'})
+          .timeout(const Duration(seconds: 12));
 
-      if (response.statusCode != 200) {
-        return [];
-      }
+      if (response.statusCode != 200) return [];
 
       final data = jsonDecode(response.body);
-      final result = data['chart']['result'][0];
+      final result = data['chart']['result']?[0];
+      if (result == null) return [];
 
-      final timestamps = (result['timestamp'] as List).cast<int>();
-      final quotes = result['indicators']['quote'][0];
-      final closes = (quotes['close'] as List).cast<double?>();
+      final timestamps = (result['timestamp'] as List?)?.cast<int>() ?? [];
+      final closes =
+          (result['indicators']['quote'][0]['close'] as List?)
+              ?.cast<double?>() ??
+          [];
 
       final history = <PricePoint>[];
-      for (var i = 0; i < timestamps.length; i++) {
+      for (var i = 0; i < timestamps.length && i < closes.length; i++) {
         if (closes[i] != null) {
-          history.add(PricePoint(
-            DateTime.fromMillisecondsSinceEpoch(timestamps[i] * 1000),
-            closes[i]!,
-          ));
+          history.add(
+            PricePoint(
+              DateTime.fromMillisecondsSinceEpoch(timestamps[i] * 1000),
+              closes[i]!,
+            ),
+          );
         }
       }
-
       return history;
-    } catch (e) {
-      print('Error fetching price history: $e');
+    } catch (_) {
       return [];
     }
   }
 
-  /// Fetch recent news headlines
-  Future<List<NewsHeadline>> _fetchNews(String symbol) async {
-    try {
-      // Use Yahoo Finance news API
-      final url = Uri.parse(
-          'https://query1.finance.yahoo.com/v1/finance/search?q=$symbol&quotesCount=0&newsCount=5');
-
-      final response = await http.get(url).timeout(
-            const Duration(seconds: 10),
-          );
-
-      if (response.statusCode != 200) {
-        return _getMockNews(symbol);
-      }
-
-      final data = jsonDecode(response.body);
-      final newsItems = data['news'] as List?;
-
-      if (newsItems == null || newsItems.isEmpty) {
-        return _getMockNews(symbol);
-      }
-
-      return newsItems.take(5).map((item) {
-        return NewsHeadline(
-          title: item['title'] ?? 'No title',
-          source: item['publisher'],
-          publishedAt: item['providerPublishTime'] != null
-              ? DateTime.fromMillisecondsSinceEpoch(
-                  item['providerPublishTime'] * 1000)
-              : null,
-          url: item['link'],
-        );
-      }).toList();
-    } catch (e) {
-      print('Error fetching news: $e');
-      return _getMockNews(symbol);
-    }
-  }
-
-  /// Provide mock news if API fails (for graceful degradation)
-  List<NewsHeadline> _getMockNews(String symbol) {
-    return [
-      NewsHeadline(
-        title: '$symbol Stock Analysis: Latest Market Update',
-        source: 'Market News',
-        publishedAt: DateTime.now().subtract(const Duration(hours: 2)),
-      ),
-      NewsHeadline(
-        title: 'Investors Eye $symbol Performance',
-        source: 'Financial Times',
-        publishedAt: DateTime.now().subtract(const Duration(hours: 5)),
-      ),
-    ];
-  }
+  List<NewsHeadline> _fallbackNews(String symbol) => [
+    NewsHeadline(
+      title: '$symbol — latest market update',
+      source: 'MarketCoach',
+      publishedAt: DateTime.now(),
+    ),
+  ];
 }

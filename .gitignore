@@ -12,6 +12,9 @@
 .swiftpm/
 migrate_working_dir/
 
+# VS Code secrets (contains dart-define keys)
+.vscode/launch.json
+
 # IntelliJ related
 *.iml
 *.ipr
@@ -72,8 +75,15 @@ desktop.ini
 # Claude Code
 .claude/
 
-# Python backend (if applicable)
-python-backend/
+# Python backend — exclude secrets and cache only
+python-backend/.env
+python-backend/serviceAccountKey.json
+python-backend/__pycache__/
+python-backend/**/__pycache__/
+python-backend/**/*.pyc
+python-backend/**/*$py.class
+python-backend/server.log
+python-backend/*.log
 __pycache__/
 *.py[cod]
 *$py.class

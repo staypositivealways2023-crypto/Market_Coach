@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 
-import '../screens/analysis/analysis_screen.dart';
+import '../screens/coach/coach_screen.dart';
 import '../screens/home/home_screen.dart';
-import '../screens/learn/learn_screen.dart';
-import '../screens/market/market_screen.dart';
-import '../screens/news/news_screen.dart';
+import '../screens/portfolio/portfolio_screen.dart';
 import '../screens/profile/profile_screen.dart';
+import '../screens/trade/trade_screen.dart';
 
-/// Root shell with bottom navigation.
+/// Root shell with 4-tab bottom navigation.
+/// Home | Trade (Markets + Paper) | Coach (Learn + Chat) | Portfolio
 class RootShell extends StatefulWidget {
   const RootShell({super.key});
 
@@ -20,10 +20,9 @@ class _RootShellState extends State<RootShell> {
 
   final _screens = const [
     HomeScreen(),
-    MarketScreen(),
-    LearnScreen(),
-    AnalysisScreen(),
-    NewsScreen(),
+    TradeScreen(),
+    CoachScreen(),
+    PortfolioScreen(),
     ProfileScreen(),
   ];
 
@@ -40,14 +39,19 @@ class _RootShellState extends State<RootShell> {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              Color(0xFF0F172A), // Slate
-              Color(0xFF1E293B), // Dark slate
-              Color(0xFF020617), // Almost black
+              Color(0xFF06090F),
+              Color(0xFF0A1420),
+              Color(0xFF02050A),
             ],
             stops: [0.0, 0.5, 1.0],
           ),
         ),
-        child: SafeArea(child: _screens[_selectedIndex]),
+        child: SafeArea(
+          child: IndexedStack(
+            index: _selectedIndex,
+            children: _screens,
+          ),
+        ),
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
@@ -59,28 +63,23 @@ class _RootShellState extends State<RootShell> {
             label: 'Home',
           ),
           NavigationDestination(
-            icon: Icon(Icons.show_chart_outlined),
-            selectedIcon: Icon(Icons.show_chart),
-            label: 'Market',
+            icon: Icon(Icons.candlestick_chart_outlined),
+            selectedIcon: Icon(Icons.candlestick_chart),
+            label: 'Trade',
           ),
           NavigationDestination(
-            icon: Icon(Icons.menu_book_outlined),
-            selectedIcon: Icon(Icons.menu_book),
-            label: 'Learn',
+            icon: Icon(Icons.auto_awesome_outlined),
+            selectedIcon: Icon(Icons.auto_awesome),
+            label: 'Coach',
           ),
           NavigationDestination(
-            icon: Icon(Icons.analytics_outlined),
-            selectedIcon: Icon(Icons.analytics),
-            label: 'Analysis',
+            icon: Icon(Icons.pie_chart_outline),
+            selectedIcon: Icon(Icons.pie_chart),
+            label: 'Portfolio',
           ),
           NavigationDestination(
-            icon: Icon(Icons.article_outlined),
-            selectedIcon: Icon(Icons.article),
-            label: 'News',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person),
+            icon: Icon(Icons.account_circle_outlined),
+            selectedIcon: Icon(Icons.account_circle),
             label: 'Profile',
           ),
         ],

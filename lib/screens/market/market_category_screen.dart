@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../data/mock_data.dart';
-import '../../models/market_index.dart';
-import '../../models/stock_summary.dart';
-import '../stock_detail/stock_detail_screen.dart';
+import '../stock_detail/stock_detail_screen_enhanced.dart';
+import '../../features/chart/screens/asset_chart_screen.dart';
 
 class MarketCategoryScreen extends StatelessWidget {
   final bool isCrypto;
@@ -20,9 +19,7 @@ class MarketCategoryScreen extends StatelessWidget {
         .toList(growable: false);
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(isCrypto ? 'Crypto view' : 'Stocks view'),
-      ),
+      appBar: AppBar(title: Text(isCrypto ? 'Crypto view' : 'Stocks view')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
         physics: const BouncingScrollPhysics(),
@@ -91,8 +88,9 @@ class MarketCategoryScreen extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           ...indices.map((idx) {
-            final changeColor =
-                idx.isPositive ? Colors.greenAccent : Colors.redAccent;
+            final changeColor = idx.isPositive
+                ? Colors.greenAccent
+                : Colors.redAccent;
             return Padding(
               padding: const EdgeInsets.only(bottom: 10),
               child: Card(
@@ -156,8 +154,9 @@ class MarketCategoryScreen extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           ...watchlist.map((stock) {
-            final changeColor =
-                stock.isPositive ? Colors.greenAccent : Colors.redAccent;
+            final changeColor = stock.isPositive
+                ? Colors.greenAccent
+                : Colors.redAccent;
             return Padding(
               padding: const EdgeInsets.only(bottom: 10),
               child: Card(
@@ -195,7 +194,7 @@ class MarketCategoryScreen extends StatelessWidget {
                   ),
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (_) => StockDetailScreen(stock: stock),
+                      builder: (_) => AssetChartScreen(stock: stock),
                     ),
                   ),
                 ),

@@ -1,9 +1,11 @@
 /// Enhanced Analysis Display - Beautiful structured display of AI analysis
 ///
 /// Shows sentiment scores, recommendations, factors, and risk in clear sections
+library;
 
 import 'package:flutter/material.dart';
 import '../../models/enhanced_ai_analysis.dart';
+import '../../widgets/disclaimer_banner.dart';
 import '../../widgets/glass_card.dart';
 
 class EnhancedAnalysisDisplay extends StatelessWidget {
@@ -66,6 +68,9 @@ class EnhancedAnalysisDisplay extends StatelessWidget {
 
         // Disclaimer
         _DisclaimerCard(analysis: analysis),
+
+        const SizedBox(height: 8),
+        const DisclaimerBanner(),
       ],
     );
   }
@@ -80,7 +85,9 @@ class _SentimentScoreCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final color = Color(int.parse('0xFF${analysis.sentimentColorHex.substring(1)}'));
+    final color = Color(
+      int.parse('0xFF${analysis.sentimentColorHex.substring(1)}'),
+    );
 
     return GlassCard(
       padding: const EdgeInsets.all(24),
@@ -150,49 +157,70 @@ class _SentimentScale extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // Scale bar
-        Container(
-          height: 12,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(6),
-            gradient: const LinearGradient(
-              colors: [
-                Color(0xFFD32F2F), // Red
-                Color(0xFFFF5722), // Deep Orange
-                Color(0xFFFFC107), // Amber
-                Color(0xFF4CAF50), // Green
-                Color(0xFF00C853), // Dark Green
-              ],
-            ),
-          ),
-          child: Stack(
-            children: [
-              // Indicator
-              Positioned(
-                left: MediaQuery.of(context).size.width * 0.85 * (score / 100),
-                top: -4,
-                child: Container(
-                  width: 4,
-                  height: 20,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(2),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.3),
-                        blurRadius: 4,
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final barWidth = constraints.maxWidth;
+            const barH = 12.0;
+            const dotW = 4.0;
+            const dotH = 20.0;
+            final dotLeft = ((score / 100) * barWidth - dotW / 2).clamp(
+              0.0,
+              barWidth - dotW,
+            );
+
+            return SizedBox(
+              height: dotH,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  // Track
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    top: (dotH - barH) / 2,
+                    height: barH,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(6),
+                        gradient: const LinearGradient(
+                          colors: [
+                            Color(0xFFD32F2F),
+                            Color(0xFFFF5722),
+                            Color(0xFFFFC107),
+                            Color(0xFF4CAF50),
+                            Color(0xFF00C853),
+                          ],
+                        ),
                       ),
-                    ],
+                    ),
                   ),
-                ),
+                  // Indicator dot
+                  Positioned(
+                    left: dotLeft,
+                    top: 0,
+                    child: Container(
+                      width: dotW,
+                      height: dotH,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(2),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.3),
+                            blurRadius: 4,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            );
+          },
         ),
 
         const SizedBox(height: 8),
 
-        // Labels
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -200,21 +228,21 @@ class _SentimentScale extends StatelessWidget {
               'Bearish',
               style: TextStyle(
                 fontSize: 11,
-                color: Colors.white.withOpacity(0.6),
+                color: Colors.white.withValues(alpha: 0.6),
               ),
             ),
             Text(
               'Neutral',
               style: TextStyle(
                 fontSize: 11,
-                color: Colors.white.withOpacity(0.6),
+                color: Colors.white.withValues(alpha: 0.6),
               ),
             ),
             Text(
               'Bullish',
               style: TextStyle(
                 fontSize: 11,
-                color: Colors.white.withOpacity(0.6),
+                color: Colors.white.withValues(alpha: 0.6),
               ),
             ),
           ],
@@ -234,7 +262,9 @@ class _RecommendationCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final recColor = Color(int.parse('0xFF${analysis.recommendation.colorHex.substring(1)}'));
+    final recColor = Color(
+      int.parse('0xFF${analysis.recommendation.colorHex.substring(1)}'),
+    );
 
     return GlassCard(
       padding: const EdgeInsets.all(20),
@@ -245,7 +275,10 @@ class _RecommendationCard extends StatelessWidget {
             children: [
               // Recommendation badge
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
                   color: recColor.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(20),
@@ -266,7 +299,10 @@ class _RecommendationCard extends StatelessWidget {
 
               // Timestamp + Cache indicator
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(12),
@@ -307,12 +343,14 @@ class _RecommendationCard extends StatelessWidget {
 
           const SizedBox(height: 16),
 
-          // Summary text
-          Text(
-            analysis.summaryText,
-            style: theme.textTheme.bodyLarge?.copyWith(
-              color: Colors.white.withOpacity(0.9),
-              height: 1.6,
+          // Summary text — AI-generated, visually signed with teal border
+          AiTextBlock(
+            child: Text(
+              analysis.summaryText,
+              style: theme.textTheme.bodyLarge?.copyWith(
+                color: Colors.white.withOpacity(0.9),
+                height: 1.6,
+              ),
             ),
           ),
         ],
@@ -349,7 +387,7 @@ class _PriceTargetCard extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Text(
-                'Price Target (${target.timeframeDays}d)',
+                'Educational Price Simulation (${target.timeframeDays}d)',
                 style: theme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w600,
                 ),
@@ -384,10 +422,7 @@ class _PriceTargetCard extends StatelessWidget {
               ),
 
               const SizedBox(width: 24),
-              Icon(
-                Icons.arrow_forward,
-                color: Colors.white.withOpacity(0.4),
-              ),
+              Icon(Icons.arrow_forward, color: Colors.white.withOpacity(0.4)),
               const SizedBox(width: 24),
 
               // Target price
@@ -429,22 +464,11 @@ class _PriceTargetCard extends StatelessWidget {
           ),
 
           if (target.lowerBound != null && target.upperBound != null) ...[
-            const SizedBox(height: 16),
-            // Range
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _PriceRangeLabel(
-                  label: 'Low',
-                  price: target.lowerBound!,
-                  color: Colors.red,
-                ),
-                _PriceRangeLabel(
-                  label: 'High',
-                  price: target.upperBound!,
-                  color: Colors.green,
-                ),
-              ],
+            const SizedBox(height: 20),
+            _PriceTargetBar(
+              low: target.lowerBound!,
+              target: target.target,
+              high: target.upperBound!,
             ),
           ],
         ],
@@ -453,36 +477,125 @@ class _PriceTargetCard extends StatelessWidget {
   }
 }
 
-class _PriceRangeLabel extends StatelessWidget {
-  final String label;
-  final double price;
-  final Color color;
+/// Visual bar showing low → target → high range for AI price target
+class _PriceTargetBar extends StatelessWidget {
+  final double low;
+  final double target;
+  final double high;
 
-  const _PriceRangeLabel({
-    required this.label,
-    required this.price,
-    required this.color,
+  const _PriceTargetBar({
+    required this.low,
+    required this.target,
+    required this.high,
   });
 
   @override
   Widget build(BuildContext context) {
+    final span = high - low;
+    final targetRatio = span > 0
+        ? ((target - low) / span).clamp(0.0, 1.0)
+        : 0.5;
+
+    String fmt(double v) =>
+        v >= 1000 ? '\$${v.toStringAsFixed(0)}' : '\$${v.toStringAsFixed(2)}';
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          label,
+          'Target Range',
           style: TextStyle(
             fontSize: 11,
-            color: Colors.white.withOpacity(0.6),
+            color: Colors.white.withValues(alpha: 0.5),
+            letterSpacing: 0.5,
           ),
         ),
-        Text(
-          '\$${price.toStringAsFixed(2)}',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: color,
-          ),
+        const SizedBox(height: 6),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final width = constraints.maxWidth;
+            const barH = 6.0;
+            const dotR = 6.0;
+            final dotLeft = (targetRatio * width - dotR).clamp(
+              0.0,
+              width - dotR * 2,
+            );
+
+            return Column(
+              children: [
+                SizedBox(
+                  height: dotR * 2,
+                  child: Stack(
+                    children: [
+                      // Track
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        top: dotR - barH / 2,
+                        height: barH,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(3),
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFFFF4D6A), Color(0xFF00C896)],
+                            ),
+                          ),
+                        ),
+                      ),
+                      // Target dot
+                      Positioned(
+                        left: dotLeft,
+                        child: Container(
+                          width: dotR * 2,
+                          height: dotR * 2,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.4),
+                                blurRadius: 4,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      fmt(low),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.redAccent.withValues(alpha: 0.9),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      '▲ ${fmt(target)}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      fmt(high),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.greenAccent.withValues(alpha: 0.9),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            );
+          },
         ),
       ],
     );
@@ -528,33 +641,35 @@ class _FactorsCard extends StatelessWidget {
 
           const SizedBox(height: 16),
 
-          ...factors.map((factor) => Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      margin: const EdgeInsets.only(top: 6),
-                      width: 6,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: color,
-                        shape: BoxShape.circle,
+          ...factors.map(
+            (factor) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    margin: const EdgeInsets.only(top: 6),
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: color,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      factor,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: Colors.white.withOpacity(0.9),
+                        height: 1.5,
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        factor,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: Colors.white.withOpacity(0.9),
-                          height: 1.5,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              )),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -570,7 +685,9 @@ class _RiskAssessmentCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final riskColor = Color(int.parse('0xFF${analysis.riskLevel.colorHex.substring(1)}'));
+    final riskColor = Color(
+      int.parse('0xFF${analysis.riskLevel.colorHex.substring(1)}'),
+    );
 
     return GlassCard(
       padding: const EdgeInsets.all(20),

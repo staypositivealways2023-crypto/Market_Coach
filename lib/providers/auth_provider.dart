@@ -1,4 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/user_profile.dart';
@@ -18,10 +17,7 @@ final authStateProvider = StreamProvider<User?>((ref) {
 /// Current user provider - derived from authStateProvider
 final currentUserProvider = Provider<User?>((ref) {
   final authState = ref.watch(authStateProvider);
-  return authState.maybeWhen(
-    data: (user) => user,
-    orElse: () => null,
-  );
+  return authState.maybeWhen(data: (user) => user, orElse: () => null);
 });
 
 /// User ID provider - REPLACES all 'guest_user' constants

@@ -1,6 +1,6 @@
 /// All crypto symbols supported by BinanceCandleService
 const _cryptoSymbols = {
-  'BTC', 'ETH', 'SOL', 'BNB', 'ADA', 'XRP', 'XLM',
+  'BTC', 'ETH', 'SOL', 'BNB', 'ADA', 'XRP', 'XLM', 'DOGE',
 };
 
 bool isCryptoSymbol(String symbol) {

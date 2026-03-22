@@ -1,6 +1,7 @@
 /// Analysis Cache Service - Cache AI analysis results to avoid redundant API calls
 ///
 /// Saves analysis to SharedPreferences with 1-hour expiration
+library;
 
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';

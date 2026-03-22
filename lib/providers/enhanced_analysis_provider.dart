@@ -1,11 +1,14 @@
 /// Enhanced Analysis Providers - Riverpod providers for enhanced AI analysis with caching
+library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/enhanced_ai_analysis.dart';
 import '../services/enhanced_analysis_service.dart';
 
 /// Provider for EnhancedAnalysisService
-final enhancedAnalysisServiceProvider = Provider<EnhancedAnalysisService>((ref) {
+final enhancedAnalysisServiceProvider = Provider<EnhancedAnalysisService>((
+  ref,
+) {
   return EnhancedAnalysisService();
 });
 
@@ -19,9 +22,9 @@ final enhancedAnalysisServiceProvider = Provider<EnhancedAnalysisService>((ref) 
 /// ```
 final enhancedAnalysisProvider =
     FutureProvider.family<EnhancedAIAnalysis, String>((ref, symbol) async {
-  final service = ref.watch(enhancedAnalysisServiceProvider);
-  return await service.getAnalysis(symbol, forceRefresh: false);
-});
+      final service = ref.watch(enhancedAnalysisServiceProvider);
+      return await service.getAnalysis(symbol, forceRefresh: false);
+    });
 
 /// Provider for forcing fresh analysis (bypasses cache)
 ///
@@ -32,6 +35,6 @@ final enhancedAnalysisProvider =
 /// ```
 final refreshEnhancedAnalysisProvider =
     FutureProvider.family<EnhancedAIAnalysis, String>((ref, symbol) async {
-  final service = ref.watch(enhancedAnalysisServiceProvider);
-  return await service.getAnalysis(symbol, forceRefresh: true);
-});
+      final service = ref.watch(enhancedAnalysisServiceProvider);
+      return await service.getAnalysis(symbol, forceRefresh: true);
+    });

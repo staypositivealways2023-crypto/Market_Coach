@@ -1,4 +1,5 @@
 /// Enhanced Analysis Service - Caching wrapper around ClaudeAnalysisService
+library;
 
 import 'claude_analysis_service.dart';
 import 'analysis_cache_service.dart';
