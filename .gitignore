@@ -54,6 +54,7 @@ package-lock.json
 # Firebase service account keys & config (sensitive)
 serviceAccountKey.json
 ios/Runner/GoogleService-Info.plist
+android/app/google-services.json
 
 # API keys - never commit
 lib/config/api_config.dart
