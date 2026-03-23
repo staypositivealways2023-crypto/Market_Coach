@@ -53,11 +53,16 @@ package-lock.json
 
 # Firebase service account keys & config (sensitive)
 serviceAccountKey.json
+**/serviceAccountKey.json
 ios/Runner/GoogleService-Info.plist
 android/app/google-services.json
 
 # API keys - never commit
 lib/config/api_config.dart
+
+# Python backend secrets
+python-backend/.env
+python-backend/**/.env
 
 # Markdown docs (keep only CLAUDE.md)
 *.md
