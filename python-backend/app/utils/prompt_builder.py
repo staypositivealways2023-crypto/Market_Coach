@@ -300,19 +300,28 @@ Rules:
 
         # ── FUNDAMENTALS block (stocks only) ─────────────────────────────────
         if fundamentals and not fundamentals.get("is_crypto"):
-            lines.append("\nFUNDAMENTALS:")
-            pe = fundamentals.get("pe_ratio")
-            rev_growth = fundamentals.get("revenue_growth_yoy")
-            de = fundamentals.get("debt_to_equity")
-            eps = fundamentals.get("eps_ttm")
-            if pe:
-                lines.append(f"- P/E: {pe:.1f}")
-            if rev_growth is not None:
-                lines.append(f"- Revenue Growth YoY: {rev_growth * 100:.1f}%")
-            if de is not None:
-                lines.append(f"- Debt/Equity: {de:.2f}")
-            if eps is not None:
-                lines.append(f"- EPS (TTM): ${eps:.2f}")
+            ratios = fundamentals.get("ratios", {})
+            ttm    = fundamentals.get("ttm", {})
+            pe     = ratios.get("pe")
+            gm     = ratios.get("gross_margin")
+            nm     = ratios.get("net_margin")
+            roe    = ratios.get("roe")
+            de     = ratios.get("debt_equity")
+            eps    = ttm.get("eps")
+            if any(v is not None for v in [pe, gm, nm, roe, de, eps]):
+                lines.append("\nFUNDAMENTALS:")
+                if pe and pe > 0:
+                    lines.append(f"- P/E: {pe:.1f}")
+                if gm is not None:
+                    lines.append(f"- Gross Margin: {gm:.1f}%")
+                if nm is not None:
+                    lines.append(f"- Net Margin: {nm:.1f}%")
+                if roe is not None:
+                    lines.append(f"- ROE: {roe:.1f}%")
+                if de is not None:
+                    lines.append(f"- Debt/Equity: {de:.2f}")
+                if eps is not None:
+                    lines.append(f"- EPS (TTM): ${eps:.2f}")
 
         # ── PREDICTION MODEL OUTPUT block (§6.2) ────────────────────────────
         if prediction:

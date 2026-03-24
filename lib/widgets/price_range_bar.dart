@@ -6,8 +6,9 @@ import '../models/market_detail.dart';
 /// Shows day range and 52-week range bars with current price indicator dot.
 class PriceRangeBars extends StatelessWidget {
   final MarketRange range;
+  final bool isCrypto;
 
-  const PriceRangeBars({super.key, required this.range});
+  const PriceRangeBars({super.key, required this.range, this.isCrypto = false});
 
   @override
   Widget build(BuildContext context) {
@@ -18,7 +19,7 @@ class PriceRangeBars extends StatelessWidget {
       children: [
         if (range.dayHigh != null && range.dayLow != null && range.currentPrice != null)
           _RangeRow(
-            label: "Day Range",
+            label: isCrypto ? "24h Range" : "Day Range",
             low: range.dayLow!,
             high: range.dayHigh!,
             current: range.currentPrice!,

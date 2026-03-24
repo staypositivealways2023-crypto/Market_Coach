@@ -957,7 +957,7 @@ class _StockDetailScreenEnhancedState extends ConsumerState<StockDetailScreenEnh
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                child: PriceRangeBars(range: _marketRange!),
+                child: PriceRangeBars(range: _marketRange!, isCrypto: widget.stock.isCrypto),
               ),
             ),
 

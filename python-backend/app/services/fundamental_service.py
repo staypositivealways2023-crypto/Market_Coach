@@ -296,11 +296,22 @@ class FundamentalService:
 
     async def _crypto_fundamentals(self, symbol: str) -> dict:
         quote = await self._massive.get_quote(symbol)
+        market_cap = getattr(quote, "market_cap", None) if quote else None
+        # yfinance fallback for market cap (e.g. BTC-USD)
+        if market_cap is None:
+            yf_sym = symbol if "-" in symbol else f"{symbol}-USD"
+            try:
+                info = await asyncio.get_event_loop().run_in_executor(
+                    None, lambda: yf.Ticker(yf_sym).info
+                )
+                market_cap = info.get("marketCap")
+            except Exception:
+                pass
         return {
             "symbol": symbol,
             "is_crypto": True,
             "current_price": quote.price if quote else 0.0,
-            "market_cap": None,
+            "market_cap": market_cap,
             "ratios": {}, "ttm": {}, "latest_quarter": {},
             "quarterly_eps": [],
             "fetched_at": datetime.utcnow().isoformat(),

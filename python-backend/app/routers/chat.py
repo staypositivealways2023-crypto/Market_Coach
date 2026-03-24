@@ -49,17 +49,19 @@ async def chat(request: ChatRequest):
 
     async def stream_response():
         try:
-            client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-            with client.messages.stream(
+            client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+            logger.info(f"[chat] streaming to Claude, {len(messages)} messages, model={CHAT_MODEL}")
+            async with client.messages.stream(
                 model=CHAT_MODEL,
                 max_tokens=CHAT_MAX_TOKENS,
                 system=system_prompt,
                 messages=messages,
             ) as stream:
-                for text in stream.text_stream:
+                async for text in stream.text_stream:
                     chunk = json.dumps({"text": text})
                     yield f"data: {chunk}\n\n"
             yield "data: [DONE]\n\n"
+            logger.info("[chat] stream complete")
         except anthropic.RateLimitError:
             logger.warning("Claude rate limit hit on /api/chat")
             yield 'data: {"error": "rate_limit"}\n\n'
