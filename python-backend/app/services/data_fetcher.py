@@ -214,26 +214,52 @@ class MarketDataFetcher:
             try:
                 yf_symbol = _to_yfinance_symbol(symbol)
                 ticker = yf.Ticker(yf_symbol)
-                info = ticker.info
-                if not info:
-                    return None
-                price = info.get('regularMarketPrice') or info.get('currentPrice') or 0
+                info = ticker.info or {}
+
+                # Price: info keys differ between stocks and crypto
+                price = (
+                    info.get('regularMarketPrice')
+                    or info.get('currentPrice')
+                    or info.get('ask')         # crypto sometimes uses ask
+                )
+                # fast_info.last_price is reliable for both stocks and crypto
+                if not price:
+                    try:
+                        price = ticker.fast_info.last_price
+                    except Exception:
+                        pass
                 if not price:
                     return None
-                previous_close = info.get('previousClose') or info.get('regularMarketPreviousClose') or 0
-                change = price - previous_close
-                change_percent = (change / previous_close * 100) if previous_close else 0
+
+                previous_close = (
+                    info.get('previousClose')
+                    or info.get('regularMarketPreviousClose')
+                    or 0
+                )
+                change = float(price) - float(previous_close)
+                change_percent = (change / float(previous_close) * 100) if previous_close else 0
+
+                # High/Low: stocks use dayHigh/dayLow; crypto uses regularMarketDayHigh/Low
+                high = (
+                    info.get('dayHigh')
+                    or info.get('regularMarketDayHigh')
+                )
+                low = (
+                    info.get('dayLow')
+                    or info.get('regularMarketDayLow')
+                )
+
                 return Quote(
                     symbol=symbol,
                     price=float(price),
                     change=float(change),
                     change_percent=float(change_percent),
-                    volume=info.get('volume'),
+                    volume=info.get('volume') or info.get('regularMarketVolume'),
                     market_cap=info.get('marketCap'),
                     pe_ratio=info.get('trailingPE'),
-                    high=info.get('dayHigh'),
-                    low=info.get('dayLow'),
-                    open=info.get('regularMarketOpen'),
+                    high=float(high) if high else None,
+                    low=float(low) if low else None,
+                    open=info.get('regularMarketOpen') or info.get('open'),
                     previous_close=float(previous_close),
                     timestamp=datetime.utcnow()
                 )
