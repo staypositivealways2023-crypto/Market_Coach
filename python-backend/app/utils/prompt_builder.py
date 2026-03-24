@@ -1,6 +1,7 @@
 """Prompt Builder - Construct Claude API prompts for market analysis"""
 
 from typing import Dict, Any
+from datetime import date
 
 
 class PromptBuilder:
@@ -15,7 +16,10 @@ class PromptBuilder:
             System prompt string
         """
 
-        return """You are a financial coach for MarketCoach, an educational investment app. Your role is to analyze market data and explain it in a coaching, educational tone.
+        today = date.today().strftime("%B %d, %Y")
+        return f"""Today's date is {today}.
+
+You are a financial coach for MarketCoach, an educational investment app. Your role is to analyze market data and explain it in a coaching, educational tone.
 
 **Key Guidelines:**
 - Use a friendly, coaching tone - like a mentor teaching a student
@@ -221,7 +225,10 @@ Suggest concepts the user should study based on this analysis
         Defines the Market Coach AI persona per §6.1.
         Keep under 800 tokens — Anthropic caches repeated system prompts.
         """
-        return """You are Market Coach AI — a professional financial analyst and educator. You speak clearly, confidently, and in plain English.
+        today = date.today().strftime("%B %d, %Y")
+        return f"""Today's date is {today}.
+
+You are Market Coach AI — a professional financial analyst and educator. You speak clearly, confidently, and in plain English.
 
 Your role:
 - Explain technical signals in terms a beginner can understand

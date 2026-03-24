@@ -62,7 +62,16 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen>
     if (holdings.isEmpty) return;
     setState(() => _analysisLoading = true);
     final result = await _backend.analysePortfolio(holdings);
-    if (mounted) setState(() { _portfolioAnalysis = result; _analysisLoading = false; });
+    if (!mounted) return;
+    if (result == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Analysis unavailable — check your connection and try again.'),
+          duration: Duration(seconds: 4),
+        ),
+      );
+    }
+    setState(() { _portfolioAnalysis = result; _analysisLoading = false; });
   }
 
   List<HoldingWithValue> _enrich(List<Holding> holdings) {

@@ -110,6 +110,7 @@ async def get_price_range(symbol: str):
         "open":          quote.open  if quote else None,
         "previous_close":quote.previous_close if quote else None,
         "volume":        quote.volume if quote else None,
+        "market_cap":    quote.market_cap if quote else None,
         "year_high":     year_high,
         "year_low":      year_low,
     }

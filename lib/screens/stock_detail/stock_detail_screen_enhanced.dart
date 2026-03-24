@@ -970,6 +970,16 @@ class _StockDetailScreenEnhancedState extends ConsumerState<StockDetailScreenEnh
               ),
             ),
 
+          // Crypto market stats (mkt cap + 24h vol)
+          if (widget.stock.isCrypto && _marketRange != null &&
+              (_marketRange!.marketCap != null || _marketRange!.volume != null))
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+                child: _CryptoQuickStats(range: _marketRange!),
+              ),
+            ),
+
           // Signal Engine badge
           SliverToBoxAdapter(
             child: Padding(
@@ -3206,6 +3216,78 @@ class _FundItem {
   final String label;
   final String value;
   const _FundItem(this.label, this.value);
+}
+
+/// Minimal stats row shown for crypto assets (market cap + 24h volume).
+class _CryptoQuickStats extends StatelessWidget {
+  final MarketRange range;
+  const _CryptoQuickStats({required this.range});
+
+  String _fmtLarge(double v) {
+    if (v >= 1e12) return '\$${(v / 1e12).toStringAsFixed(2)}T';
+    if (v >= 1e9)  return '\$${(v / 1e9).toStringAsFixed(2)}B';
+    if (v >= 1e6)  return '\$${(v / 1e6).toStringAsFixed(2)}M';
+    return '\$${v.toStringAsFixed(0)}';
+  }
+
+  String _fmtVol(int v) {
+    if (v >= 1000000000) return '${(v / 1e9).toStringAsFixed(2)}B';
+    if (v >= 1000000)    return '${(v / 1e6).toStringAsFixed(2)}M';
+    if (v >= 1000)       return '${(v / 1e3).toStringAsFixed(1)}K';
+    return v.toString();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final items = <_FundItem>[];
+    if (range.marketCap != null) items.add(_FundItem('Mkt Cap', _fmtLarge(range.marketCap!)));
+    if (range.volume != null)    items.add(_FundItem('24h Vol', _fmtVol(range.volume!)));
+
+    if (items.isEmpty) return const SizedBox.shrink();
+
+    final cellWidth = (MediaQuery.of(context).size.width - 68) / 4;
+
+    return GlassCard(
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Market Stats',
+            style: TextStyle(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 0,
+            runSpacing: 0,
+            children: items.map((item) => SizedBox(
+              width: cellWidth,
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.value,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      item.label,
+                      style: const TextStyle(color: Colors.white38, fontSize: 10),
+                    ),
+                  ],
+                ),
+              ),
+            )).toList(),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _FundExplain {

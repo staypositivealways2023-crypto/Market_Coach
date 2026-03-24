@@ -8,6 +8,7 @@ import logging
 
 from app.routers import internal, market, indicators, analysis, macro, news, earnings, fundamentals, portfolio
 from app.routers import analyse as analyse_router
+from app.routers import chat as chat_router
 from app.config import settings
 from app.utils.logger import setup_logger
 
@@ -56,6 +57,7 @@ app.include_router(earnings.router, prefix="/api/earnings", tags=["Earnings"])
 app.include_router(fundamentals.router, prefix="/api/fundamentals", tags=["Fundamentals"])
 app.include_router(analyse_router.router, prefix="/api", tags=["Signal Engine"])
 app.include_router(portfolio.router, prefix="/api/portfolio", tags=["Portfolio"])
+app.include_router(chat_router.router, prefix="/api", tags=["Chat"])
 
 
 @app.get("/")

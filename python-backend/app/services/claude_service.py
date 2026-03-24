@@ -19,9 +19,9 @@ class ClaudeService:
         else:
             self.client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
 
-        # Model selection - Haiku for speed and cost-effectiveness
-        self.model = "claude-3-5-haiku-20241022"
-        self.max_tokens = 2048
+        # Model selection - Haiku 4.5 for speed and cost-effectiveness (Oct 2025 cutoff)
+        self.model = "claude-haiku-4-5-20251001"
+        self.max_tokens = 4096
 
     async def generate_analysis(
         self,

@@ -109,8 +109,13 @@ class FundamentalService:
         cur_liab    = _val(bs, "current_liabilities")
         liabilities = _val(bs, "liabilities")
 
-        # Try to get market cap from ticker details
+        # Market cap: Massive financials don't include it, fetch from yfinance
         mkt_cap = None
+        try:
+            ticker_info = yf.Ticker(symbol).info
+            mkt_cap = ticker_info.get("marketCap")
+        except Exception:
+            pass
 
         # P/E only meaningful when EPS is positive
         pe  = _safe_div(current_price, ttm_eps) if ttm_eps and ttm_eps > 0 else None

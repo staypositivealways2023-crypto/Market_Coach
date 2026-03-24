@@ -10,6 +10,7 @@ class MarketRange {
   final double? open;
   final double? previousClose;
   final int? volume;
+  final double? marketCap;
   final double? yearHigh;
   final double? yearLow;
 
@@ -21,6 +22,7 @@ class MarketRange {
     this.open,
     this.previousClose,
     this.volume,
+    this.marketCap,
     this.yearHigh,
     this.yearLow,
   });
@@ -34,6 +36,7 @@ class MarketRange {
       open:          (json['open'] as num?)?.toDouble(),
       previousClose: (json['previous_close'] as num?)?.toDouble(),
       volume:        (json['volume'] as num?)?.toInt(),
+      marketCap:     (json['market_cap'] as num?)?.toDouble(),
       yearHigh:      (json['year_high'] as num?)?.toDouble(),
       yearLow:       (json['year_low'] as num?)?.toDouble(),
     );
