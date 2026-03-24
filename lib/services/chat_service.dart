@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
@@ -65,8 +66,10 @@ class ChatService {
           }
         }
       }
+    } on SocketException {
+      // Socket closed after [DONE] — normal SSE teardown, not an error
     } catch (e) {
-      yield 'Connection error: $e';
+      yield 'Connection error — please try again.';
     } finally {
       client.close();
     }
