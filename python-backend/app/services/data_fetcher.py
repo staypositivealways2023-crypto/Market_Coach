@@ -239,7 +239,7 @@ class MarketDataFetcher:
                 change = float(price) - float(previous_close)
                 change_percent = (change / float(previous_close) * 100) if previous_close else 0
 
-                # High/Low: stocks use dayHigh/dayLow; crypto uses regularMarketDayHigh/Low
+                # High/Low: try info dict first; fall back to fast_info (reliable for crypto)
                 high = (
                     info.get('dayHigh')
                     or info.get('regularMarketDayHigh')
@@ -248,6 +248,13 @@ class MarketDataFetcher:
                     info.get('dayLow')
                     or info.get('regularMarketDayLow')
                 )
+                if not high or not low:
+                    try:
+                        fi = ticker.fast_info
+                        high = high or fi.day_high
+                        low = low or fi.day_low
+                    except Exception:
+                        pass
 
                 return Quote(
                     symbol=symbol,

@@ -56,13 +56,15 @@ class MassiveService:
         day = ticker.get("day", {})
         prev = ticker.get("prevDay", {})
         price = day.get("c") or ticker.get("lastTrade", {}).get("p")
+        if not price:
+            return None
         prev_close = prev.get("c", 0)
         change = (price - prev_close) if price and prev_close else 0
         change_pct = ticker.get("todaysChangePerc", (change / prev_close * 100) if prev_close else 0)
 
         return Quote(
             symbol=symbol,
-            price=float(price or 0),
+            price=float(price),
             change=float(change),
             change_percent=float(change_pct),
             volume=int(day.get("v", 0)),
@@ -74,8 +76,11 @@ class MassiveService:
         )
 
     async def _crypto_quote(self, symbol: str) -> Optional[Quote]:
-        # Convert BTC-USD → X:BTCUSD format
-        pair = symbol.replace("-", "").replace("/", "")
+        # Convert BTC → X:BTCUSD, BTC-USD → X:BTCUSD
+        if "-" in symbol or "/" in symbol:
+            pair = symbol.replace("-", "").replace("/", "")
+        else:
+            pair = symbol + "USD"
         url = (
             f"{BASE_URL}/v2/snapshot/locale/global/markets/crypto/tickers/X:{pair}"
             f"?apiKey={self.api_key}"
@@ -94,13 +99,15 @@ class MassiveService:
         day = ticker.get("day", {})
         prev = ticker.get("prevDay", {})
         price = day.get("c")
+        if not price:
+            return None
         prev_close = prev.get("c", 0)
         change = (price - prev_close) if price and prev_close else 0
         change_pct = ticker.get("todaysChangePerc", (change / prev_close * 100) if prev_close else 0)
 
         return Quote(
             symbol=symbol,
-            price=float(price or 0),
+            price=float(price),
             change=float(change),
             change_percent=float(change_pct),
             volume=int(day.get("v", 0)),
@@ -124,7 +131,10 @@ class MassiveService:
             from_date, to_date = _date_range(timespan, limit)
 
             if _is_crypto(symbol):
-                pair = symbol.replace("-", "").replace("/", "")
+                if "-" in symbol or "/" in symbol:
+                    pair = symbol.replace("-", "").replace("/", "")
+                else:
+                    pair = symbol + "USD"
                 ticker_path = f"X:{pair}"
             else:
                 ticker_path = symbol
@@ -199,8 +209,14 @@ class MassiveService:
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
+_CRYPTO_SYMBOLS = {
+    "BTC", "ETH", "BNB", "SOL", "ADA", "XRP", "DOGE",
+    "DOT", "AVAX", "MATIC", "LINK", "UNI", "LTC", "BCH", "XLM",
+}
+
+
 def _is_crypto(symbol: str) -> bool:
-    return "-" in symbol or "/" in symbol or symbol.upper() in {"BTC", "ETH", "BNB", "XRP", "SOL"}
+    return "-" in symbol or "/" in symbol or symbol.upper() in _CRYPTO_SYMBOLS
 
 
 def _parse_interval(interval: str):
