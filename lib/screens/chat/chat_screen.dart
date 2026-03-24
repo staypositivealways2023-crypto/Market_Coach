@@ -7,7 +7,9 @@ import 'package:intl/intl.dart';
 
 import '../../models/chat_message.dart';
 import '../../models/chat_session.dart';
+import '../../models/subscription.dart';
 import '../../providers/chat_provider.dart';
+import '../../providers/subscription_provider.dart';
 import '../../widgets/disclaimer_banner.dart';
 import '../../widgets/paywall_bottom_sheet.dart';
 
@@ -79,6 +81,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     final chatState = ref.watch(chatProvider);
     final messages = chatState.messages;
     final isStreaming = chatState.isStreaming;
+    final sub = ref.watch(subscriptionProvider).valueOrNull;
 
     ref.listen<ChatState>(chatProvider, (prev, next) {
       _scrollToBottom();
@@ -126,6 +129,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                   padding: EdgeInsets.fromLTRB(16, 0, 16, 0),
                   child: DisclaimerBanner(),
                 ),
+                if (sub != null && !sub.isPro)
+                  _MessageLimitBanner(sub: sub),
                 _buildInputBar(isStreaming),
               ],
             ),
@@ -390,6 +395,79 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ─── Message Limit Banner ─────────────────────────────────────────────────────
+
+class _MessageLimitBanner extends StatelessWidget {
+  final Subscription sub;
+  const _MessageLimitBanner({required this.sub});
+
+  static const _teal = Color(0xFF12A28C);
+
+  @override
+  Widget build(BuildContext context) {
+    final used = sub.aiMessagesToday;
+    final limit = Subscription.freeDailyLimit;
+    final remaining = (limit - used).clamp(0, limit);
+    final isAtLimit = sub.isAtLimit;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: isAtLimit
+            ? Colors.redAccent.withValues(alpha: 0.12)
+            : _teal.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isAtLimit
+              ? Colors.redAccent.withValues(alpha: 0.3)
+              : _teal.withValues(alpha: 0.2),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            isAtLimit ? Icons.lock_outline : Icons.chat_bubble_outline,
+            size: 14,
+            color: isAtLimit ? Colors.redAccent : _teal,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              isAtLimit
+                  ? 'Daily limit reached — upgrade to Pro for unlimited messages'
+                  : '$remaining of $limit free messages remaining today',
+              style: TextStyle(
+                fontSize: 11.5,
+                color: isAtLimit
+                    ? Colors.redAccent.withValues(alpha: 0.9)
+                    : Colors.white.withValues(alpha: 0.65),
+              ),
+            ),
+          ),
+          if (isAtLimit)
+            GestureDetector(
+              onTap: () => showModalBottomSheet(
+                context: context,
+                isScrollControlled: true,
+                backgroundColor: Colors.transparent,
+                builder: (_) => const PaywallBottomSheet(),
+              ),
+              child: const Text(
+                'Upgrade',
+                style: TextStyle(
+                  fontSize: 11.5,
+                  color: _teal,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

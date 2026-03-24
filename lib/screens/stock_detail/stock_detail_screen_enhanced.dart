@@ -2471,6 +2471,7 @@ class _SignalBadge extends StatelessWidget {
     switch (label) {
       case 'STRONG_BUY': return (Colors.white, const Color(0xFF0D7A3E));
       case 'BUY':        return (const Color(0xFF12A28C), const Color(0xFF12A28C).withValues(alpha: 0.18));
+      case 'NEUTRAL':    return (const Color(0xFFF5A623), const Color(0xFFF5A623).withValues(alpha: 0.15));
       case 'STRONG_SELL': return (Colors.white, const Color(0xFF8B1A1A));
       case 'SELL':       return (Colors.redAccent, Colors.redAccent.withValues(alpha: 0.18));
       default:           return (Colors.white60, Colors.white12);

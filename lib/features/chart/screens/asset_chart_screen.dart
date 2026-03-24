@@ -1752,6 +1752,7 @@ class _SignalBadge extends StatelessWidget {
       return (Colors.red, const Color(0x20F44336));
     }
     if (lower.contains('sell')) return (Colors.redAccent, const Color(0x20EF5350));
+    if (lower.contains('neutral')) return (const Color(0xFFF5A623), const Color(0x26F5A623));
     return (Colors.white70, Colors.white10);
   }
 }

@@ -100,11 +100,20 @@ async def get_price_range(symbol: str):
     year_high = max((c.high for c in candles), default=None) if candles else None
     year_low  = min((c.low  for c in candles), default=None) if candles else None
 
+    # day high/low: prefer quote fields; fall back to most recent candle
+    # (yfinance crypto quotes sometimes omit dayHigh/dayLow)
+    day_high = quote.high if quote else None
+    day_low  = quote.low  if quote else None
+    if (day_high is None or day_low is None) and candles:
+        last = candles[-1]
+        day_high = day_high or last.high
+        day_low  = day_low  or last.low
+
     result = {
         "symbol": sym,
         "current_price": quote.price if quote else None,
-        "day_high":      quote.high  if quote else None,
-        "day_low":       quote.low   if quote else None,
+        "day_high":      day_high,
+        "day_low":       day_low,
         "open":          quote.open  if quote else None,
         "previous_close":quote.previous_close if quote else None,
         "volume":        quote.volume if quote else None,

@@ -27,10 +27,11 @@ class SubscriptionService {
       final count = lastDate == today
           ? ((data['ai_messages_today'] as int?) ?? 0) + 1
           : 1;
-      txn.update(ref, {
+      // set+merge so it works for anonymous users whose doc may not exist yet
+      txn.set(ref, {
         'ai_messages_today': count,
         'ai_messages_date': today,
-      });
+      }, SetOptions(merge: true));
     });
   }
 
