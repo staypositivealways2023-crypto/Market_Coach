@@ -30,17 +30,15 @@ async def get_quote(symbol: str):
 
 @router.get("/quotes", response_model=List[Quote])
 async def get_quotes(symbols: str = Query(..., description="Comma-separated symbols")):
-    """Get quotes for multiple symbols"""
+    """Get quotes for multiple symbols — fetched in parallel to avoid timeout"""
 
     symbol_list = [s.strip().upper() for s in symbols.split(',')]
 
-    quotes = []
-    for symbol in symbol_list:
-        quote = await data_fetcher.get_quote(symbol)
-        if quote:
-            quotes.append(quote)
-
-    return quotes
+    results = await asyncio.gather(
+        *[data_fetcher.get_quote(sym) for sym in symbol_list],
+        return_exceptions=False,
+    )
+    return [q for q in results if q is not None]
 
 
 @router.get("/candles/{symbol}", response_model=List[Candle])

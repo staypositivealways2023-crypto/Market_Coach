@@ -65,8 +65,12 @@ async def analyse_symbol(
     # ── Cache check ──────────────────────────────────────────────────────────
     cached = cache_manager.get(cache_key)
     if cached:
-        cached["is_cached"] = True
-        return AnalyseResponse(**cached)
+        try:
+            cached["is_cached"] = True
+            return AnalyseResponse(**cached)
+        except Exception as e:
+            logger.warning(f"[analyse] Cache deserialisation failed for {symbol}, recomputing: {e}")
+            cache_manager.delete(cache_key)
 
     logger.info(f"[analyse] {symbol} interval={interval} level={user_level}")
 
@@ -165,21 +169,25 @@ async def analyse_symbol(
         logger.error(f"[analyse] Claude synthesis failed for {symbol}: {e}")
 
     # ── Build response + cache ────────────────────────────────────────────────
-    response = AnalyseResponse(
-        symbol=symbol,
-        interval=interval,
-        signals=signals,
-        prediction=prediction,
-        correlation=correlation,
-        patterns=patterns,
-        analysis=analysis_text,
-        timestamp=datetime.now(timezone.utc).isoformat(),
-        is_cached=False,
-        tokens_used=tokens_used,
-    )
-
-    cache_manager.set(cache_key, response.dict(), ttl=_CACHE_TTL)
-    return response
+    try:
+        response = AnalyseResponse(
+            symbol=symbol,
+            interval=interval,
+            signals=signals,
+            prediction=prediction,
+            correlation=correlation,
+            patterns=patterns,
+            analysis=analysis_text,
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            is_cached=False,
+            tokens_used=tokens_used,
+        )
+        cache_manager.set(cache_key, response.model_dump(mode="json"), ttl=_CACHE_TTL)
+        return response
+    except Exception as e:
+        logger.error(f"[analyse] Failed to build AnalyseResponse for {symbol}: {e}", exc_info=True)
+        from fastapi import HTTPException as _HTTPException
+        raise _HTTPException(status_code=500, detail=f"Signal engine response build failed: {e}")
 
 
 def _build_fallback_analysis(symbol: str, signals) -> str:
