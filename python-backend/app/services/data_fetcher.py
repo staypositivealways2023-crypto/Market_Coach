@@ -45,25 +45,41 @@ class MarketDataFetcher:
         if self.massive.is_configured:
             quote = await self.massive.get_quote(symbol)
             if quote:
-                logger.info(f"Fetched quote for {symbol} from Massive")
+                logger.info(
+                    f"[quote] {symbol} provider=Massive "
+                    f"price={quote.price} high={quote.high} low={quote.low}"
+                )
+            else:
+                logger.warning(f"[quote] {symbol} Massive returned nothing (is_crypto={is_crypto})")
 
         # 2. Fallback: Finnhub (stocks only — doesn't support crypto well)
         if not quote and not is_crypto and self.finnhub_key and self.fh_limiter.can_proceed():
             quote = await self._fetch_finnhub_quote(symbol)
             if quote:
-                logger.info(f"Fetched quote for {symbol} from Finnhub")
+                logger.info(
+                    f"[quote] {symbol} provider=Finnhub "
+                    f"price={quote.price} high={quote.high} low={quote.low}"
+                )
 
         # 3. Fallback: Alpha Vantage (stocks only)
         if not quote and not is_crypto and self.alpha_vantage_key and self.av_limiter.can_proceed():
             quote = await self._fetch_alpha_vantage_quote(symbol)
             if quote:
-                logger.info(f"Fetched quote for {symbol} from Alpha Vantage")
+                logger.info(
+                    f"[quote] {symbol} provider=AlphaVantage "
+                    f"price={quote.price} high={quote.high} low={quote.low}"
+                )
 
         # 4. Last resort: yfinance (maps crypto to Yahoo format, e.g. BTC → BTC-USD)
         if not quote:
             quote = await self._fetch_yfinance_quote(symbol)
             if quote:
-                logger.info(f"Fetched quote for {symbol} from yfinance")
+                logger.info(
+                    f"[quote] {symbol} provider=yfinance "
+                    f"price={quote.price} high={quote.high} low={quote.low}"
+                )
+            else:
+                logger.error(f"[quote] {symbol} ALL providers failed — returning None")
 
         if quote:
             cache_manager.set(cache_key, quote.model_dump(), ttl=settings.QUOTE_CACHE_TTL)

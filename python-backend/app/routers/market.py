@@ -33,12 +33,25 @@ async def get_quotes(symbols: str = Query(..., description="Comma-separated symb
     """Get quotes for multiple symbols — fetched in parallel to avoid timeout"""
 
     symbol_list = [s.strip().upper() for s in symbols.split(',')]
+    logger.info(f"[quotes] batch request: {symbol_list}")
 
     results = await asyncio.gather(
         *[data_fetcher.get_quote(sym) for sym in symbol_list],
-        return_exceptions=False,
+        return_exceptions=True,
     )
-    return [q for q in results if q is not None]
+    quotes = []
+    for sym, r in zip(symbol_list, results):
+        if isinstance(r, Exception):
+            logger.error(f"[quotes] {sym} failed: {r}")
+        elif r is None:
+            logger.warning(f"[quotes] {sym} → no quote returned (all providers failed)")
+        else:
+            logger.info(
+                f"[quotes] {sym} → price={r.price} high={r.high} low={r.low} "
+                f"open={r.open} prev_close={r.previous_close}"
+            )
+            quotes.append(r)
+    return quotes
 
 
 @router.get("/candles/{symbol}", response_model=List[Candle])
@@ -108,6 +121,17 @@ async def get_price_range(symbol: str):
         last = candles[-1]
         day_high = day_high or last.high
         day_low  = day_low  or last.low
+
+    logger.info(
+        f"[range] {sym} → price={quote.price if quote else None} "
+        f"day_high={day_high} day_low={day_low} "
+        f"year_high={year_high} year_low={year_low} "
+        f"candles={len(candles)} quote={'ok' if quote else 'MISSING'}"
+    )
+    if not quote:
+        logger.warning(f"[range] {sym} → quote missing — all providers failed for this symbol")
+    if day_high is None or day_low is None:
+        logger.warning(f"[range] {sym} → day range missing (day_high={day_high} day_low={day_low})")
 
     result = {
         "symbol": sym,

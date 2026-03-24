@@ -244,12 +244,14 @@ class FundamentalService:
         om  = _to_pct(info.get("operatingMargins"))
         roe = _to_pct(info.get("returnOnEquity"))
 
-        # P/E: prefer trailingPE; if zero/missing compute from price ÷ EPS
+        # P/E: prefer trailingPE; if zero/missing compute from price ÷ EPS; null if unavailable
         pe = info.get("trailingPE")
         if not pe or pe <= 0:
             trailing_eps = info.get("trailingEps")
             if trailing_eps and trailing_eps > 0 and current_price > 0:
                 pe = current_price / trailing_eps
+            else:
+                pe = None  # never store 0 — null means unavailable
 
         # P/S from market cap / revenue
         ps  = _safe_div(mkt_cap, ttm_rev) if mkt_cap and ttm_rev else info.get("priceToSalesTrailing12Months")
@@ -360,10 +362,17 @@ def _pct(num, denom) -> Optional[float]:
 
 
 def _to_pct(v) -> Optional[float]:
-    """Convert yfinance decimal ratio (e.g. 0.42) to percentage (42.0)."""
+    """Convert yfinance decimal ratio (e.g. 0.42) to percentage (42.0).
+    Guards against yfinance version drift where the value is already a percentage
+    (e.g. returnOnEquity = 133.55 instead of 1.3355 on newer yfinance builds).
+    If abs(v) > 5 we assume the provider already sent a percentage and skip multiplication.
+    """
     if v is None:
         return None
-    return round(float(v) * 100, 2)
+    fv = float(v)
+    if abs(fv) > 5:          # already in percentage form — do not multiply again
+        return round(fv, 2)
+    return round(fv * 100, 2)
 
 
 def _r(v) -> Optional[float]:

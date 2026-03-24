@@ -69,11 +69,11 @@ class FundamentalsCard extends StatelessWidget {
   List<_Metric> _buildMetrics() {
     final list = <_Metric>[];
 
-    if (data.pe != null) {
+    if (data.pe != null && data.pe! > 0) {
       list.add(_Metric('P/E Ratio', '${data.pe!.toStringAsFixed(1)}x',
           _peColor(data.pe!)));
     }
-    if (data.ps != null) {
+    if (data.ps != null && data.ps! > 0) {
       list.add(_Metric('P/S Ratio', '${data.ps!.toStringAsFixed(1)}x', null));
     }
     if (data.grossMargin != null) {

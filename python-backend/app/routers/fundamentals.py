@@ -30,6 +30,19 @@ async def get_fundamentals(symbol: str):
     if not data:
         raise HTTPException(status_code=404, detail=f"No fundamental data for {symbol}")
 
-    # Cache 6hrs — fundamentals are quarterly, no need to refresh often
-    cache_manager.set(cache_key, data, ttl=3600 * 6)
+    # Sanity-check before caching: reject corrupted payloads (double-multiplied ratios etc.)
+    ratios = data.get("ratios", {})
+    roe = ratios.get("roe")
+    pe  = ratios.get("pe")
+    if roe is not None and abs(roe) > 500:
+        logger.warning(f"[fundamentals] Suspicious ROE={roe} for {sym} — discarding and NOT caching")
+        # Fix in-place so we still return *something* useful
+        data["ratios"]["roe"] = None
+    if pe is not None and pe == 0.0:
+        data["ratios"]["pe"] = None
+
+    # Only cache if data looks sane
+    if roe is None or abs(roe) <= 500:
+        cache_manager.set(cache_key, data, ttl=3600 * 6)
+
     return data
