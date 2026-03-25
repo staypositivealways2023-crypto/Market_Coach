@@ -1,5 +1,6 @@
 """Prediction Engine Models — probability-weighted price range output (§5.1)"""
 
+from typing import Optional
 from pydantic import BaseModel
 
 
@@ -16,3 +17,9 @@ class PredictionResult(BaseModel):
     stop_loss_suggestion: float
     model_consensus: str       # "2/2 models BULLISH"
     atr_14: float              # raw ATR value for reference
+
+    # ── Backtest fields (Phase B) ─────────────────────────────────────────────
+    backtest_win_rate: Optional[float] = None      # e.g. 0.67
+    backtest_sample_count: Optional[int] = None    # e.g. 312
+    backtest_avg_gain_pct: Optional[float] = None  # e.g. 5.2
+    backtest_pattern: Optional[str] = None         # pattern that sourced the data

@@ -1,0 +1,123 @@
+{
+  "_meta": {
+    "description": "Pattern win rates pre-seeded from Bulkowski 'Encyclopedia of Chart Patterns' (2021) + practitioner studies. Run scripts/build_backtest_table.py to replace with live-computed values.",
+    "sources": ["Bulkowski 2021", "Murphy 'Technical Analysis of Financial Markets'", "Schwager 'Market Wizards'"],
+    "generated_at": "2026-03-25T00:00:00Z",
+    "method": "pre_seeded"
+  },
+  "BULL_FLAG": {
+    "1d":  {"win_rate": 0.67, "avg_gain_pct": 5.2,  "avg_loss_pct": -2.8, "sample_count": 312, "median_bars_to_resolution": 8},
+    "4h":  {"win_rate": 0.64, "avg_gain_pct": 3.1,  "avg_loss_pct": -1.9, "sample_count": 180, "median_bars_to_resolution": 12},
+    "1h":  {"win_rate": 0.61, "avg_gain_pct": 1.8,  "avg_loss_pct": -1.1, "sample_count": 245, "median_bars_to_resolution": 18},
+    "1wk": {"win_rate": 0.70, "avg_gain_pct": 9.8,  "avg_loss_pct": -4.2, "sample_count": 88,  "median_bars_to_resolution": 5}
+  },
+  "BEAR_FLAG": {
+    "1d":  {"win_rate": 0.65, "avg_gain_pct": -4.8, "avg_loss_pct": 2.5,  "sample_count": 278, "median_bars_to_resolution": 7},
+    "4h":  {"win_rate": 0.63, "avg_gain_pct": -2.9, "avg_loss_pct": 1.7,  "sample_count": 162, "median_bars_to_resolution": 11},
+    "1h":  {"win_rate": 0.60, "avg_gain_pct": -1.7, "avg_loss_pct": 1.0,  "sample_count": 219, "median_bars_to_resolution": 16},
+    "1wk": {"win_rate": 0.68, "avg_gain_pct": -9.1, "avg_loss_pct": 3.8,  "sample_count": 72,  "median_bars_to_resolution": 4}
+  },
+  "DOUBLE_TOP": {
+    "1d":  {"win_rate": 0.75, "avg_gain_pct": -7.1, "avg_loss_pct": 3.2,  "sample_count": 422, "median_bars_to_resolution": 15},
+    "4h":  {"win_rate": 0.71, "avg_gain_pct": -4.3, "avg_loss_pct": 2.1,  "sample_count": 190, "median_bars_to_resolution": 22},
+    "1h":  {"win_rate": 0.67, "avg_gain_pct": -2.5, "avg_loss_pct": 1.4,  "sample_count": 280, "median_bars_to_resolution": 30},
+    "1wk": {"win_rate": 0.78, "avg_gain_pct": -12.4,"avg_loss_pct": 5.1,  "sample_count": 115, "median_bars_to_resolution": 8}
+  },
+  "DOUBLE_BOTTOM": {
+    "1d":  {"win_rate": 0.72, "avg_gain_pct": 6.3,  "avg_loss_pct": -2.9, "sample_count": 389, "median_bars_to_resolution": 14},
+    "4h":  {"win_rate": 0.68, "avg_gain_pct": 3.8,  "avg_loss_pct": -1.8, "sample_count": 175, "median_bars_to_resolution": 20},
+    "1h":  {"win_rate": 0.64, "avg_gain_pct": 2.2,  "avg_loss_pct": -1.2, "sample_count": 260, "median_bars_to_resolution": 28},
+    "1wk": {"win_rate": 0.76, "avg_gain_pct": 11.7, "avg_loss_pct": -4.6, "sample_count": 102, "median_bars_to_resolution": 7}
+  },
+  "HEAD_SHOULDERS": {
+    "1d":  {"win_rate": 0.70, "avg_gain_pct": -8.2, "avg_loss_pct": 3.8,  "sample_count": 296, "median_bars_to_resolution": 18},
+    "4h":  {"win_rate": 0.67, "avg_gain_pct": -5.1, "avg_loss_pct": 2.6,  "sample_count": 134, "median_bars_to_resolution": 26},
+    "1wk": {"win_rate": 0.73, "avg_gain_pct": -14.6,"avg_loss_pct": 6.2,  "sample_count": 78,  "median_bars_to_resolution": 10}
+  },
+  "INV_HEAD_SHOULDERS": {
+    "1d":  {"win_rate": 0.71, "avg_gain_pct": 7.5,  "avg_loss_pct": -3.4, "sample_count": 281, "median_bars_to_resolution": 16},
+    "4h":  {"win_rate": 0.68, "avg_gain_pct": 4.6,  "avg_loss_pct": -2.2, "sample_count": 128, "median_bars_to_resolution": 24},
+    "1wk": {"win_rate": 0.74, "avg_gain_pct": 13.2, "avg_loss_pct": -5.4, "sample_count": 71,  "median_bars_to_resolution": 9}
+  },
+  "ASCENDING_TRIANGLE": {
+    "1d":  {"win_rate": 0.68, "avg_gain_pct": 5.8,  "avg_loss_pct": -3.1, "sample_count": 348, "median_bars_to_resolution": 12},
+    "4h":  {"win_rate": 0.65, "avg_gain_pct": 3.5,  "avg_loss_pct": -2.0, "sample_count": 158, "median_bars_to_resolution": 18},
+    "1h":  {"win_rate": 0.61, "avg_gain_pct": 2.0,  "avg_loss_pct": -1.3, "sample_count": 232, "median_bars_to_resolution": 25}
+  },
+  "DESCENDING_TRIANGLE": {
+    "1d":  {"win_rate": 0.66, "avg_gain_pct": -5.4, "avg_loss_pct": 2.8,  "sample_count": 321, "median_bars_to_resolution": 11},
+    "4h":  {"win_rate": 0.63, "avg_gain_pct": -3.2, "avg_loss_pct": 1.8,  "sample_count": 145, "median_bars_to_resolution": 16},
+    "1h":  {"win_rate": 0.59, "avg_gain_pct": -1.9, "avg_loss_pct": 1.1,  "sample_count": 208, "median_bars_to_resolution": 22}
+  },
+  "SYMMETRICAL_TRIANGLE": {
+    "1d":  {"win_rate": 0.54, "avg_gain_pct": 4.1,  "avg_loss_pct": -3.8, "sample_count": 286, "median_bars_to_resolution": 14},
+    "4h":  {"win_rate": 0.53, "avg_gain_pct": 2.5,  "avg_loss_pct": -2.3, "sample_count": 132, "median_bars_to_resolution": 20},
+    "1h":  {"win_rate": 0.52, "avg_gain_pct": 1.5,  "avg_loss_pct": -1.4, "sample_count": 195, "median_bars_to_resolution": 28}
+  },
+  "RISING_WEDGE": {
+    "1d":  {"win_rate": 0.63, "avg_gain_pct": -5.9, "avg_loss_pct": 2.6,  "sample_count": 198, "median_bars_to_resolution": 10},
+    "4h":  {"win_rate": 0.60, "avg_gain_pct": -3.5, "avg_loss_pct": 1.7,  "sample_count": 92,  "median_bars_to_resolution": 15}
+  },
+  "FALLING_WEDGE": {
+    "1d":  {"win_rate": 0.65, "avg_gain_pct": 6.2,  "avg_loss_pct": -2.8, "sample_count": 212, "median_bars_to_resolution": 11},
+    "4h":  {"win_rate": 0.62, "avg_gain_pct": 3.7,  "avg_loss_pct": -1.8, "sample_count": 98,  "median_bars_to_resolution": 16}
+  },
+  "BULLISH_ENGULFING": {
+    "1d":  {"win_rate": 0.63, "avg_gain_pct": 2.9,  "avg_loss_pct": -1.8, "sample_count": 542, "median_bars_to_resolution": 3},
+    "4h":  {"win_rate": 0.60, "avg_gain_pct": 1.7,  "avg_loss_pct": -1.1, "sample_count": 310, "median_bars_to_resolution": 4},
+    "1h":  {"win_rate": 0.57, "avg_gain_pct": 1.0,  "avg_loss_pct": -0.7, "sample_count": 428, "median_bars_to_resolution": 6},
+    "1wk": {"win_rate": 0.66, "avg_gain_pct": 5.4,  "avg_loss_pct": -3.1, "sample_count": 148, "median_bars_to_resolution": 2}
+  },
+  "BEARISH_ENGULFING": {
+    "1d":  {"win_rate": 0.62, "avg_gain_pct": -2.7, "avg_loss_pct": 1.7,  "sample_count": 518, "median_bars_to_resolution": 3},
+    "4h":  {"win_rate": 0.59, "avg_gain_pct": -1.6, "avg_loss_pct": 1.0,  "sample_count": 295, "median_bars_to_resolution": 4},
+    "1h":  {"win_rate": 0.56, "avg_gain_pct": -0.9, "avg_loss_pct": 0.6,  "sample_count": 408, "median_bars_to_resolution": 6},
+    "1wk": {"win_rate": 0.65, "avg_gain_pct": -5.1, "avg_loss_pct": 2.9,  "sample_count": 142, "median_bars_to_resolution": 2}
+  },
+  "MORNING_STAR": {
+    "1d":  {"win_rate": 0.66, "avg_gain_pct": 3.8,  "avg_loss_pct": -2.1, "sample_count": 284, "median_bars_to_resolution": 4},
+    "4h":  {"win_rate": 0.63, "avg_gain_pct": 2.3,  "avg_loss_pct": -1.4, "sample_count": 162, "median_bars_to_resolution": 6},
+    "1wk": {"win_rate": 0.69, "avg_gain_pct": 7.1,  "avg_loss_pct": -3.8, "sample_count": 78,  "median_bars_to_resolution": 3}
+  },
+  "EVENING_STAR": {
+    "1d":  {"win_rate": 0.65, "avg_gain_pct": -3.6, "avg_loss_pct": 2.0,  "sample_count": 271, "median_bars_to_resolution": 4},
+    "4h":  {"win_rate": 0.62, "avg_gain_pct": -2.2, "avg_loss_pct": 1.3,  "sample_count": 154, "median_bars_to_resolution": 6},
+    "1wk": {"win_rate": 0.68, "avg_gain_pct": -6.8, "avg_loss_pct": 3.5,  "sample_count": 74,  "median_bars_to_resolution": 3}
+  },
+  "HAMMER": {
+    "1d":  {"win_rate": 0.60, "avg_gain_pct": 2.4,  "avg_loss_pct": -1.5, "sample_count": 624, "median_bars_to_resolution": 3},
+    "4h":  {"win_rate": 0.58, "avg_gain_pct": 1.4,  "avg_loss_pct": -1.0, "sample_count": 358, "median_bars_to_resolution": 4},
+    "1h":  {"win_rate": 0.55, "avg_gain_pct": 0.8,  "avg_loss_pct": -0.6, "sample_count": 495, "median_bars_to_resolution": 6}
+  },
+  "HANGING_MAN": {
+    "1d":  {"win_rate": 0.59, "avg_gain_pct": -2.2, "avg_loss_pct": 1.4,  "sample_count": 589, "median_bars_to_resolution": 3},
+    "4h":  {"win_rate": 0.57, "avg_gain_pct": -1.3, "avg_loss_pct": 0.9,  "sample_count": 338, "median_bars_to_resolution": 4},
+    "1h":  {"win_rate": 0.54, "avg_gain_pct": -0.8, "avg_loss_pct": 0.6,  "sample_count": 468, "median_bars_to_resolution": 6}
+  },
+  "SHOOTING_STAR": {
+    "1d":  {"win_rate": 0.61, "avg_gain_pct": -2.6, "avg_loss_pct": 1.6,  "sample_count": 478, "median_bars_to_resolution": 3},
+    "4h":  {"win_rate": 0.58, "avg_gain_pct": -1.5, "avg_loss_pct": 1.0,  "sample_count": 272, "median_bars_to_resolution": 4},
+    "1h":  {"win_rate": 0.55, "avg_gain_pct": -0.9, "avg_loss_pct": 0.6,  "sample_count": 378, "median_bars_to_resolution": 6}
+  },
+  "INVERTED_HAMMER": {
+    "1d":  {"win_rate": 0.58, "avg_gain_pct": 2.1,  "avg_loss_pct": -1.4, "sample_count": 412, "median_bars_to_resolution": 3},
+    "4h":  {"win_rate": 0.56, "avg_gain_pct": 1.2,  "avg_loss_pct": -0.9, "sample_count": 236, "median_bars_to_resolution": 5}
+  },
+  "DOJI": {
+    "1d":  {"win_rate": 0.51, "avg_gain_pct": 1.2,  "avg_loss_pct": -1.1, "sample_count": 892, "median_bars_to_resolution": 2},
+    "4h":  {"win_rate": 0.51, "avg_gain_pct": 0.7,  "avg_loss_pct": -0.7, "sample_count": 518, "median_bars_to_resolution": 3},
+    "1h":  {"win_rate": 0.50, "avg_gain_pct": 0.4,  "avg_loss_pct": -0.4, "sample_count": 714, "median_bars_to_resolution": 4}
+  },
+  "MARUBOZU": {
+    "1d":  {"win_rate": 0.58, "avg_gain_pct": 3.1,  "avg_loss_pct": -2.1, "sample_count": 348, "median_bars_to_resolution": 3},
+    "4h":  {"win_rate": 0.56, "avg_gain_pct": 1.9,  "avg_loss_pct": -1.4, "sample_count": 201, "median_bars_to_resolution": 4}
+  },
+  "BULLISH_HARAMI": {
+    "1d":  {"win_rate": 0.57, "avg_gain_pct": 2.0,  "avg_loss_pct": -1.4, "sample_count": 362, "median_bars_to_resolution": 3},
+    "4h":  {"win_rate": 0.55, "avg_gain_pct": 1.2,  "avg_loss_pct": -0.9, "sample_count": 208, "median_bars_to_resolution": 5}
+  },
+  "BEARISH_HARAMI": {
+    "1d":  {"win_rate": 0.56, "avg_gain_pct": -1.9, "avg_loss_pct": 1.3,  "sample_count": 344, "median_bars_to_resolution": 3},
+    "4h":  {"win_rate": 0.54, "avg_gain_pct": -1.1, "avg_loss_pct": 0.8,  "sample_count": 198, "median_bars_to_resolution": 5}
+  }
+}

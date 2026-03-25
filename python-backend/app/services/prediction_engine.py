@@ -20,6 +20,7 @@ from ta.volatility import AverageTrueRange
 from app.models.stock import Candle
 from app.models.signals import ComputedSignals
 from app.models.prediction import PredictionResult
+from app.services.backtest_service import get_backtest_service
 
 logger = logging.getLogger(__name__)
 
@@ -87,9 +88,38 @@ class PredictionEngine:
             direction = "NEUTRAL"
             models_bullish = 1
 
-        # ── Probability ───────────────────────────────────────────────────────
-        # 50% (random) + up to 35% from signal strength → range 50–85%
-        probability = round(0.50 + abs(score) * 0.35, 2)
+        # ── Probability — backtest lookup (Phase B) ───────────────────────────
+        # Primary: use real win rate from backtest table for detected pattern
+        # Fallback: formula (50% base + signal strength × 35%)
+        backtest_win_rate = None
+        backtest_sample_count = None
+        backtest_avg_gain_pct = None
+        backtest_pattern_key = None
+
+        detected_pattern = signals.candlestick.pattern if signals.candlestick else None
+        if detected_pattern:
+            svc = get_backtest_service()
+            bt = svc.lookup(detected_pattern, interval)
+            if bt:
+                backtest_win_rate   = bt.get("win_rate")
+                backtest_sample_count = bt.get("sample_count")
+                raw_gain = bt.get("avg_gain_pct")
+                if raw_gain is not None:
+                    backtest_avg_gain_pct = abs(raw_gain)  # always positive magnitude
+                backtest_pattern_key = detected_pattern
+                logger.info(
+                    f"[prediction] Backtest hit: {detected_pattern}/{interval} "
+                    f"win_rate={backtest_win_rate} samples={backtest_sample_count}"
+                )
+
+        if backtest_win_rate is not None:
+            # Blend: 70% backtest + 30% signal strength (signal may deviate from historical)
+            formula_prob = 0.50 + abs(score) * 0.35
+            probability = round(0.70 * backtest_win_rate + 0.30 * formula_prob, 2)
+            probability = max(0.40, min(0.92, probability))
+        else:
+            # No pattern detected or not in table — formula-only
+            probability = round(0.50 + abs(score) * 0.35, 2)
 
         # ── Model 3: ATR-Based Price Range (§5.3) ─────────────────────────────
         horizon_label, horizon_mult = _HORIZON_MAP.get(
@@ -139,6 +169,10 @@ class PredictionEngine:
             stop_loss_suggestion=round(stop_loss, 4),
             model_consensus=consensus_str,
             atr_14=round(atr, 4),
+            backtest_win_rate=backtest_win_rate,
+            backtest_sample_count=backtest_sample_count,
+            backtest_avg_gain_pct=backtest_avg_gain_pct,
+            backtest_pattern=backtest_pattern_key,
         )
 
     # ── Helpers ───────────────────────────────────────────────────────────────

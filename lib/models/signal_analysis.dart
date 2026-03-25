@@ -195,7 +195,7 @@ class IndicatorSignals {
 
 class PredictionResult {
   final String direction;         // BULLISH | BEARISH | NEUTRAL
-  final double probability;       // 0.50 – 0.85
+  final double probability;       // 0.50 – 0.92
   final String horizon;           // "5 trading days"
   final double priceCurrent;
   final double priceTargetBase;   // central projection
@@ -206,6 +206,12 @@ class PredictionResult {
   final double stopLossSuggestion;
   final String modelConsensus;
   final double atr14;
+
+  // Backtest fields (Phase B)
+  final double? backtestWinRate;      // e.g. 0.67
+  final int? backtestSampleCount;     // e.g. 312
+  final double? backtestAvgGainPct;   // e.g. 5.2 (always positive magnitude)
+  final String? backtestPattern;      // pattern name that sourced the data
 
   const PredictionResult({
     required this.direction,
@@ -220,6 +226,10 @@ class PredictionResult {
     required this.stopLossSuggestion,
     required this.modelConsensus,
     required this.atr14,
+    this.backtestWinRate,
+    this.backtestSampleCount,
+    this.backtestAvgGainPct,
+    this.backtestPattern,
   });
 
   factory PredictionResult.fromJson(Map<String, dynamic> json) {
@@ -236,6 +246,10 @@ class PredictionResult {
       stopLossSuggestion: (json['stop_loss_suggestion'] as num).toDouble(),
       modelConsensus:     json['model_consensus'] as String,
       atr14:              (json['atr_14'] as num).toDouble(),
+      backtestWinRate:    (json['backtest_win_rate'] as num?)?.toDouble(),
+      backtestSampleCount: json['backtest_sample_count'] as int?,
+      backtestAvgGainPct: (json['backtest_avg_gain_pct'] as num?)?.toDouble(),
+      backtestPattern:    json['backtest_pattern'] as String?,
     );
   }
 }

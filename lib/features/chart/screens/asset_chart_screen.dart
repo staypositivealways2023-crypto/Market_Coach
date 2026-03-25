@@ -1850,6 +1850,41 @@ class _PredictionCard extends StatelessWidget {
                 style: const TextStyle(color: Colors.white54, fontSize: 12)),
           ]),
         ],
+        // Backtest row (Phase B) — shown only when data is available
+        if (prediction.backtestWinRate != null) ...[
+          const SizedBox(height: 8),
+          const Divider(height: 1, color: Colors.white12),
+          const SizedBox(height: 8),
+          Row(children: [
+            const Icon(Icons.history, size: 13, color: Colors.white38),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text.rich(
+                TextSpan(children: [
+                  TextSpan(
+                    text: 'Historical: ',
+                    style: const TextStyle(color: Colors.white38, fontSize: 11),
+                  ),
+                  TextSpan(
+                    text: '${(prediction.backtestWinRate! * 100).toStringAsFixed(0)}% win rate',
+                    style: const TextStyle(
+                        color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w600),
+                  ),
+                  if (prediction.backtestAvgGainPct != null)
+                    TextSpan(
+                      text: ', avg ${prediction.backtestAvgGainPct!.toStringAsFixed(1)}% move',
+                      style: const TextStyle(color: Colors.white54, fontSize: 11),
+                    ),
+                  if (prediction.backtestSampleCount != null)
+                    TextSpan(
+                      text: ' (${prediction.backtestSampleCount} instances)',
+                      style: const TextStyle(color: Colors.white38, fontSize: 10),
+                    ),
+                ]),
+              ),
+            ),
+          ]),
+        ],
       ]),
     );
   }
