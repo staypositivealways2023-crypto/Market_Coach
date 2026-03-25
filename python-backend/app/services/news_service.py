@@ -1,11 +1,16 @@
-"""News Service — financial news per ticker via Massive API + VADER sentiment"""
+"""News Service — financial news per ticker via Massive API + FinBERT/VADER sentiment"""
 
+import os
 import aiohttp
 from typing import List, Optional
 from datetime import datetime
 import logging
 
 from app.config import settings
+
+# FinBERT toggle: set FINBERT_ENABLED=true in env to use FinBERT instead of VADER.
+# Requires transformers + torch installed and ~500MB RAM.
+_FINBERT_ENABLED = os.getenv("FINBERT_ENABLED", "false").lower() == "true"
 
 logger = logging.getLogger(__name__)
 
@@ -40,11 +45,11 @@ class NewsArticle:
 
 
 class NewsService:
-    """Fetches financial news from Massive API with sentiment scoring"""
+    """Fetches financial news from Massive API with FinBERT or VADER sentiment scoring"""
 
     def __init__(self):
         self.api_key = settings.MASSIVE_API_KEY
-        self._vader = None  # lazy load
+        self._vader = None  # lazy load (fallback)
 
     @property
     def is_configured(self) -> bool:
@@ -61,9 +66,26 @@ class NewsService:
         return self._vader if self._vader is not False else None
 
     def _score_sentiment(self, text: str) -> tuple[float, str]:
-        """Returns (compound_score, label). Score: -1 to +1"""
+        """
+        Returns (compound_score, label). Score: -1 to +1.
+        Uses FinBERT when FINBERT_ENABLED=true, otherwise VADER.
+        """
+        if not text:
+            return 0.0, "neutral"
+
+        # ── FinBERT path ──────────────────────────────────────────────────────
+        if _FINBERT_ENABLED:
+            try:
+                from app.services.finbert_service import get_finbert_service
+                score, label = get_finbert_service().score(text)
+                logger.debug(f"[finbert] score={score:.3f} label={label}")
+                return score, label
+            except Exception as e:
+                logger.warning(f"[news] FinBERT failed, falling back to VADER: {e}")
+
+        # ── VADER fallback ────────────────────────────────────────────────────
         vader = self._get_vader()
-        if not vader or not text:
+        if not vader:
             return 0.0, "neutral"
 
         scores = vader.polarity_scores(text)
@@ -77,6 +99,25 @@ class NewsService:
             label = "neutral"
 
         return round(compound, 3), label
+
+    def _score_batch(self, texts: list[str]) -> list[tuple[float, str]]:
+        """
+        Score multiple texts efficiently.
+        FinBERT batches them in one forward pass; VADER scores sequentially.
+        """
+        if not texts:
+            return []
+
+        if _FINBERT_ENABLED:
+            try:
+                from app.services.finbert_service import get_finbert_service
+                results = get_finbert_service().score_batch(texts)
+                logger.info(f"[finbert] batch scored {len(texts)} headlines")
+                return results
+            except Exception as e:
+                logger.warning(f"[news] FinBERT batch failed, falling back to VADER: {e}")
+
+        return [self._score_sentiment(t) for t in texts]
 
     async def get_news(self, symbol: str, limit: int = 20) -> List[NewsArticle]:
         """Fetch latest news for a ticker symbol"""
@@ -101,18 +142,24 @@ class NewsService:
                         return []
                     data = await resp.json()
 
-            articles = []
-            for item in data.get("results", []):
+            raw = data.get("results", [])
+
+            # Build text list for batch scoring (title + description)
+            texts = []
+            for item in raw:
                 title = item.get("title", "")
-                description = item.get("description") or item.get("article_url", "")
+                description = item.get("description") or ""
+                texts.append(f"{title}. {description}".strip())
 
-                # Score on title + description combined for better accuracy
-                text_to_score = f"{title}. {description}"
-                score, label = self._score_sentiment(text_to_score)
+            # Batch score — FinBERT does one forward pass; VADER loops
+            sentiments = self._score_batch(texts)
 
+            provider = "FinBERT" if _FINBERT_ENABLED else "VADER"
+            articles = []
+            for item, (score, label) in zip(raw, sentiments):
                 articles.append(NewsArticle(
                     id=item.get("id", ""),
-                    title=title,
+                    title=item.get("title", ""),
                     description=item.get("description"),
                     url=item.get("article_url", ""),
                     source=item.get("publisher", {}).get("name", "Unknown"),
@@ -122,7 +169,10 @@ class NewsService:
                     sentiment_label=label,
                 ))
 
-            logger.info(f"Fetched {len(articles)} news articles for {symbol}")
+            logger.info(
+                f"Fetched {len(articles)} news articles for {symbol} "
+                f"(sentiment provider={provider})"
+            )
             return articles
 
         except Exception as e:
