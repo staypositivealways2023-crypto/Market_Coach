@@ -105,6 +105,13 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen>
   Widget build(BuildContext context) {
     final holdingsAsync = ref.watch(portfolioHoldingsProvider);
 
+    // Fetch prices once per holdings change (loading → data, or data changed).
+    // ref.listen only fires when the value actually changes — not on every rebuild,
+    // so this avoids the infinite setState → rebuild → fetch loop.
+    ref.listen<AsyncValue<List<Holding>>>(portfolioHoldingsProvider, (_, next) {
+      next.whenData(_refreshPrices);
+    });
+
     return holdingsAsync.when(
       loading: () => const Scaffold(
         backgroundColor: Colors.transparent,
@@ -115,8 +122,6 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen>
         body: Center(child: Text('Error: $e', style: const TextStyle(color: Colors.white70))),
       ),
       data: (holdings) {
-        // Refresh prices when holdings list changes
-        WidgetsBinding.instance.addPostFrameCallback((_) => _refreshPrices(holdings));
 
         final enriched = _enrich(holdings);
         final totalValue = enriched.fold<double>(
