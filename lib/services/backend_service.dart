@@ -68,10 +68,13 @@ class BackendService {
   // ── Market range ──────────────────────────────────────────────────────────
 
   Future<MarketRange?> getPriceRange(String symbol) async {
+    // Range fetches quote + 365 candles in parallel on the backend.
+    // yfinance fallback (when Massive fails) can be slow — use a longer timeout.
+    const rangeTimeout = Duration(seconds: 25);
     try {
       final resp = await http
           .get(Uri.parse('$_base/api/market/range/${symbol.toUpperCase()}'))
-          .timeout(_timeout);
+          .timeout(rangeTimeout);
       if (resp.statusCode == 200) {
         return MarketRange.fromJson(jsonDecode(resp.body) as Map<String, dynamic>);
       }

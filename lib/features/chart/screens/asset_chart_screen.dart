@@ -2026,7 +2026,7 @@ class _FundamentalQuickStats extends StatelessWidget {
     if (fundamentals.pe != null) ratios['P/E'] = fundamentals.pe!.toStringAsFixed(1);
     if (fundamentals.ps != null) ratios['P/S'] = fundamentals.ps!.toStringAsFixed(2);
     if (fundamentals.ttmEps != null) ratios['EPS'] = '\$${fundamentals.ttmEps!.toStringAsFixed(2)}';
-    if (fundamentals.roe != null) ratios['ROE'] = '${(fundamentals.roe! * 100).toStringAsFixed(1)}%';
+    if (fundamentals.roe != null) ratios['ROE'] = '${fundamentals.roe!.toStringAsFixed(1)}%';
     if (ratios.isEmpty) return const SizedBox.shrink();
     return GlassCard(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),

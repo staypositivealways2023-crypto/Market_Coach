@@ -2,6 +2,7 @@
 
 import asyncio
 import aiohttp
+import math
 import yfinance as yf
 from typing import Optional, List
 from datetime import datetime, timedelta
@@ -272,6 +273,16 @@ class MarketDataFetcher:
                     except Exception:
                         pass
 
+                # Guard against NaN values from fast_info (crypto sometimes returns nan)
+                def _clean(v):
+                    if v is None:
+                        return None
+                    try:
+                        f = float(v)
+                        return None if math.isnan(f) or math.isinf(f) else f
+                    except (TypeError, ValueError):
+                        return None
+
                 return Quote(
                     symbol=symbol,
                     price=float(price),
@@ -280,9 +291,9 @@ class MarketDataFetcher:
                     volume=info.get('volume') or info.get('regularMarketVolume'),
                     market_cap=info.get('marketCap'),
                     pe_ratio=info.get('trailingPE'),
-                    high=float(high) if high else None,
-                    low=float(low) if low else None,
-                    open=info.get('regularMarketOpen') or info.get('open'),
+                    high=_clean(high),
+                    low=_clean(low),
+                    open=_clean(info.get('regularMarketOpen') or info.get('open')),
                     previous_close=float(previous_close),
                     timestamp=datetime.utcnow()
                 )

@@ -17,9 +17,19 @@ class MacroCard extends StatelessWidget {
     this.macroFlags = const [],
   });
 
+  bool get _hasAnyRealData {
+    if (macro == null) return false;
+    return macro!.fedFundsRate.value != null ||
+        macro!.yieldCurve.value != null ||
+        macro!.dxy.value != null ||
+        macro!.inflationYoy.value != null ||
+        macro!.unemployment.value != null ||
+        macro!.gdpGrowth.value != null;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final hasTiles = macro != null;
+    final hasTiles = macro != null && _hasAnyRealData;
     final hasFlags = macroFlags.isNotEmpty;
 
     if (!hasTiles && !hasFlags) return const SizedBox.shrink();
