@@ -19,8 +19,11 @@ class ClaudeService:
         else:
             self.client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
 
-        # Model selection - Haiku 4.5 for speed and cost-effectiveness (Oct 2025 cutoff)
-        self.model = "claude-haiku-4-5-20251001"
+        # Model selection — configurable via CLAUDE_MODEL env var.
+        # Default: Sonnet 4.6 for richer macro/pattern reasoning (Phase D).
+        # Set CLAUDE_MODEL=claude-haiku-4-5-20251001 to fall back to Haiku (faster/cheaper).
+        import os
+        self.model = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6")
         self.max_tokens = 4096
 
     async def generate_analysis(
