@@ -21,3 +21,6 @@ class CorrelationResult(BaseModel):
     fundamental_score: Optional[int] = None    # 0-100
     fundamental_grade: Optional[str] = None    # A / B / C / D / F
     fundamental_signals: List[str] = []        # ["P/E below sector avg (bullish)", ...]
+
+    # ── Macro overlay (Phase A) ───────────────────────────────────────────────
+    macro_flags: List[str] = []                # e.g. ["Inverted yield curve: recession risk"]

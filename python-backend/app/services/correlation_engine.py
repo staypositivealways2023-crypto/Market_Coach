@@ -62,6 +62,7 @@ class CorrelationEngine:
         quote: Dict[str, Any],
         fundamentals: Optional[Dict[str, Any]] = None,
         is_crypto: bool = False,
+        macro_overview: Optional[Dict[str, Any]] = None,
     ) -> CorrelationResult:
         sentiment_score, sentiment_label, headlines, flags = self._analyse_news(news)
         price_direction = self._price_direction(quote)
@@ -76,6 +77,8 @@ class CorrelationEngine:
         if not is_crypto and fundamentals:
             fund_score, fund_grade, fund_signals = self._score_fundamentals(fundamentals)
 
+        macro_flags = self.macro_correlation(macro_overview or {})
+
         return CorrelationResult(
             news_sentiment_score=round(sentiment_score, 3),
             sentiment_label=sentiment_label,
@@ -88,7 +91,108 @@ class CorrelationEngine:
             fundamental_score=fund_score,
             fundamental_grade=fund_grade,
             fundamental_signals=fund_signals,
+            macro_flags=macro_flags,
         )
+
+    # ── Macro overlay (Phase A) ───────────────────────────────────────────────
+
+    def macro_correlation(self, macro: Dict[str, Any]) -> List[str]:
+        """
+        Translate FRED macro snapshot into plain-English context flags.
+        Each flag is one sentence: "<metric>: <implication>".
+        Returns [] when macro data is absent or all values are None.
+        """
+        flags: List[str] = []
+
+        def _val(key: str) -> Optional[float]:
+            entry = macro.get(key)
+            if not entry or not isinstance(entry, dict):
+                return None
+            v = entry.get("value")
+            return float(v) if v is not None else None
+
+        # Yield curve: T10Y2Y spread — negative = inverted (recession signal)
+        yc = _val("yield_curve")
+        if yc is not None:
+            if yc < -0.5:
+                flags.append(
+                    f"Deeply inverted yield curve ({yc:+.2f}%): strong recession indicator "
+                    f"— historically precedes economic downturns by 6-18 months"
+                )
+            elif yc < 0:
+                flags.append(
+                    f"Inverted yield curve ({yc:+.2f}%): recession risk elevated "
+                    f"— growth and financial stocks face heightened pressure"
+                )
+            elif yc < 0.5:
+                flags.append(
+                    f"Flat yield curve ({yc:+.2f}%): economy at an inflection point "
+                    f"— watch for direction change"
+                )
+            # else: normal / steep — no warning needed
+
+        # Federal Funds Rate — high rates pressure growth stocks
+        ffr = _val("fed_funds_rate")
+        if ffr is not None:
+            if ffr >= 5.0:
+                flags.append(
+                    f"High interest rates ({ffr:.2f}%): cost of capital elevated "
+                    f"— growth/tech stocks under pressure, value and dividend plays favoured"
+                )
+            elif ffr >= 4.0:
+                flags.append(
+                    f"Elevated rates ({ffr:.2f}%): moderately restrictive Fed policy "
+                    f"— rate-sensitive sectors (real estate, utilities) under headwind"
+                )
+
+        # DXY (US Dollar Index) — strong dollar compresses international earnings
+        dxy = _val("dxy")
+        if dxy is not None:
+            if dxy >= 108:
+                flags.append(
+                    f"Strong US Dollar (DXY {dxy:.1f}): multinational earnings compression "
+                    f"— companies with large overseas revenue report weaker USD results"
+                )
+            elif dxy >= 104:
+                flags.append(
+                    f"Firm US Dollar (DXY {dxy:.1f}): modest headwind for exporters "
+                    f"and commodities priced in USD"
+                )
+            elif dxy <= 96:
+                flags.append(
+                    f"Weak US Dollar (DXY {dxy:.1f}): tailwind for US multinationals "
+                    f"and commodity exporters"
+                )
+
+        # Inflation YoY — high inflation keeps Fed hawkish
+        inf = _val("inflation_yoy")
+        if inf is not None:
+            if inf >= 5.0:
+                flags.append(
+                    f"High inflation ({inf:.1f}% YoY): persistent price pressure "
+                    f"— Fed unlikely to cut soon, margin squeeze for consumer-facing sectors"
+                )
+            elif inf >= 3.5:
+                flags.append(
+                    f"Elevated inflation ({inf:.1f}% YoY): above Fed target "
+                    f"— rate cuts remain constrained"
+                )
+
+        # GDP growth — contraction = recession conditions
+        gdp = _val("gdp_growth")
+        if gdp is not None:
+            if gdp < 0:
+                flags.append(
+                    f"GDP contracting ({gdp:.1f}% QoQ): recession conditions "
+                    f"— defensive positioning and capital preservation warranted"
+                )
+            elif gdp < 1.0:
+                flags.append(
+                    f"Slow GDP growth ({gdp:.1f}% QoQ): sluggish economic backdrop "
+                    f"— earnings growth harder to achieve"
+                )
+
+        return flags
 
     # ── News sentiment ────────────────────────────────────────────────────────
 

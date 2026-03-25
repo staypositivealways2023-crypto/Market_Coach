@@ -31,6 +31,7 @@ import '../analysis/_enhanced_analysis_display.dart';
 import '../../providers/iq_score_provider.dart';
 import '../../widgets/trade_debrief_sheet.dart';
 import '../../models/signal_analysis.dart';
+import '../../widgets/macro_card.dart';
 import '../../models/holding.dart';
 import '../../models/paper_account.dart';
 import '../../providers/portfolio_provider.dart';
@@ -80,6 +81,9 @@ class _StockDetailScreenEnhancedState extends ConsumerState<StockDetailScreenEnh
   SignalAnalysis? _signalAnalysis;
   bool _signalLoading = true;   // true so skeleton shows on first frame
 
+  // Macro overview (Phase A)
+  MacroOverview? _macroOverview;
+
   // AI Analysis
   bool _analysisRequested = false;
 
@@ -95,6 +99,7 @@ class _StockDetailScreenEnhancedState extends ConsumerState<StockDetailScreenEnh
       if (mounted) {
         _fetchSignalAnalysis();
         _checkPortfolio();
+        _fetchMacroOverview();
       }
     });
   }
@@ -121,6 +126,13 @@ class _StockDetailScreenEnhancedState extends ConsumerState<StockDetailScreenEnh
     final data = await _backendService.getFundamentals(widget.stock.ticker);
     if (mounted && data != null) {
       setState(() => _fundamentals = data);
+    }
+  }
+
+  Future<void> _fetchMacroOverview() async {
+    final data = await _backendService.getMacroOverview();
+    if (mounted && data != null) {
+      setState(() => _macroOverview = data);
     }
   }
 
@@ -1007,6 +1019,19 @@ class _StockDetailScreenEnhancedState extends ConsumerState<StockDetailScreenEnh
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
                 child: _CorrelationCard(correlation: _signalAnalysis!.correlation!),
+              ),
+            ),
+
+          // Macro card (Phase A) — FRED macro environment + context flags
+          if (_macroOverview != null ||
+              (_signalAnalysis?.correlation?.macroFlags.isNotEmpty ?? false))
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+                child: MacroCard(
+                  macro: _macroOverview,
+                  macroFlags: _signalAnalysis?.correlation?.macroFlags ?? [],
+                ),
               ),
             ),
 

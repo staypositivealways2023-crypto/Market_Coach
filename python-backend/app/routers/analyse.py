@@ -23,6 +23,7 @@ from app.services.fundamental_service import FundamentalService
 from app.services.correlation_engine import CorrelationEngine
 from app.services.pattern_engine import PatternEngine
 from app.services.claude_service import ClaudeService
+from app.services.fred_service import FredService
 from app.utils.prompt_builder import PromptBuilder
 from app.utils.cache import cache_manager
 from app.models.signals import AnalyseResponse
@@ -40,6 +41,7 @@ _fundamental_svc    = FundamentalService()
 _correlation_engine = CorrelationEngine()
 _pattern_engine     = PatternEngine()
 _claude_svc         = ClaudeService()
+_fred_svc           = FredService()
 
 # Cache TTL: 1 hour (analysis is expensive + data doesn't change every minute)
 _CACHE_TTL = 3600
@@ -137,12 +139,26 @@ async def analyse_symbol(
     except Exception as e:
         logger.warning(f"[analyse] Pattern scan failed for {symbol}: {e}")
 
-    # ── Layer 5b: Correlation Engine (news × price + fundamentals) ───────────
+    # ── Macro overview (FRED) — feeds correlation engine + prompt ────────────
+    macro_overview: dict = {}
+    try:
+        macro_cache_key = "macro:overview"
+        macro_overview = cache_manager.get(macro_cache_key) or {}
+        if not macro_overview:
+            macro_overview = await _fred_svc.get_macro_overview()
+            if macro_overview:
+                cache_manager.set(macro_cache_key, macro_overview, ttl=3600 * 4)  # 4hr cache
+        logger.info(f"[analyse] {symbol} macro fetched: {list(macro_overview.keys())}")
+    except Exception as e:
+        logger.warning(f"[analyse] Macro fetch failed for {symbol}: {e}")
+
+    # ── Layer 5b: Correlation Engine (news × price + fundamentals + macro) ───
     correlation = _correlation_engine.run(
         news=news,
         quote=quote_dict,
         fundamentals=fundamentals,
         is_crypto=is_crypto,
+        macro_overview=macro_overview,
     )
 
     # ── Layer 6: Claude synthesis ─────────────────────────────────────────────
@@ -161,6 +177,7 @@ async def analyse_symbol(
             correlation=correlation,
             patterns=patterns,
             user_level=user_level,
+            macro_overview=macro_overview,
         )
         result = await _claude_svc.generate_analysis(system_prompt, user_prompt)
         analysis_text = result["analysis_text"]

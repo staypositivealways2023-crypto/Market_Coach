@@ -263,6 +263,7 @@ Rules:
         prediction=None,      # Optional[PredictionResult]
         correlation=None,     # Optional[CorrelationResult]
         patterns=None,        # Optional[PatternScanResult]
+        macro_overview=None,  # Optional[dict] — FRED macro snapshot
     ) -> str:
         """
         User message for the /api/analyse endpoint.
@@ -383,6 +384,12 @@ Rules:
                 )
                 for sig in c.fundamental_signals[:3]:
                     lines.append(f"  • {sig}")
+
+        # ── MACRO CONTEXT block (Phase A) ────────────────────────────────────
+        if macro_overview and correlation and correlation.macro_flags:
+            lines.append("\nMACRO CONTEXT:")
+            for flag in correlation.macro_flags[:4]:
+                lines.append(f"- {flag}")
 
         # ── USER LEVEL ────────────────────────────────────────────────────────
         lines.append(f"\nUser level: {user_level}")

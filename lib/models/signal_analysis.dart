@@ -77,6 +77,7 @@ class CorrelationResult {
   final int? fundamentalScore;
   final String? fundamentalGrade;
   final List<String> fundamentalSignals;
+  final List<String> macroFlags;
 
   const CorrelationResult({
     required this.newsSentimentScore,
@@ -90,6 +91,7 @@ class CorrelationResult {
     this.fundamentalScore,
     this.fundamentalGrade,
     this.fundamentalSignals = const [],
+    this.macroFlags = const [],
   });
 
   factory CorrelationResult.fromJson(Map<String, dynamic> json) {
@@ -106,6 +108,9 @@ class CorrelationResult {
       fundamentalGrade:   json['fundamental_grade'] as String?,
       fundamentalSignals: json['fundamental_signals'] != null
           ? (json['fundamental_signals'] as List<dynamic>).cast<String>()
+          : [],
+      macroFlags: json['macro_flags'] != null
+          ? (json['macro_flags'] as List<dynamic>).cast<String>()
           : [],
     );
   }
