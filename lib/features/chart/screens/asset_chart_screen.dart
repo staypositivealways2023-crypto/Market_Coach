@@ -20,6 +20,7 @@ import '../../../services/pattern_recognition_service.dart';
 import '../../../services/backend_service.dart';
 import '../../../utils/crypto_helper.dart';
 import '../../../widgets/glass_card.dart';
+import '../../../widgets/macro_card.dart';
 import '../../../widgets/chart/advanced_indicator_settings.dart';
 import '../../../widgets/chart/chart_type_selector.dart';
 import '../../../widgets/educational_bottom_sheet.dart';
@@ -89,6 +90,9 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen> {
   SignalAnalysis? _signalAnalysis;
   bool _signalLoading = true;
 
+  // Macro overview (Phase A)
+  MacroOverview? _macroOverview;
+
   // AI Analysis
   bool _analysisRequested = false;
 
@@ -114,6 +118,7 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen> {
       if (mounted) {
         _fetchSignalAnalysis();
         _checkPortfolio();
+        _fetchMacroOverview();
       }
     });
   }
@@ -137,6 +142,11 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen> {
   Future<void> _fetchFundamentals() async {
     final data = await _backendService.getFundamentals(widget.stock.ticker);
     if (mounted && data != null) setState(() => _fundamentals = data);
+  }
+
+  Future<void> _fetchMacroOverview() async {
+    final data = await _backendService.getMacroOverview();
+    if (mounted && data != null) setState(() => _macroOverview = data);
   }
 
   Future<void> _checkPortfolio() async {
@@ -923,6 +933,19 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen> {
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
                 child: _CorrelationCard(correlation: _signalAnalysis!.correlation!),
+              ),
+            ),
+
+          // Macro card (Phase A) — FRED macro environment + context flags
+          if (_macroOverview != null ||
+              (_signalAnalysis?.correlation?.macroFlags.isNotEmpty ?? false))
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+                child: MacroCard(
+                  macro: _macroOverview,
+                  macroFlags: _signalAnalysis?.correlation?.macroFlags ?? [],
+                ),
               ),
             ),
 
