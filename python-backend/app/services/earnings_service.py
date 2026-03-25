@@ -10,7 +10,7 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-BASE_URL = "https://api.massive.com"
+BASE_URL = "https://api.polygon.io"
 
 
 class EarningsResult:

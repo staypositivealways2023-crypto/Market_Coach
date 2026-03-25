@@ -30,27 +30,39 @@ async def get_quote(symbol: str):
 
 @router.get("/quotes", response_model=List[Quote])
 async def get_quotes(symbols: str = Query(..., description="Comma-separated symbols")):
-    """Get quotes for multiple symbols — fetched in parallel to avoid timeout"""
+    """
+    Batch quote endpoint.
+    Uses Binance (crypto) + Polygon (stocks) batch calls to minimise HTTP round-trips
+    and avoid yfinance Yahoo 429 errors under load.
+    Per-symbol cache (60s TTL) prevents redundant calls for the same symbol.
+    Returns partial results — failed symbols are omitted, not 500.
+    """
+    symbol_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+    if not symbol_list:
+        return []
 
-    symbol_list = [s.strip().upper() for s in symbols.split(',')]
-    logger.info(f"[quotes] batch request: {symbol_list}")
+    logger.info(f"[quotes] batch request ({len(symbol_list)} symbols): {symbol_list}")
 
-    results = await asyncio.gather(
-        *[data_fetcher.get_quote(sym) for sym in symbol_list],
-        return_exceptions=True,
+    try:
+        quotes = await data_fetcher.get_quotes_batch(symbol_list)
+    except Exception as e:
+        logger.error(f"[quotes] get_quotes_batch error: {e} — falling back to individual")
+        # Per-symbol fallback so a single broken provider doesn't kill the whole batch
+        raw = await asyncio.gather(
+            *[data_fetcher.get_quote(sym) for sym in symbol_list],
+            return_exceptions=True,
+        )
+        quotes = [r for r in raw if isinstance(r, Quote)]
+
+    resolved = {q.symbol for q in quotes}
+    missing  = [s for s in symbol_list if s not in resolved]
+    if missing:
+        logger.warning(f"[quotes] {len(missing)} symbols returned no quote: {missing}")
+
+    logger.info(
+        f"[quotes] returning {len(quotes)}/{len(symbol_list)} quotes "
+        f"(missing={missing if missing else 'none'})"
     )
-    quotes = []
-    for sym, r in zip(symbol_list, results):
-        if isinstance(r, Exception):
-            logger.error(f"[quotes] {sym} failed: {r}")
-        elif r is None:
-            logger.warning(f"[quotes] {sym} → no quote returned (all providers failed)")
-        else:
-            logger.info(
-                f"[quotes] {sym} → price={r.price} high={r.high} low={r.low} "
-                f"open={r.open} prev_close={r.previous_close}"
-            )
-            quotes.append(r)
     return quotes
 
 

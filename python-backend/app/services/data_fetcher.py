@@ -1,10 +1,16 @@
-"""Market Data Fetcher - Multi-source data aggregation"""
+"""Market Data Fetcher - Multi-source data aggregation
+
+Provider priority (per asset class):
+  Crypto  : Binance (free, 1200 req/min) → Polygon → yfinance [semaphore-throttled]
+  Stocks  : Polygon → Finnhub → Alpha Vantage → yfinance [semaphore-throttled]
+"""
 
 import asyncio
 import aiohttp
+import json
 import math
 import yfinance as yf
-from typing import Optional, List
+from typing import Optional, List, Dict
 from datetime import datetime, timedelta
 import logging
 
@@ -15,6 +21,10 @@ from app.utils.cache import cache_manager
 from app.services.massive_service import MassiveService
 
 logger = logging.getLogger(__name__)
+
+# Limit concurrent yfinance calls to avoid Yahoo 429 storms.
+# yfinance hits quoteSummary (unofficial Yahoo endpoint) — ~5 req/min IP limit.
+_YF_SEMAPHORE = asyncio.Semaphore(2)
 
 
 class MarketDataFetcher:
@@ -30,30 +40,40 @@ class MarketDataFetcher:
         self.fh_limiter = APIRateLimiter(max_requests=settings.FINNHUB_RATE_LIMIT)
 
     async def get_quote(self, symbol: str) -> Optional[Quote]:
-        """Get real-time quote with fallback strategy"""
+        """Get real-time quote with provider fallback chain."""
 
-        # Check cache first
         cache_key = f"quote:{symbol}"
         cached = cache_manager.get(cache_key)
         if cached:
-            logger.info(f"Quote cache hit for {symbol}")
+            logger.info(f"[quote] {symbol} cache hit")
             return Quote(**cached)
 
         is_crypto = _is_crypto_symbol(symbol)
         quote = None
 
-        # 1. Massive.com (primary — handles both stocks and crypto)
-        if self.massive.is_configured:
-            quote = await self.massive.get_quote(symbol)
+        # ── 1. Binance (crypto-native, free public API, 1200 req/min) ────────
+        if is_crypto:
+            quote = await self._fetch_binance_quote(symbol)
             if quote:
                 logger.info(
-                    f"[quote] {symbol} provider=Massive "
+                    f"[quote] {symbol} provider=Binance "
                     f"price={quote.price} high={quote.high} low={quote.low}"
                 )
             else:
-                logger.warning(f"[quote] {symbol} Massive returned nothing (is_crypto={is_crypto})")
+                logger.warning(f"[quote] {symbol} Binance returned nothing")
 
-        # 2. Fallback: Finnhub (stocks only — doesn't support crypto well)
+        # ── 2. Polygon (stocks + crypto, requires MASSIVE_API_KEY) ───────────
+        if not quote and self.massive.is_configured:
+            quote = await self.massive.get_quote(symbol)
+            if quote:
+                logger.info(
+                    f"[quote] {symbol} provider=Polygon "
+                    f"price={quote.price} high={quote.high} low={quote.low}"
+                )
+            else:
+                logger.warning(f"[quote] {symbol} Polygon returned nothing")
+
+        # ── 3. Finnhub (stocks only) ──────────────────────────────────────────
         if not quote and not is_crypto and self.finnhub_key and self.fh_limiter.can_proceed():
             quote = await self._fetch_finnhub_quote(symbol)
             if quote:
@@ -62,7 +82,7 @@ class MarketDataFetcher:
                     f"price={quote.price} high={quote.high} low={quote.low}"
                 )
 
-        # 3. Fallback: Alpha Vantage (stocks only)
+        # ── 4. Alpha Vantage (stocks only, 5 req/min) ────────────────────────
         if not quote and not is_crypto and self.alpha_vantage_key and self.av_limiter.can_proceed():
             quote = await self._fetch_alpha_vantage_quote(symbol)
             if quote:
@@ -71,7 +91,7 @@ class MarketDataFetcher:
                     f"price={quote.price} high={quote.high} low={quote.low}"
                 )
 
-        # 4. Last resort: yfinance (maps crypto to Yahoo format, e.g. BTC → BTC-USD)
+        # ── 5. yfinance (weak fallback — semaphore-throttled to avoid 429) ────
         if not quote:
             quote = await self._fetch_yfinance_quote(symbol)
             if quote:
@@ -86,6 +106,66 @@ class MarketDataFetcher:
             cache_manager.set(cache_key, quote.model_dump(), ttl=settings.QUOTE_CACHE_TTL)
 
         return quote
+
+    async def get_quotes_batch(self, symbols: List[str]) -> List[Quote]:
+        """
+        Efficient batch quote fetch.
+
+        - Crypto  → Binance batch (one HTTP call for all crypto symbols)
+        - Stocks  → Polygon batch (one HTTP call for all stock symbols)
+        - Missing → individual fallback with per-symbol cache + yfinance semaphore
+
+        All symbols served from per-symbol cache if warm.
+        """
+        results: Dict[str, Quote] = {}
+
+        # Serve from cache first
+        uncached: List[str] = []
+        for sym in symbols:
+            cached = cache_manager.get(f"quote:{sym}")
+            if cached:
+                results[sym] = Quote(**cached)
+                logger.info(f"[quotes] {sym} cache hit")
+            else:
+                uncached.append(sym)
+
+        if not uncached:
+            return [results[s] for s in symbols if s in results]
+
+        crypto_syms = [s for s in uncached if _is_crypto_symbol(s)]
+        stock_syms  = [s for s in uncached if not _is_crypto_symbol(s)]
+
+        # ── Binance batch for crypto ─────────────────────────────────────────
+        if crypto_syms:
+            binance_batch = await self._fetch_binance_quotes_batch(crypto_syms)
+            for sym, q in binance_batch.items():
+                results[sym] = q
+                cache_manager.set(f"quote:{sym}", q.model_dump(), ttl=settings.QUOTE_CACHE_TTL)
+                logger.info(f"[quotes] {sym} provider=Binance(batch) price={q.price}")
+
+        # ── Polygon batch for stocks ─────────────────────────────────────────
+        if stock_syms and self.massive.is_configured:
+            polygon_batch = await self.massive.get_quotes_batch(stock_syms)
+            for sym, q in polygon_batch.items():
+                results[sym] = q
+                cache_manager.set(f"quote:{sym}", q.model_dump(), ttl=settings.QUOTE_CACHE_TTL)
+                logger.info(f"[quotes] {sym} provider=Polygon(batch) price={q.price}")
+
+        # ── Individual fallback for anything still missing ────────────────────
+        still_missing = [s for s in uncached if s not in results]
+        if still_missing:
+            logger.warning(
+                f"[quotes] batch fallback for {len(still_missing)} symbols: {still_missing}"
+            )
+            fallback = await asyncio.gather(
+                *[self.get_quote(s) for s in still_missing],
+                return_exceptions=True,
+            )
+            for sym, r in zip(still_missing, fallback):
+                if isinstance(r, Quote):
+                    results[sym] = r
+
+        return [results[s] for s in symbols if s in results]
 
     async def get_candles(
         self,
@@ -146,6 +226,98 @@ class MarketDataFetcher:
             cache_manager.set(cache_key, info.model_dump(), ttl=3600)
 
         return info
+
+    # ===== Binance Methods (crypto-native, no auth, 1200 req/min) =====
+
+    async def _fetch_binance_quote(self, symbol: str) -> Optional[Quote]:
+        """Fetch single crypto quote from Binance public API."""
+        try:
+            sym = symbol.upper()
+            base = sym.split("-")[0].split("/")[0] if ("-" in sym or "/" in sym) else sym
+            binance_sym = f"{base}USDT"
+            url = f"https://api.binance.com/api/v3/ticker/24hr?symbol={binance_sym}"
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=8)) as resp:
+                    if resp.status != 200:
+                        logger.warning(f"[binance] {symbol} ({binance_sym}) HTTP {resp.status}")
+                        return None
+                    data = await resp.json()
+
+            price = float(data.get("lastPrice") or 0)
+            if not price:
+                return None
+
+            return Quote(
+                symbol=symbol,
+                price=price,
+                change=float(data.get("priceChange") or 0),
+                change_percent=float(data.get("priceChangePercent") or 0),
+                volume=int(float(data.get("volume") or 0)),  # Binance volume is fractional BTC
+                high=float(data.get("highPrice") or 0) or None,
+                low=float(data.get("lowPrice") or 0) or None,
+                open=float(data.get("openPrice") or 0) or None,
+                previous_close=float(data.get("prevClosePrice") or 0) or None,
+                timestamp=datetime.utcnow(),
+            )
+        except Exception as e:
+            logger.warning(f"[binance] {symbol} error: {e}")
+            return None
+
+    async def _fetch_binance_quotes_batch(self, symbols: List[str]) -> Dict[str, Quote]:
+        """Fetch multiple crypto quotes from Binance in one HTTP call."""
+        if not symbols:
+            return {}
+        try:
+            # Build Binance symbol → our symbol map
+            sym_map: Dict[str, str] = {}  # BTCUSDT → BTC
+            for s in symbols:
+                sym = s.upper()
+                base = sym.split("-")[0].split("/")[0] if ("-" in sym or "/" in sym) else sym
+                if base in _CRYPTO_SYMBOLS:
+                    sym_map[f"{base}USDT"] = s
+
+            if not sym_map:
+                return {}
+
+            symbols_json = json.dumps(list(sym_map.keys()))
+            url = f"https://api.binance.com/api/v3/ticker/24hr?symbols={symbols_json}"
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                    if resp.status != 200:
+                        body = await resp.text()
+                        logger.warning(f"[binance] batch HTTP {resp.status}: {body[:120]}")
+                        return {}
+                    data = await resp.json()
+
+            results: Dict[str, Quote] = {}
+            for item in data:
+                binance_sym = item.get("symbol", "")
+                our_sym = sym_map.get(binance_sym)
+                if not our_sym:
+                    continue
+                price = float(item.get("lastPrice") or 0)
+                if not price:
+                    continue
+                results[our_sym] = Quote(
+                    symbol=our_sym,
+                    price=price,
+                    change=float(item.get("priceChange") or 0),
+                    change_percent=float(item.get("priceChangePercent") or 0),
+                    volume=int(float(item.get("volume") or 0)),  # Binance volume is fractional
+                    high=float(item.get("highPrice") or 0) or None,
+                    low=float(item.get("lowPrice") or 0) or None,
+                    open=float(item.get("openPrice") or 0) or None,
+                    previous_close=float(item.get("prevClosePrice") or 0) or None,
+                    timestamp=datetime.utcnow(),
+                )
+
+            logger.info(f"[binance] batch: {len(results)}/{len(sym_map)} crypto resolved")
+            return results
+        except Exception as e:
+            logger.warning(f"[binance] batch error: {e}")
+            return {}
 
     # ===== Finnhub Methods =====
 
@@ -226,54 +398,16 @@ class MarketDataFetcher:
     # ===== yfinance Methods =====
 
     async def _fetch_yfinance_quote(self, symbol: str) -> Optional[Quote]:
-        """Fetch quote from yfinance (fallback, run in executor)"""
+        """
+        Fetch quote from yfinance — weak fallback only.
+        Semaphore-throttled to 2 concurrent calls to prevent Yahoo 429.
+        Prefers fast_info (v7/quote, lighter) over ticker.info (quoteSummary, heavier).
+        """
         def _sync_fetch():
             try:
                 yf_symbol = _to_yfinance_symbol(symbol)
                 ticker = yf.Ticker(yf_symbol)
-                info = ticker.info or {}
 
-                # Price: info keys differ between stocks and crypto
-                price = (
-                    info.get('regularMarketPrice')
-                    or info.get('currentPrice')
-                    or info.get('ask')         # crypto sometimes uses ask
-                )
-                # fast_info.last_price is reliable for both stocks and crypto
-                if not price:
-                    try:
-                        price = ticker.fast_info.last_price
-                    except Exception:
-                        pass
-                if not price:
-                    return None
-
-                previous_close = (
-                    info.get('previousClose')
-                    or info.get('regularMarketPreviousClose')
-                    or 0
-                )
-                change = float(price) - float(previous_close)
-                change_percent = (change / float(previous_close) * 100) if previous_close else 0
-
-                # High/Low: try info dict first; fall back to fast_info (reliable for crypto)
-                high = (
-                    info.get('dayHigh')
-                    or info.get('regularMarketDayHigh')
-                )
-                low = (
-                    info.get('dayLow')
-                    or info.get('regularMarketDayLow')
-                )
-                if not high or not low:
-                    try:
-                        fi = ticker.fast_info
-                        high = high or fi.day_high
-                        low = low or fi.day_low
-                    except Exception:
-                        pass
-
-                # Guard against NaN values from fast_info (crypto sometimes returns nan)
                 def _clean(v):
                     if v is None:
                         return None
@@ -283,26 +417,75 @@ class MarketDataFetcher:
                     except (TypeError, ValueError):
                         return None
 
+                # --- fast_info first (lighter Yahoo endpoint, less rate-limited) ---
+                fi = None
+                try:
+                    fi = ticker.fast_info
+                except Exception:
+                    pass
+
+                price = None
+                previous_close = None
+                high = None
+                low = None
+
+                if fi:
+                    price = _clean(getattr(fi, "last_price", None))
+                    previous_close = _clean(getattr(fi, "previous_close", None))
+                    high = _clean(getattr(fi, "day_high", None))
+                    low  = _clean(getattr(fi, "day_low",  None))
+
+                # --- fall back to ticker.info (quoteSummary) only if fast_info missed price ---
+                info: dict = {}
+                if not price:
+                    try:
+                        info = ticker.info or {}
+                        price = _clean(
+                            info.get("regularMarketPrice")
+                            or info.get("currentPrice")
+                            or info.get("ask")
+                        )
+                        if not previous_close:
+                            previous_close = _clean(
+                                info.get("previousClose")
+                                or info.get("regularMarketPreviousClose")
+                            )
+                        if not high:
+                            high = _clean(info.get("dayHigh") or info.get("regularMarketDayHigh"))
+                        if not low:
+                            low  = _clean(info.get("dayLow")  or info.get("regularMarketDayLow"))
+                    except Exception:
+                        pass
+
+                if not price:
+                    return None
+
+                prev = float(previous_close or 0)
+                change = float(price) - prev
+                change_pct = (change / prev * 100) if prev else 0
+
                 return Quote(
                     symbol=symbol,
                     price=float(price),
-                    change=float(change),
-                    change_percent=float(change_percent),
-                    volume=info.get('volume') or info.get('regularMarketVolume'),
-                    market_cap=info.get('marketCap'),
-                    pe_ratio=info.get('trailingPE'),
-                    high=_clean(high),
-                    low=_clean(low),
-                    open=_clean(info.get('regularMarketOpen') or info.get('open')),
-                    previous_close=float(previous_close),
-                    timestamp=datetime.utcnow()
+                    change=change,
+                    change_percent=change_pct,
+                    volume=info.get("volume") or info.get("regularMarketVolume"),
+                    market_cap=info.get("marketCap"),
+                    pe_ratio=info.get("trailingPE"),
+                    high=high,
+                    low=low,
+                    open=_clean(info.get("regularMarketOpen") or info.get("open")),
+                    previous_close=prev or None,
+                    timestamp=datetime.utcnow(),
                 )
             except Exception as e:
-                logger.error(f"yfinance quote error for {symbol}: {e}")
+                logger.error(f"[yfinance] quote error for {symbol}: {e}")
                 return None
 
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, _sync_fetch)
+        # Semaphore prevents concurrent Yahoo calls from triggering IP-level 429
+        async with _YF_SEMAPHORE:
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(None, _sync_fetch)
 
     async def _fetch_yfinance_candles(
         self,

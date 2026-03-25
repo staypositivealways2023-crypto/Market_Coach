@@ -17,7 +17,7 @@ from app.services.massive_service import MassiveService
 
 logger = logging.getLogger(__name__)
 
-BASE_URL = "https://api.massive.com"
+BASE_URL = "https://api.polygon.io"
 
 _CRYPTO = {
     "BTC", "ETH", "BNB", "SOL", "ADA", "XRP", "DOGE", "DOT",

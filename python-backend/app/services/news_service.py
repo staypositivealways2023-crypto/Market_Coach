@@ -14,7 +14,7 @@ _FINBERT_ENABLED = os.getenv("FINBERT_ENABLED", "false").lower() == "true"
 
 logger = logging.getLogger(__name__)
 
-BASE_URL = "https://api.massive.com"
+BASE_URL = "https://api.polygon.io"
 
 
 class NewsArticle:

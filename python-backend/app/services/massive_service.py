@@ -1,7 +1,7 @@
-"""Massive.com (formerly Polygon.io) Market Data Service"""
+"""Polygon.io Market Data Service (configured via MASSIVE_API_KEY env var)"""
 
 import aiohttp
-from typing import Optional, List
+from typing import Optional, List, Dict
 from datetime import datetime, timedelta
 import logging
 
@@ -10,11 +10,23 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-BASE_URL = "https://api.massive.com"
+BASE_URL = "https://api.polygon.io"
 
 
 class MassiveService:
-    """Fetches quotes, candles, and stock info from Massive.com API"""
+    """
+    Fetches quotes, candles, and stock info from Polygon.io.
+    Configured via MASSIVE_API_KEY env var.
+
+    Circuit breaker: if a stock snapshot returns 403 NOT_AUTHORIZED (free-tier plan
+    limitation), stock_snapshot_disabled is set to True for the process lifetime so
+    subsequent calls skip Polygon and go straight to Finnhub without adding latency.
+    Crypto and candle endpoints have separate flags.
+    """
+
+    # Class-level circuit breakers — shared across all instances
+    _stock_snapshot_disabled: bool = False
+    _crypto_snapshot_disabled: bool = False
 
     def __init__(self):
         self.api_key = settings.MASSIVE_API_KEY
@@ -31,10 +43,16 @@ class MassiveService:
             return None
         try:
             if _is_crypto(symbol):
+                if MassiveService._crypto_snapshot_disabled:
+                    logger.debug(f"[polygon] crypto snapshot disabled (plan limit) — skipping {symbol}")
+                    return None
                 return await self._crypto_quote(symbol)
+            if MassiveService._stock_snapshot_disabled:
+                logger.debug(f"[polygon] stock snapshot disabled (plan limit) — skipping {symbol}")
+                return None
             return await self._stock_quote(symbol)
         except Exception as e:
-            logger.error(f"Massive quote error for {symbol}: {e}")
+            logger.error(f"Polygon quote error for {symbol}: {e}")
             return None
 
     async def _stock_quote(self, symbol: str) -> Optional[Quote]:
@@ -44,8 +62,20 @@ class MassiveService:
         )
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as resp:
+                if resp.status == 403:
+                    body = await resp.text()
+                    if "NOT_AUTHORIZED" in body or "not entitled" in body.lower():
+                        MassiveService._stock_snapshot_disabled = True
+                        logger.warning(
+                            "[polygon] stock snapshot plan limit detected — "
+                            "disabling Polygon stock quotes for this session. "
+                            "Upgrade at polygon.io/pricing to enable."
+                        )
+                    else:
+                        logger.warning(f"[polygon] stock snapshot {symbol}: HTTP 403 — {body[:120]}")
+                    return None
                 if resp.status != 200:
-                    logger.warning(f"Massive stock snapshot {symbol}: HTTP {resp.status}")
+                    logger.warning(f"[polygon] stock snapshot {symbol}: HTTP {resp.status}")
                     return None
                 data = await resp.json()
 
@@ -87,8 +117,19 @@ class MassiveService:
         )
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as resp:
+                if resp.status == 403:
+                    body = await resp.text()
+                    if "NOT_AUTHORIZED" in body or "not entitled" in body.lower():
+                        MassiveService._crypto_snapshot_disabled = True
+                        logger.warning(
+                            "[polygon] crypto snapshot plan limit detected — "
+                            "disabling Polygon crypto quotes for this session."
+                        )
+                    else:
+                        logger.warning(f"[polygon] crypto snapshot {symbol}: HTTP 403 — {body[:120]}")
+                    return None
                 if resp.status != 200:
-                    logger.warning(f"Massive crypto snapshot {symbol}: HTTP {resp.status}")
+                    logger.warning(f"[polygon] crypto snapshot {symbol}: HTTP {resp.status}")
                     return None
                 data = await resp.json()
 
@@ -117,6 +158,76 @@ class MassiveService:
             previous_close=float(prev_close) or None,
             timestamp=datetime.utcnow(),
         )
+
+    async def get_quotes_batch(self, symbols: List[str]) -> Dict[str, "Quote"]:
+        """
+        Single-call batch snapshot for multiple stock tickers via Polygon.
+        Returns dict of symbol → Quote for all tickers returned.
+        """
+        if not self.is_configured or not symbols:
+            return {}
+        if MassiveService._stock_snapshot_disabled:
+            logger.debug("[polygon] batch snapshot skipped (plan limit circuit breaker)")
+            return {}
+        stock_syms = [s.upper() for s in symbols if not _is_crypto(s)]
+        if not stock_syms:
+            return {}
+        tickers_param = ",".join(stock_syms)
+        url = (
+            f"{BASE_URL}/v2/snapshot/locale/us/markets/stocks/tickers"
+            f"?tickers={tickers_param}&apiKey={self.api_key}"
+        )
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                    if resp.status == 403:
+                        body = await resp.text()
+                        if "NOT_AUTHORIZED" in body or "not entitled" in body.lower():
+                            MassiveService._stock_snapshot_disabled = True
+                            logger.warning(
+                                "[polygon] batch snapshot plan limit — disabling Polygon stock quotes"
+                            )
+                        else:
+                            logger.warning(f"[polygon] batch snapshot HTTP 403: {body[:120]}")
+                        return {}
+                    if resp.status != 200:
+                        body = await resp.text()
+                        logger.warning(f"[polygon] batch snapshot HTTP {resp.status}: {body[:120]}")
+                        return {}
+                    data = await resp.json()
+
+            results: Dict[str, Quote] = {}
+            for t in data.get("tickers", []):
+                sym = t.get("ticker")
+                if not sym:
+                    continue
+                day = t.get("day", {})
+                prev = t.get("prevDay", {})
+                price = day.get("c") or (t.get("lastTrade") or {}).get("p")
+                if not price:
+                    continue
+                prev_close = prev.get("c", 0)
+                change = (price - prev_close) if prev_close else 0
+                change_pct = t.get("todaysChangePerc", (change / prev_close * 100) if prev_close else 0)
+                results[sym] = Quote(
+                    symbol=sym,
+                    price=float(price),
+                    change=float(change),
+                    change_percent=float(change_pct),
+                    volume=int(day.get("v", 0)),
+                    high=float(day.get("h", 0)) or None,
+                    low=float(day.get("l", 0)) or None,
+                    open=float(day.get("o", 0)) or None,
+                    previous_close=float(prev_close) or None,
+                    timestamp=datetime.utcnow(),
+                )
+            logger.info(
+                f"[polygon] batch snapshot: {len(results)}/{len(stock_syms)} stocks resolved"
+            )
+            return results
+        except Exception as e:
+            logger.error(f"[polygon] batch snapshot error: {e}")
+            return {}
 
     # ── Candles ───────────────────────────────────────────────────────────────
 
