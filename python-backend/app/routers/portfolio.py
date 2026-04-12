@@ -3,11 +3,13 @@
 import math
 import logging
 from typing import List, Optional
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
 from app.services.data_fetcher import MarketDataFetcher
 from app.services.claude_service import ClaudeService
+from app.utils.auth import require_auth
+from app.utils.rate_limit import limiter
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -136,7 +138,8 @@ def _portfolio_returns(
 # ── Endpoint ──────────────────────────────────────────────────────────────────
 
 @router.post("/analyse", response_model=PortfolioAnalyseResponse)
-async def analyse_portfolio(req: PortfolioAnalyseRequest):
+@limiter.limit("5/minute")
+async def analyse_portfolio(request: Request, req: PortfolioAnalyseRequest, uid: str = Depends(require_auth)):
     holdings = req.holdings
     if not holdings:
         return PortfolioAnalyseResponse(
@@ -253,15 +256,19 @@ async def analyse_portfolio(req: PortfolioAnalyseRequest):
             else r.symbol
             for r in holding_results
         )
-        prompt = (
-            f"You are a portfolio analyst. Analyse this portfolio in 3-4 sentences.\n"
+        system = (
+            "You are a senior portfolio analyst. Analyse portfolios concisely and accurately. "
+            "Never say 'as an AI'. Be direct and specific."
+        )
+        user_prompt = (
+            f"Analyse this portfolio in 3-4 sentences.\n"
             f"Holdings: {holdings_summary}\n"
             f"Sharpe: {sharpe}, Sortino: {sortino}, Volatility: {vol}\n"
             f"Correlation pairs: {correlation}\n"
-            f"Give a plain-English risk/return assessment and one actionable suggestion. "
-            f"Do NOT say 'as an AI'. Be direct and specific."
+            f"Give a plain-English risk/return assessment and one actionable suggestion."
         )
-        ai_insight = await _claude.generate_analysis(prompt)
+        result = await _claude.generate_analysis(system, user_prompt)
+        ai_insight = result["analysis_text"]
     except Exception as e:
         logger.warning(f"Claude portfolio insight failed: {e}")
         ai_insight = "AI insight unavailable — backend Claude call failed."

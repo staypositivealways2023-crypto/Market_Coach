@@ -5,12 +5,14 @@ import logging
 from typing import List, Optional
 
 import anthropic
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.config import settings
+from app.utils.auth import require_auth
 from app.utils.prompt_builder import PromptBuilder
+from app.utils.rate_limit import limiter
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +34,8 @@ class ChatRequest(BaseModel):
 
 
 @router.post("/chat")
-async def chat(request: ChatRequest):
+@limiter.limit("60/minute")
+async def chat(request: Request, body: ChatRequest, uid: str = Depends(require_auth)):
     """
     Streaming Coach chat endpoint.
     Emits SSE chunks: data: {"text": "..."}\n\n
@@ -41,11 +44,11 @@ async def chat(request: ChatRequest):
     if not settings.ANTHROPIC_API_KEY:
         raise HTTPException(status_code=503, detail="AI service not configured")
 
-    if not request.messages:
+    if not body.messages:
         raise HTTPException(status_code=400, detail="messages must not be empty")
 
     system_prompt = PromptBuilder.build_system_prompt()
-    messages = [{"role": m.role, "content": m.content} for m in request.messages]
+    messages = [{"role": m.role, "content": m.content} for m in body.messages]
 
     async def stream_response():
         try:

@@ -18,6 +18,13 @@ class Settings(BaseSettings):
     ALPHA_VANTAGE_API_KEY: str = ""
     FINNHUB_API_KEY: str = ""
     ANTHROPIC_API_KEY: str = ""
+    OPENAI_API_KEY: str = ""
+
+    # Redis (for voice session working memory and usage counters)
+    REDIS_URL: str = "redis://localhost:6379"
+    REDIS_TTL_SESSION: int = 10800   # 3 hours — live voice session state
+    REDIS_TTL_USAGE: int = 3024000   # 35 days — billing period counter
+    REDIS_TTL_CTX: int = 1800        # 30 minutes — active user context
 
     # AI Analysis Settings
     USE_MOCK_ANALYSIS: bool = False  # Set to True to use mock analysis without API calls

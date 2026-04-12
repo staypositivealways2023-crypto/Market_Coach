@@ -249,7 +249,12 @@ Rules:
 - Never repeat the raw numbers — interpret them
 - No direct buy/sell advice — use "suggests", "indicates", "may signal"
 - If signals conflict, say so — conflicting signals are valuable learning moments
-- Adjust depth for the user level passed in the request"""
+- Adjust depth for the user level passed in the request
+
+After your main analysis, you MUST end with exactly these three lines (no extra text after them):
+BULL_THESIS: <one sentence — bull case driver>
+BASE_THESIS: <one sentence — base case driver>
+BEAR_THESIS: <one sentence — bear case driver>"""
 
     @staticmethod
     def build_analyse_user_prompt(

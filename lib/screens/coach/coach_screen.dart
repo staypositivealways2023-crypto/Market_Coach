@@ -2,20 +2,22 @@ import 'package:flutter/material.dart';
 
 import '../learn/learn_screen.dart';
 import '../chat/chat_screen.dart';
+import '../../features/jarvis_voice/presentation/screens/voice_entry.dart';
 
-/// Coach tab — wraps Learn and Chat in a TabBar.
+/// Coach tab — wraps Learn, Chat, and Voice in a TabBar.
 class CoachScreen extends StatelessWidget {
   const CoachScreen({super.key});
 
   static const _tabs = [
     Tab(text: 'Learn'),
     Tab(text: 'Chat'),
+    Tab(text: 'Voice'),
   ];
 
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Scaffold(
         backgroundColor: Colors.transparent,
         appBar: AppBar(
@@ -41,6 +43,7 @@ class CoachScreen extends StatelessWidget {
           children: [
             LearnScreen(),
             ChatScreen(),
+            VoiceEntry(),
           ],
         ),
       ),

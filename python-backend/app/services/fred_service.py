@@ -36,11 +36,13 @@ class FredService:
     """Fetches macroeconomic data from FRED API (St. Louis Fed)"""
 
     def __init__(self):
-        self.api_key = getattr(settings, "FRED_API_KEY", "") or "public"
+        self.api_key = getattr(settings, "FRED_API_KEY", "") or ""
+        if not self.api_key:
+            logger.warning("FRED_API_KEY not configured — macro data unavailable")
 
     def _params(self, extra: dict = {}) -> dict:
         p = {"file_type": "json", "sort_order": "desc"}
-        if self.api_key and self.api_key != "public":
+        if self.api_key:
             p["api_key"] = self.api_key
         p.update(extra)
         return p
@@ -85,6 +87,13 @@ class FredService:
     async def get_macro_overview(self) -> dict:
         """Fetch all key macro indicators in one call — used by /api/macro/overview"""
         import asyncio
+
+        if not self.api_key:
+            # No API key — return structured unavailable response so MacroCard shows a message
+            overview = {key: None for key in SERIES}
+            overview["fetched_at"] = datetime.utcnow().isoformat()
+            overview["unavailable_reason"] = "FRED_API_KEY not configured"
+            return overview
 
         keys = list(SERIES.keys())
         series_ids = list(SERIES.values())

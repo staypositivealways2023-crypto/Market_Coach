@@ -3,7 +3,9 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 import 'package:intl/intl.dart';
+import 'package:speech_to_text/speech_to_text.dart';
 
 import '../../models/chat_message.dart';
 import '../../models/chat_session.dart';
@@ -28,6 +30,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   final FocusNode _focusNode = FocusNode();
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
+  final _speech = SpeechToText();
+  final _tts = FlutterTts();
+  bool _speechReady = false;
+  bool _isListening = false;
+  bool _ttsEnabled = true;
+
   static const _teal = Color(0xFF12A28C);
 
   static const _suggestions = [
@@ -44,6 +52,58 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       vsync: this,
       duration: const Duration(milliseconds: 900),
     )..repeat();
+    _initVoice();
+  }
+
+  Future<void> _initVoice() async {
+    _speechReady = await _speech.initialize(
+      onError: (_) => setState(() => _isListening = false),
+      onStatus: (status) {
+        if (status == 'done' || status == 'notListening') {
+          setState(() => _isListening = false);
+        }
+      },
+    );
+    await _tts.setLanguage('en-US');
+    await _tts.setSpeechRate(0.5);
+    await _tts.setVolume(1.0);
+    _tts.setCompletionHandler(() {});
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _toggleListening() async {
+    if (!_speechReady) return;
+    if (_isListening) {
+      await _speech.stop();
+      setState(() => _isListening = false);
+    } else {
+      await _tts.stop();
+      setState(() => _isListening = true);
+      await _speech.listen(
+        onResult: (result) {
+          _textController.text = result.recognizedWords;
+          if (result.finalResult && result.recognizedWords.trim().isNotEmpty) {
+            setState(() => _isListening = false);
+            // Small delay so the text field visually updates before sending
+            Future.delayed(const Duration(milliseconds: 150), _send);
+          }
+        },
+        listenFor: const Duration(seconds: 30),
+        pauseFor: const Duration(seconds: 3),
+        listenOptions: SpeechListenOptions(cancelOnError: true),
+      );
+    }
+  }
+
+  Future<void> _speakResponse(String text) async {
+    if (!_ttsEnabled || text.isEmpty) return;
+    // Strip markdown for cleaner speech
+    final clean = text
+        .replaceAll(RegExp(r'\*\*?|__?|~~|`{1,3}'), '')
+        .replaceAll(RegExp(r'#{1,6}\s'), '')
+        .replaceAll(RegExp(r'\[([^\]]+)\]\([^)]+\)'), r'$1')
+        .trim();
+    await _tts.speak(clean);
   }
 
   @override
@@ -52,6 +112,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     _scrollController.dispose();
     _dotController.dispose();
     _focusNode.dispose();
+    _speech.cancel();
+    _tts.stop();
     super.dispose();
   }
 
@@ -85,6 +147,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
 
     ref.listen<ChatState>(chatProvider, (prev, next) {
       _scrollToBottom();
+      // TTS: speak AI response when streaming finishes
+      if ((prev?.isStreaming ?? false) && !next.isStreaming) {
+        final last = next.messages.isNotEmpty ? next.messages.last : null;
+        if (last != null && last.role == 'assistant' && last.content.isNotEmpty) {
+          _speakResponse(last.content);
+        }
+      }
       if (next.limitReached && !(prev?.limitReached ?? false)) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           showModalBottomSheet(
@@ -141,6 +210,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   }
 
   PreferredSizeWidget _buildAppBar(bool isStreaming, ChatState chatState) {
+    final isJarvis = chatState.engine == ChatEngine.jarvis;
     return AppBar(
       backgroundColor: Colors.transparent,
       elevation: 0,
@@ -206,6 +276,60 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         ],
       ),
       actions: [
+        // Engine toggle: Claude ↔ Jarvis
+        GestureDetector(
+          onTap: isStreaming
+              ? null
+              : () => ref.read(chatProvider.notifier).toggleEngine(),
+          child: Container(
+            margin: const EdgeInsets.symmetric(vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            decoration: BoxDecoration(
+              color: isJarvis
+                  ? const Color(0xFF5B3FFF).withValues(alpha: 0.18)
+                  : _teal.withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: isJarvis
+                    ? const Color(0xFF5B3FFF).withValues(alpha: 0.5)
+                    : _teal.withValues(alpha: 0.5),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  isJarvis ? Icons.memory : Icons.auto_awesome,
+                  size: 12,
+                  color: isJarvis ? const Color(0xFF9B7FFF) : _teal,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  isJarvis ? 'Jarvis' : 'Claude',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: isJarvis ? const Color(0xFF9B7FFF) : _teal,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 4),
+        // TTS toggle
+        IconButton(
+          icon: Icon(
+            _ttsEnabled ? Icons.volume_up_outlined : Icons.volume_off_outlined,
+            color: _ttsEnabled ? Colors.white70 : Colors.white30,
+            size: 20,
+          ),
+          tooltip: _ttsEnabled ? 'Mute voice' : 'Unmute voice',
+          onPressed: () {
+            setState(() => _ttsEnabled = !_ttsEnabled);
+            if (!_ttsEnabled) _tts.stop();
+          },
+        ),
         // New chat button — only when there are messages
         if (chatState.messages.isNotEmpty && !isStreaming)
           IconButton(
@@ -354,14 +478,23 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
+              // Mic button
+              _MicButton(
+                isListening: _isListening,
+                speechReady: _speechReady,
+                onTap: _toggleListening,
+              ),
+              const SizedBox(width: 8),
               Expanded(
                 child: Container(
                   decoration: BoxDecoration(
                     color: const Color(0xFF1A2535).withValues(alpha: 0.85),
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                      color: _teal.withValues(alpha: 0.25),
-                      width: 0.8,
+                      color: _isListening
+                          ? Colors.redAccent.withValues(alpha: 0.6)
+                          : _teal.withValues(alpha: 0.25),
+                      width: _isListening ? 1.5 : 0.8,
                     ),
                   ),
                   child: TextField(
@@ -372,11 +505,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                     minLines: 1,
                     style: const TextStyle(color: Colors.white, fontSize: 14),
                     decoration: InputDecoration(
-                      hintText: isStreaming
-                          ? 'MarketCoach is thinking...'
-                          : 'Ask about any stock or market...',
+                      hintText: _isListening
+                          ? 'Listening...'
+                          : isStreaming
+                              ? 'AI is thinking...'
+                              : 'Ask about any stock or market...',
                       hintStyle: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.3),
+                        color: _isListening
+                            ? Colors.redAccent.withValues(alpha: 0.7)
+                            : Colors.white.withValues(alpha: 0.3),
                         fontSize: 14,
                       ),
                       border: InputBorder.none,
@@ -964,6 +1101,53 @@ class _SendButton extends StatelessWidget {
           color: isStreaming
               ? Colors.white.withValues(alpha: 0.2)
               : Colors.white,
+          size: 20,
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Mic Button ──────────────────────────────────────────────────────────────
+
+class _MicButton extends StatelessWidget {
+  const _MicButton({
+    required this.isListening,
+    required this.speechReady,
+    required this.onTap,
+  });
+
+  final bool isListening;
+  final bool speechReady;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: speechReady ? onTap : null,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          color: isListening
+              ? Colors.redAccent.withValues(alpha: 0.2)
+              : Colors.white.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isListening
+                ? Colors.redAccent.withValues(alpha: 0.6)
+                : Colors.white.withValues(alpha: 0.12),
+            width: isListening ? 1.5 : 1,
+          ),
+        ),
+        child: Icon(
+          isListening ? Icons.mic : Icons.mic_none_outlined,
+          color: isListening
+              ? Colors.redAccent
+              : speechReady
+                  ? Colors.white70
+                  : Colors.white24,
           size: 20,
         ),
       ),

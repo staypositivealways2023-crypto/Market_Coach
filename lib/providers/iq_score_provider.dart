@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -73,6 +74,12 @@ final iqScoreProvider = FutureProvider<IQScoreData>((ref) async {
   final aiPts = (sessionCount / 20) * 150;
 
   final total = (lessonPts + quizPts + tradePts + aiPts).round().clamp(0, 1000);
+
+  // Persist score so it survives app restarts without recomputing from scratch.
+  await db.collection('users').doc(uid).set(
+    {'iq_score': total},
+    SetOptions(merge: true),
+  );
 
   return IQScoreData(
     total: total,

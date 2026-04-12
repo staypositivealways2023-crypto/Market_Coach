@@ -13,6 +13,46 @@ String signalDisplayLabel(String raw) {
   }
 }
 
+// ── Scenario Analysis (Bull / Base / Bear) ───────────────────────────────────
+
+class ScenarioCase {
+  final int probability;      // percentage 0-100
+  final double priceTarget;
+  final String thesis;        // one sentence
+
+  const ScenarioCase({
+    required this.probability,
+    required this.priceTarget,
+    required this.thesis,
+  });
+
+  factory ScenarioCase.fromJson(Map<String, dynamic> json) {
+    return ScenarioCase(
+      probability: json['probability'] as int,
+      priceTarget: (json['price_target'] as num).toDouble(),
+      thesis:      json['thesis'] as String,
+    );
+  }
+}
+
+class Scenarios {
+  final ScenarioCase bull;
+  final ScenarioCase base;
+  final ScenarioCase bear;
+
+  const Scenarios({required this.bull, required this.base, required this.bear});
+
+  factory Scenarios.fromJson(Map<String, dynamic> json) {
+    return Scenarios(
+      bull: ScenarioCase.fromJson(json['bull'] as Map<String, dynamic>),
+      base: ScenarioCase.fromJson(json['base'] as Map<String, dynamic>),
+      bear: ScenarioCase.fromJson(json['bear'] as Map<String, dynamic>),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 class SignalAnalysis {
   final String symbol;
   final String interval;
@@ -20,6 +60,7 @@ class SignalAnalysis {
   final PredictionResult? prediction;
   final CorrelationResult? correlation;
   final PatternScanResult? patterns;
+  final Scenarios? scenarios;
   final String analysis;
   final String timestamp;
   final bool isCached;
@@ -32,6 +73,7 @@ class SignalAnalysis {
     this.prediction,
     this.correlation,
     this.patterns,
+    this.scenarios,
     required this.analysis,
     required this.timestamp,
     this.isCached = false,
@@ -51,6 +93,9 @@ class SignalAnalysis {
           : null,
       patterns:    json['patterns'] != null
           ? PatternScanResult.fromJson(json['patterns'] as Map<String, dynamic>)
+          : null,
+      scenarios:   json['scenarios'] != null
+          ? Scenarios.fromJson(json['scenarios'] as Map<String, dynamic>)
           : null,
       analysis:    json['analysis'] as String,
       timestamp:   json['timestamp'] as String,

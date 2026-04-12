@@ -4,13 +4,14 @@ import 'package:intl/intl.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
 
 import '../../models/holding.dart';
+import '../../models/paper_account.dart';
+import '../../providers/paper_trading_provider.dart';
 import '../../providers/portfolio_provider.dart';
 import '../../providers/subscription_provider.dart';
 import '../../services/backend_service.dart';
 import '../../services/portfolio_service.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/paywall_bottom_sheet.dart';
-import '../paper_trading/paper_trading_screen.dart';
 
 class PortfolioScreen extends ConsumerStatefulWidget {
   const PortfolioScreen({super.key});
@@ -24,11 +25,15 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen>
   late final TabController _tabController;
   final _backend = BackendService();
 
-  // Live prices keyed by symbol
+  // ── Real portfolio prices ─────────────────────────────────────────────────
   Map<String, double> _prices = {};
   bool _pricesLoading = false;
 
-  // Portfolio-level AI analysis from backend
+  // ── Paper portfolio prices ────────────────────────────────────────────────
+  Map<String, double> _paperPrices = {};
+  bool _paperPricesLoading = false;
+
+  // ── Portfolio-level AI analysis ───────────────────────────────────────────
   Map<String, dynamic>? _portfolioAnalysis;
   bool _analysisLoading = false;
 
@@ -36,6 +41,15 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    // Fetch prices once on mount in case providers are already in data state
+    // (ref.listen only fires on changes, not on initial cached data).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final holdings = ref.read(portfolioHoldingsProvider).valueOrNull ?? [];
+      if (holdings.isNotEmpty && _prices.isEmpty) _refreshPrices(holdings);
+      final paper = ref.read(paperHoldingsProvider).valueOrNull ?? [];
+      if (paper.isNotEmpty && _paperPrices.isEmpty) _refreshPaperPrices(paper);
+    });
   }
 
   @override
@@ -43,6 +57,8 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen>
     _tabController.dispose();
     super.dispose();
   }
+
+  // ── Real portfolio: fetch prices for holdings ─────────────────────────────
 
   Future<void> _refreshPrices(List<Holding> holdings) async {
     if (holdings.isEmpty || _pricesLoading) return;
@@ -56,6 +72,26 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen>
       if (price != null) prices[symbol] = price;
     });
     if (mounted) setState(() { _prices = prices; _pricesLoading = false; });
+  }
+
+  // ── Paper portfolio: fetch live prices for holdings ───────────────────────
+  //
+  // Called automatically via ref.listen when paperHoldingsProvider changes.
+  // Works for both stocks (AAPL, BHP) and crypto (BTC, ETH) — BackendService
+  // routes to the appropriate data source (Polygon / Binance / yfinance).
+
+  Future<void> _refreshPaperPrices(List<PaperHolding> holdings) async {
+    if (holdings.isEmpty || _paperPricesLoading) return;
+    setState(() => _paperPricesLoading = true);
+    final symbols = holdings.map((h) => h.symbol).toList();
+    final quotes = await _backend.getQuotes(symbols);
+    final prices = <String, double>{};
+    quotes.forEach((symbol, q) {
+      final price = (q['price'] as num?)?.toDouble() ??
+          (q['current_price'] as num?)?.toDouble();
+      if (price != null) prices[symbol] = price;
+    });
+    if (mounted) setState(() { _paperPrices = prices; _paperPricesLoading = false; });
   }
 
   Future<void> _fetchPortfolioAnalysis(List<Holding> holdings) async {
@@ -105,11 +141,16 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen>
   Widget build(BuildContext context) {
     final holdingsAsync = ref.watch(portfolioHoldingsProvider);
 
-    // Fetch prices once per holdings change (loading → data, or data changed).
-    // ref.listen only fires when the value actually changes — not on every rebuild,
-    // so this avoids the infinite setState → rebuild → fetch loop.
+    // Real portfolio: fetch prices whenever holdings change.
     ref.listen<AsyncValue<List<Holding>>>(portfolioHoldingsProvider, (_, next) {
       next.whenData(_refreshPrices);
+    });
+
+    // Paper portfolio: fetch live prices whenever paper holdings change.
+    // This is the fix for P&L showing $0 — prices are fetched reactively
+    // as soon as Firestore emits the holdings snapshot.
+    ref.listen<AsyncValue<List<PaperHolding>>>(paperHoldingsProvider, (_, next) {
+      next.whenData(_refreshPaperPrices);
     });
 
     return holdingsAsync.when(
@@ -122,7 +163,6 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen>
         body: Center(child: Text('Error: $e', style: const TextStyle(color: Colors.white70))),
       ),
       data: (holdings) {
-
         final enriched = _enrich(holdings);
         final totalValue = enriched.fold<double>(
             0, (s, h) => s + (h.currentValue ?? h.totalCost));
@@ -179,7 +219,7 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen>
           body: TabBarView(
             controller: _tabController,
             children: [
-              // ── Tab 1: Real Portfolio ────────────────────────────────────
+              // ── Tab 1: Real Portfolio ──────────────────────────────────────
               holdings.isEmpty
               ? _buildEmpty()
               : RefreshIndicator(
@@ -187,7 +227,6 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen>
                   child: CustomScrollView(
                     physics: const BouncingScrollPhysics(),
                     slivers: [
-                      // ── Summary Card ───────────────────────────────────────
                       SliverToBoxAdapter(
                         child: Padding(
                           padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -200,20 +239,13 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen>
                           ),
                         ),
                       ),
-
-                      // ── Allocation Pie Chart ───────────────────────────────
                       if (enriched.length >= 2)
                         SliverToBoxAdapter(
                           child: Padding(
                             padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                            child: _AllocationChart(
-                              holdings: enriched,
-                              totalValue: totalValue,
-                            ),
+                            child: _AllocationChart(holdings: enriched, totalValue: totalValue),
                           ),
                         ),
-
-                      // ── AI Portfolio Analysis ──────────────────────────────
                       if (_analysisLoading)
                         const SliverToBoxAdapter(
                           child: Padding(
@@ -228,8 +260,6 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen>
                             child: _PortfolioAnalysisCard(data: _portfolioAnalysis!),
                           ),
                         ),
-
-                      // ── Holdings List ──────────────────────────────────────
                       SliverToBoxAdapter(
                         child: Padding(
                           padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -244,32 +274,36 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen>
                           ),
                         ),
                       ),
-
                       SliverList(
                         delegate: SliverChildBuilderDelegate(
-                          (context, i) {
-                            final h = enriched[i];
-                            return Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                              child: _HoldingCard(
-                                holding: h,
-                                totalValue: totalValue,
-                                onEdit: () => _showAddSheet(existing: h.holding),
-                                onDelete: () => _confirmDelete(h.holding),
-                              ),
-                            );
-                          },
+                          (context, i) => Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                            child: _HoldingCard(
+                              holding: enriched[i],
+                              totalValue: totalValue,
+                              onEdit: () => _showAddSheet(existing: enriched[i].holding),
+                              onDelete: () => _confirmDelete(enriched[i].holding),
+                            ),
+                          ),
                           childCount: enriched.length,
                         ),
                       ),
-
                       const SliverToBoxAdapter(child: SizedBox(height: 40)),
                     ],
                   ),
                 ),
 
-              // ── Tab 2: Paper Trading ──────────────────────────────────────
-              const PaperTradingScreen(),
+              // ── Tab 2: Paper Trading ───────────────────────────────────────
+              // Prices are fetched by _refreshPaperPrices (triggered via ref.listen
+              // above) and passed down so P&L is always live.
+              _PaperTab(
+                paperPrices: _paperPrices,
+                pricesLoading: _paperPricesLoading,
+                onRefresh: () {
+                  final holdings = ref.read(paperHoldingsProvider).valueOrNull ?? [];
+                  _refreshPaperPrices(holdings);
+                },
+              ),
             ],
           ),
         );
@@ -282,17 +316,13 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen>
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.pie_chart_outline, size: 72, color: Colors.white24),
+          const Icon(Icons.pie_chart_outline, size: 72, color: Colors.white24),
           const SizedBox(height: 20),
-          const Text(
-            'No holdings yet',
-            style: TextStyle(color: Colors.white70, fontSize: 18, fontWeight: FontWeight.w600),
-          ),
+          const Text('No holdings yet',
+              style: TextStyle(color: Colors.white70, fontSize: 18, fontWeight: FontWeight.w600)),
           const SizedBox(height: 8),
-          const Text(
-            'Tap + to add your first position',
-            style: TextStyle(color: Colors.white38, fontSize: 14),
-          ),
+          const Text('Tap + to add your first position',
+              style: TextStyle(color: Colors.white38, fontSize: 14)),
           const SizedBox(height: 28),
           ElevatedButton.icon(
             icon: const Icon(Icons.add),
@@ -329,7 +359,560 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen>
   }
 }
 
-// ── Summary Card ──────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// PAPER TRADING TAB
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Paper portfolio view — shows live P&L for all paper holdings.
+///
+/// Prices are fetched by the parent [_PortfolioScreenState] via
+/// [_refreshPaperPrices] and passed as [paperPrices].  This avoids the
+/// addPostFrameCallback loop that caused P&L to show $0 on initial load.
+class _PaperTab extends ConsumerWidget {
+  final Map<String, double> paperPrices;
+  final bool pricesLoading;
+  final VoidCallback onRefresh;
+
+  const _PaperTab({
+    required this.paperPrices,
+    required this.pricesLoading,
+    required this.onRefresh,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final accountAsync = ref.watch(paperAccountProvider);
+    final holdingsAsync = ref.watch(paperHoldingsProvider);
+
+    return accountAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(
+          child: Text('Error: $e', style: const TextStyle(color: Colors.white70))),
+      data: (account) {
+        if (account == null || !account.isActive) {
+          return _PaperActivationView(
+            onActivate: () async {
+              final svc = ref.read(paperTradingServiceProvider);
+              await svc?.activate();
+            },
+          );
+        }
+
+        return holdingsAsync.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (e, _) => Center(
+              child: Text('Error: $e', style: const TextStyle(color: Colors.white70))),
+          data: (holdings) {
+            // Enrich holdings with live prices passed from parent.
+            final enriched = holdings
+                .map((h) => PaperHoldingWithValue(
+                      holding: h,
+                      currentPrice: paperPrices[h.symbol],
+                    ))
+                .toList();
+
+            // Portfolio totals using live prices where available.
+            final holdingsValue = enriched.fold<double>(
+                0, (s, h) => s + (h.currentValue ?? h.totalCost));
+            final totalValue = account.cashBalance + holdingsValue;
+            final totalPnl = totalValue - PaperAccount.startingBalance;
+            final isPositive = totalPnl >= 0;
+
+            if (holdings.isEmpty) {
+              return _PaperEmptyView(
+                cashBalance: account.cashBalance,
+                onRefresh: onRefresh,
+              );
+            }
+
+            return RefreshIndicator(
+              onRefresh: () async => onRefresh(),
+              child: CustomScrollView(
+                physics: const BouncingScrollPhysics(),
+                slivers: [
+                  // ── Summary ──────────────────────────────────────────────
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                      child: _PaperSummaryCard(
+                        totalValue: totalValue,
+                        cashBalance: account.cashBalance,
+                        holdingsValue: holdingsValue,
+                        totalPnl: totalPnl,
+                        isPositive: isPositive,
+                        isLoading: pricesLoading,
+                      ),
+                    ),
+                  ),
+
+                  // ── Holdings header ───────────────────────────────────────
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                      child: Row(
+                        children: [
+                          Text(
+                            'Positions (${enriched.length})',
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                          const Spacer(),
+                          if (pricesLoading)
+                            const SizedBox(
+                              width: 12, height: 12,
+                              child: CircularProgressIndicator(strokeWidth: 1.5),
+                            )
+                          else
+                            GestureDetector(
+                              onTap: onRefresh,
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.refresh, size: 14, color: Colors.white38),
+                                  SizedBox(width: 4),
+                                  Text('Refresh prices',
+                                      style: TextStyle(color: Colors.white38, fontSize: 11)),
+                                ],
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  // ── Holdings list ─────────────────────────────────────────
+                  SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, i) => Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                        child: _PaperHoldingCard(holding: enriched[i]),
+                      ),
+                      childCount: enriched.length,
+                    ),
+                  ),
+
+                  // ── Cash row ──────────────────────────────────────────────
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                      child: _CashBalanceRow(cashBalance: account.cashBalance),
+                    ),
+                  ),
+
+                  const SliverToBoxAdapter(child: SizedBox(height: 40)),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+// ── Paper Summary Card ─────────────────────────────────────────────────────────
+
+class _PaperSummaryCard extends StatelessWidget {
+  final double totalValue;
+  final double cashBalance;
+  final double holdingsValue;
+  final double totalPnl;
+  final bool isPositive;
+  final bool isLoading;
+
+  const _PaperSummaryCard({
+    required this.totalValue,
+    required this.cashBalance,
+    required this.holdingsValue,
+    required this.totalPnl,
+    required this.isPositive,
+    required this.isLoading,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    const green = Color(0xFF12A28C);
+    final pnlColor = isPositive ? green : Colors.redAccent;
+    final fmt = NumberFormat('#,##0.00');
+    final pnlPct = (totalPnl.abs() / PaperAccount.startingBalance) * 100;
+
+    return GlassCard(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            const Icon(Icons.currency_exchange, size: 15, color: Colors.white38),
+            const SizedBox(width: 6),
+            const Text('Paper Account',
+                style: TextStyle(color: Colors.white54, fontSize: 13)),
+            const Spacer(),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: const Text('Virtual \$1M',
+                  style: TextStyle(color: Colors.white38, fontSize: 11)),
+            ),
+          ]),
+          const SizedBox(height: 8),
+
+          // Total value
+          isLoading
+              ? const SizedBox(height: 44, child: Center(child: LinearProgressIndicator()))
+              : Text(
+                  '\$${fmt.format(totalValue)}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 36,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -1.2,
+                    height: 1.0,
+                  ),
+                ),
+
+          const SizedBox(height: 8),
+
+          // P&L vs $1M start
+          Row(children: [
+            Icon(isPositive ? Icons.trending_up : Icons.trending_down,
+                color: pnlColor, size: 16),
+            const SizedBox(width: 4),
+            Text(
+              '${isPositive ? '+' : '-'}\$${fmt.format(totalPnl.abs())}  '
+              '(${pnlPct.toStringAsFixed(2)}%)',
+              style: TextStyle(
+                  color: pnlColor, fontSize: 14, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(width: 6),
+            const Text('vs \$1M start',
+                style: TextStyle(color: Colors.white30, fontSize: 12)),
+          ]),
+
+          const SizedBox(height: 14),
+          const Divider(height: 1, color: Colors.white12),
+          const SizedBox(height: 14),
+
+          // Cash / Holdings breakdown
+          Row(children: [
+            Expanded(
+              child: _StatCol(
+                label: 'Cash',
+                value: '\$${_compact(cashBalance)}',
+                color: Colors.white70,
+              ),
+            ),
+            Expanded(
+              child: _StatCol(
+                label: 'Holdings',
+                value: '\$${_compact(holdingsValue)}',
+                color: Colors.white70,
+              ),
+            ),
+            Expanded(
+              child: _StatCol(
+                label: 'Return',
+                value: '${isPositive ? '+' : ''}${(totalPnl / PaperAccount.startingBalance * 100).toStringAsFixed(2)}%',
+                color: pnlColor,
+              ),
+            ),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  static String _compact(double v) {
+    if (v >= 1e6) return '${(v / 1e6).toStringAsFixed(2)}M';
+    if (v >= 1e3) return '${(v / 1e3).toStringAsFixed(1)}K';
+    return NumberFormat('#,##0.00').format(v);
+  }
+}
+
+class _StatCol extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+  const _StatCol({required this.label, required this.value, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(color: Colors.white38, fontSize: 10)),
+        const SizedBox(height: 2),
+        Text(value,
+            style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w600)),
+      ],
+    );
+  }
+}
+
+// ── Paper Holding Card ─────────────────────────────────────────────────────────
+
+class _PaperHoldingCard extends StatelessWidget {
+  final PaperHoldingWithValue holding;
+  const _PaperHoldingCard({required this.holding});
+
+  @override
+  Widget build(BuildContext context) {
+    const green = Color(0xFF12A28C);
+    final pnlColor = holding.isPositive ? green : Colors.redAccent;
+    final fmt = NumberFormat('#,##0.00');
+    final hasPnl = holding.unrealizedPnl != null;
+
+    return GlassCard(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              // Symbol + name
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(holding.symbol,
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700)),
+                    Text(holding.name,
+                        style: const TextStyle(color: Colors.white38, fontSize: 12),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis),
+                  ],
+                ),
+              ),
+
+              // Current value + P&L
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    holding.currentValue != null
+                        ? '\$${fmt.format(holding.currentValue!)}'
+                        : '\$${fmt.format(holding.totalCost)}',
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700),
+                  ),
+                  if (hasPnl)
+                    Text(
+                      '${holding.isPositive ? '+' : ''}\$${fmt.format(holding.unrealizedPnl!.abs())} '
+                      '(${holding.unrealizedPnlPct!.toStringAsFixed(1)}%)',
+                      style: TextStyle(
+                          color: pnlColor,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600),
+                    )
+                  else
+                    const Text('Fetching price…',
+                        style: TextStyle(color: Colors.white30, fontSize: 12)),
+                ],
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 10),
+          const Divider(height: 1, color: Colors.white12),
+          const SizedBox(height: 10),
+
+          // Details row
+          Row(
+            children: [
+              _Detail('Shares',
+                  holding.shares % 1 == 0
+                      ? holding.shares.toInt().toString()
+                      : holding.shares.toStringAsFixed(4)),
+              _Detail('Avg Cost', '\$${fmt.format(holding.avgCost)}'),
+              if (holding.currentPrice != null)
+                _Detail('Price', '\$${fmt.format(holding.currentPrice!)}'),
+              _Detail('Cost Basis', '\$${fmt.format(holding.totalCost)}'),
+            ],
+          ),
+
+          // Tax indicator
+          if (holding.holdingDays != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Row(children: [
+                Icon(Icons.timer_outlined, size: 12, color: Colors.white30),
+                const SizedBox(width: 4),
+                Text(
+                  '${holding.holdingDays}d held · '
+                  '${holding.isShortTerm ? '22% short-term' : '15% long-term'} gains',
+                  style: const TextStyle(color: Colors.white30, fontSize: 11),
+                ),
+              ]),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Cash Balance Row ──────────────────────────────────────────────────────────
+
+class _CashBalanceRow extends StatelessWidget {
+  final double cashBalance;
+  const _CashBalanceRow({required this.cashBalance});
+
+  @override
+  Widget build(BuildContext context) {
+    final fmt = NumberFormat('#,##0.00');
+    return GlassCard(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Row(children: [
+        const Icon(Icons.account_balance_wallet_outlined,
+            size: 16, color: Colors.white38),
+        const SizedBox(width: 8),
+        const Text('Cash available',
+            style: TextStyle(color: Colors.white54, fontSize: 13)),
+        const Spacer(),
+        Text('\$${fmt.format(cashBalance)}',
+            style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 14,
+                fontWeight: FontWeight.w600)),
+      ]),
+    );
+  }
+}
+
+// ── Paper Empty / Activation ──────────────────────────────────────────────────
+
+class _PaperEmptyView extends StatelessWidget {
+  final double cashBalance;
+  final VoidCallback onRefresh;
+  const _PaperEmptyView({required this.cashBalance, required this.onRefresh});
+
+  @override
+  Widget build(BuildContext context) {
+    final fmt = NumberFormat('#,##0.00');
+    final primary = Theme.of(context).colorScheme.primary;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 80, height: 80,
+              decoration: BoxDecoration(
+                color: primary.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.currency_exchange, size: 36, color: primary),
+            ),
+            const SizedBox(height: 24),
+            const Text('No paper positions',
+                style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            Text(
+              'Cash available: \$${fmt.format(cashBalance)}',
+              style: TextStyle(color: primary, fontSize: 14, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Open any stock or crypto and tap Trade to open a position.',
+              style: TextStyle(color: Colors.white38, fontSize: 14, height: 1.5),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PaperActivationView extends StatefulWidget {
+  final Future<void> Function() onActivate;
+  const _PaperActivationView({required this.onActivate});
+
+  @override
+  State<_PaperActivationView> createState() => _PaperActivationViewState();
+}
+
+class _PaperActivationViewState extends State<_PaperActivationView> {
+  bool _activating = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final primary = Theme.of(context).colorScheme.primary;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 90, height: 90,
+              decoration: BoxDecoration(
+                color: primary.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.currency_exchange, size: 44, color: primary),
+            ),
+            const SizedBox(height: 28),
+            const Text('Paper Trading',
+                style: TextStyle(
+                    color: Colors.white, fontSize: 26, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 12),
+            const Text(
+              'Practice with \$1,000,000 in virtual cash.\nNo real money involved.',
+              style: TextStyle(color: Colors.white54, fontSize: 15, height: 1.6),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 40),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: primary,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+                onPressed: _activating
+                    ? null
+                    : () async {
+                        setState(() => _activating = true);
+                        await widget.onActivate();
+                      },
+                child: _activating
+                    ? const SizedBox(
+                        height: 22, width: 22,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white))
+                    : const Text('Activate Paper Trading',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// REAL PORTFOLIO WIDGETS (unchanged)
+// ═══════════════════════════════════════════════════════════════════════════════
 
 class _SummaryCard extends StatelessWidget {
   final double totalValue;
@@ -348,9 +931,8 @@ class _SummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final green = const Color(0xFF12A28C);
-    final red = Colors.redAccent;
-    final pnlColor = isPositive ? green : red;
+    const green = Color(0xFF12A28C);
+    final pnlColor = isPositive ? green : Colors.redAccent;
     final fmt = NumberFormat('#,##0.00');
 
     return GlassCard(
@@ -358,35 +940,35 @@ class _SummaryCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Total Value', style: TextStyle(color: Colors.white54, fontSize: 13)),
+          const Text('Total Value',
+              style: TextStyle(color: Colors.white54, fontSize: 13)),
           const SizedBox(height: 6),
           isLoading
-              ? const SizedBox(height: 44, child: Center(child: LinearProgressIndicator()))
+              ? const SizedBox(
+                  height: 44,
+                  child: Center(child: LinearProgressIndicator()))
               : _PortfolioValueText(value: totalValue, fmt: fmt),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              Icon(isPositive ? Icons.arrow_upward : Icons.arrow_downward,
-                  color: pnlColor, size: 16),
-              const SizedBox(width: 4),
-              Text(
-                '\$${fmt.format(totalPnl.abs())}  (${totalPnlPct.abs().toStringAsFixed(2)}%)',
-                style: TextStyle(color: pnlColor, fontSize: 15, fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                isPositive ? 'total gain' : 'total loss',
-                style: const TextStyle(color: Colors.white38, fontSize: 13),
-              ),
-            ],
-          ),
+          Row(children: [
+            Icon(isPositive ? Icons.arrow_upward : Icons.arrow_downward,
+                color: pnlColor, size: 16),
+            const SizedBox(width: 4),
+            Text(
+              '\$${fmt.format(totalPnl.abs())}  (${totalPnlPct.abs().toStringAsFixed(2)}%)',
+              style: TextStyle(
+                  color: pnlColor, fontSize: 15, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              isPositive ? 'total gain' : 'total loss',
+              style: const TextStyle(color: Colors.white38, fontSize: 13),
+            ),
+          ]),
         ],
       ),
     );
   }
 }
-
-// ── Hero portfolio value ──────────────────────────────────────────────────────
 
 class _PortfolioValueText extends StatelessWidget {
   final double value;
@@ -402,36 +984,30 @@ class _PortfolioValueText extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        Text(
-          whole,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 40,
-            fontWeight: FontWeight.w800,
-            letterSpacing: -1.5,
-            height: 1.0,
-          ),
-        ),
+        Text(whole,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 40,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -1.5,
+              height: 1.0,
+            )),
         if (decimal.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(bottom: 4),
-            child: Text(
-              decimal,
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.5),
-                fontSize: 22,
-                fontWeight: FontWeight.w400,
-                letterSpacing: -0.5,
-                height: 1.0,
-              ),
-            ),
+            child: Text(decimal,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.5),
+                  fontSize: 22,
+                  fontWeight: FontWeight.w400,
+                  letterSpacing: -0.5,
+                  height: 1.0,
+                )),
           ),
       ],
     );
   }
 }
-
-// ── Allocation Pie Chart ──────────────────────────────────────────────────────
 
 class _AllocationChart extends StatelessWidget {
   final List<HoldingWithValue> holdings;
@@ -457,7 +1033,11 @@ class _AllocationChart extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Allocation', style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)),
+          const Text('Allocation',
+              style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600)),
           const SizedBox(height: 12),
           SizedBox(
             height: 200,
@@ -472,10 +1052,13 @@ class _AllocationChart extends StatelessWidget {
                   dataLabelSettings: const DataLabelSettings(
                     isVisible: true,
                     labelPosition: ChartDataLabelPosition.outside,
-                    textStyle: TextStyle(color: Colors.white70, fontSize: 10),
+                    textStyle:
+                        TextStyle(color: Colors.white70, fontSize: 10),
                   ),
                   dataLabelMapper: (p, _) {
-                    final pct = totalValue > 0 ? (p.value / totalValue * 100) : 0;
+                    final pct = totalValue > 0
+                        ? (p.value / totalValue * 100)
+                        : 0;
                     return '${p.label}\n${pct.toStringAsFixed(1)}%';
                   },
                   explode: true,
@@ -485,7 +1068,6 @@ class _AllocationChart extends StatelessWidget {
               ],
             ),
           ),
-          // Legend row
           Wrap(
             spacing: 12,
             runSpacing: 6,
@@ -505,10 +1087,9 @@ class _AllocationChart extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 4),
-                  Text(
-                    '${h.symbol} ${pct.toStringAsFixed(1)}%',
-                    style: const TextStyle(color: Colors.white60, fontSize: 11),
-                  ),
+                  Text('${h.symbol} ${pct.toStringAsFixed(1)}%',
+                      style: const TextStyle(
+                          color: Colors.white60, fontSize: 11)),
                 ],
               );
             }),
@@ -525,22 +1106,19 @@ class _PiePoint {
   _PiePoint(this.label, this.value);
 }
 
-// ── Portfolio AI Analysis Card ─────────────────────────────────────────────────
-
 class _AnalysisLoadingCard extends StatelessWidget {
   const _AnalysisLoadingCard();
   @override
   Widget build(BuildContext context) {
     return GlassCard(
       padding: const EdgeInsets.all(20),
-      child: Column(
-        children: [
-          CircularProgressIndicator(color: Theme.of(context).colorScheme.primary),
-          const SizedBox(height: 12),
-          const Text('Analysing your portfolio…',
-              style: TextStyle(color: Colors.white70, fontSize: 14)),
-        ],
-      ),
+      child: Column(children: [
+        CircularProgressIndicator(
+            color: Theme.of(context).colorScheme.primary),
+        const SizedBox(height: 12),
+        const Text('Analysing your portfolio…',
+            style: TextStyle(color: Colors.white70, fontSize: 14)),
+      ]),
     );
   }
 }
@@ -561,43 +1139,47 @@ class _PortfolioAnalysisCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(children: [
-            Icon(Icons.auto_awesome, color: Theme.of(context).colorScheme.primary, size: 18),
+            Icon(Icons.auto_awesome,
+                color: Theme.of(context).colorScheme.primary, size: 18),
             const SizedBox(width: 8),
             const Text('Portfolio Analysis',
-                style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
+                style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700)),
           ]),
           const SizedBox(height: 14),
-
-          // Risk metrics
           if (metrics != null) ...[
             _MetricRow('Sharpe Ratio', _fmt(metrics['sharpe_ratio'])),
             _MetricRow('Sortino Ratio', _fmt(metrics['sortino_ratio'])),
-            _MetricRow('Volatility (ann.)', '${_fmtPct(metrics['portfolio_volatility'])}%'),
+            _MetricRow('Volatility (ann.)',
+                '${_fmtPct(metrics['portfolio_volatility'])}%'),
             const SizedBox(height: 12),
           ],
-
-          // Rebalancing tips
           if (rebalancing != null && rebalancing.isNotEmpty) ...[
             const Text('Rebalancing Suggestions',
-                style: TextStyle(color: Colors.white60, fontSize: 12, fontWeight: FontWeight.w600)),
+                style: TextStyle(
+                    color: Colors.white60,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600)),
             const SizedBox(height: 6),
             ...rebalancing.map((r) => Padding(
               padding: const EdgeInsets.only(bottom: 6),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('• ', style: TextStyle(color: Color(0xFF12A28C), fontSize: 14)),
+                  const Text('• ',
+                      style: TextStyle(color: Color(0xFF12A28C), fontSize: 14)),
                   Expanded(
                     child: Text(r.toString(),
-                        style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.4)),
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 13, height: 1.4)),
                   ),
                 ],
               ),
             )),
             const SizedBox(height: 12),
           ],
-
-          // AI narrative
           if (insight != null && insight.isNotEmpty)
             Container(
               padding: const EdgeInsets.all(12),
@@ -606,7 +1188,8 @@ class _PortfolioAnalysisCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text(insight,
-                  style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.55)),
+                  style: const TextStyle(
+                      color: Colors.white70, fontSize: 13, height: 1.55)),
             ),
         ],
       ),
@@ -635,15 +1218,18 @@ class _MetricRow extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(color: Colors.white54, fontSize: 13)),
-          Text(value, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+          Text(label,
+              style: const TextStyle(color: Colors.white54, fontSize: 13)),
+          Text(value,
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600)),
         ],
       ),
     );
   }
 }
-
-// ── Holding Card ──────────────────────────────────────────────────────────────
 
 class _HoldingCard extends StatelessWidget {
   final HoldingWithValue holding;
@@ -660,9 +1246,8 @@ class _HoldingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final green = const Color(0xFF12A28C);
-    final red = Colors.redAccent;
-    final pnlColor = holding.isPositive ? green : red;
+    const green = Color(0xFF12A28C);
+    final pnlColor = holding.isPositive ? green : Colors.redAccent;
     final fmt = NumberFormat('#,##0.00');
     final alloc = totalValue > 0
         ? ((holding.currentValue ?? holding.totalCost) / totalValue * 100)
@@ -673,65 +1258,65 @@ class _HoldingCard extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       child: Column(
         children: [
-          Row(
-            children: [
-              // Symbol + name
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(holding.symbol,
-                        style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700)),
-                    Text(holding.name,
-                        style: const TextStyle(color: Colors.white38, fontSize: 12),
-                        maxLines: 1, overflow: TextOverflow.ellipsis),
-                  ],
-                ),
-              ),
-
-              // Current value + P&L
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
+          Row(children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    holding.currentValue != null
-                        ? '\$${fmt.format(holding.currentValue!)}'
-                        : '\$${fmt.format(holding.totalCost)}',
-                    style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700),
-                  ),
-                  if (holding.pnl != null)
-                    Text(
-                      '${holding.isPositive ? '+' : ''}\$${fmt.format(holding.pnl!)} '
-                      '(${holding.pnlPct!.toStringAsFixed(1)}%)',
-                      style: TextStyle(color: pnlColor, fontSize: 12, fontWeight: FontWeight.w600),
-                    ),
+                  Text(holding.symbol,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700)),
+                  Text(holding.name,
+                      style: const TextStyle(
+                          color: Colors.white38, fontSize: 12),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis),
                 ],
               ),
-
-              // Delete
-              IconButton(
-                icon: const Icon(Icons.close, size: 16, color: Colors.white24),
-                onPressed: onDelete,
-                visualDensity: VisualDensity.compact,
-              ),
-            ],
-          ),
-
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  holding.currentValue != null
+                      ? '\$${fmt.format(holding.currentValue!)}'
+                      : '\$${fmt.format(holding.totalCost)}',
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700),
+                ),
+                if (holding.pnl != null)
+                  Text(
+                    '${holding.isPositive ? '+' : ''}\$${fmt.format(holding.pnl!)} '
+                    '(${holding.pnlPct!.toStringAsFixed(1)}%)',
+                    style: TextStyle(
+                        color: pnlColor,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600),
+                  ),
+              ],
+            ),
+            IconButton(
+              icon: const Icon(Icons.close, size: 16, color: Colors.white24),
+              onPressed: onDelete,
+              visualDensity: VisualDensity.compact,
+            ),
+          ]),
           const SizedBox(height: 10),
           const Divider(height: 1, color: Colors.white12),
           const SizedBox(height: 10),
-
-          // Details row
-          Row(
-            children: [
-              _Detail('Shares', holding.shares.toStringAsFixed(
-                  holding.shares == holding.shares.floorToDouble() ? 0 : 4)),
-              _Detail('Avg Cost', '\$${fmt.format(holding.avgCost)}'),
-              if (holding.currentPrice != null)
-                _Detail('Price', '\$${fmt.format(holding.currentPrice!)}'),
-              _Detail('Allocation', '${alloc.toStringAsFixed(1)}%'),
-            ],
-          ),
+          Row(children: [
+            _Detail('Shares',
+                holding.shares.toStringAsFixed(
+                    holding.shares == holding.shares.floorToDouble() ? 0 : 4)),
+            _Detail('Avg Cost', '\$${fmt.format(holding.avgCost)}'),
+            if (holding.currentPrice != null)
+              _Detail('Price', '\$${fmt.format(holding.currentPrice!)}'),
+            _Detail('Allocation', '${alloc.toStringAsFixed(1)}%'),
+          ]),
         ],
       ),
     );
@@ -748,11 +1333,16 @@ class _Detail extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(color: Colors.white38, fontSize: 10)),
+          Text(label,
+              style: const TextStyle(color: Colors.white38, fontSize: 10)),
           const SizedBox(height: 2),
           Text(value,
-              style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600),
-              maxLines: 1, overflow: TextOverflow.ellipsis),
+              style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis),
         ],
       ),
     );
@@ -766,7 +1356,8 @@ class _AddHoldingSheet extends StatefulWidget {
   final Holding? existing;
   final VoidCallback onSaved;
 
-  const _AddHoldingSheet({required this.service, this.existing, required this.onSaved});
+  const _AddHoldingSheet(
+      {required this.service, this.existing, required this.onSaved});
 
   @override
   State<_AddHoldingSheet> createState() => _AddHoldingSheetState();
@@ -778,17 +1369,13 @@ class _AddHoldingSheetState extends State<_AddHoldingSheet> {
   final _sharesCtrl = TextEditingController();
   final _costCtrl = TextEditingController();
 
-  // auto-detected from live quote
   String? _detectedName;
   double? _livePrice;
   bool _lookingUp = false;
   bool _lookupDone = false;
   String? _lookupError;
-
   bool _saving = false;
   String? _error;
-
-  // debounce timer
   DateTime? _lastTyped;
 
   @override
@@ -824,13 +1411,10 @@ class _AddHoldingSheetState extends State<_AddHoldingSheet> {
     _lastTyped = DateTime.now();
     final capturedTime = _lastTyped;
 
-    // 600ms debounce
     Future.delayed(const Duration(milliseconds: 600), () async {
       if (_lastTyped != capturedTime || !mounted) return;
       setState(() => _lookingUp = true);
-
       final quote = await _backend.getQuote(trimmed);
-
       if (!mounted) return;
       if (quote != null) {
         final price = (quote['price'] as num?)?.toDouble() ??
@@ -844,7 +1428,6 @@ class _AddHoldingSheetState extends State<_AddHoldingSheet> {
           _lookingUp = false;
           _lookupDone = true;
           _lookupError = null;
-          // auto-fill cost with live price if empty
           if (_costCtrl.text.isEmpty && price != null) {
             _costCtrl.text = price.toStringAsFixed(2);
           }
@@ -865,7 +1448,8 @@ class _AddHoldingSheetState extends State<_AddHoldingSheet> {
     final shares = double.tryParse(_sharesCtrl.text.trim());
     final cost = double.tryParse(_costCtrl.text.trim());
 
-    if (symbol.isEmpty || shares == null || shares <= 0 || cost == null || cost <= 0) {
+    if (symbol.isEmpty || shares == null || shares <= 0 ||
+        cost == null || cost <= 0) {
       setState(() => _error = 'Enter a valid symbol, shares, and cost');
       return;
     }
@@ -887,177 +1471,148 @@ class _AddHoldingSheetState extends State<_AddHoldingSheet> {
     const green = Color(0xFF12A28C);
 
     return Padding(
-      padding: EdgeInsets.fromLTRB(20, 16, 20,
-          MediaQuery.of(context).viewInsets.bottom + 32),
+      padding: EdgeInsets.fromLTRB(
+          20, 16, 20, MediaQuery.of(context).viewInsets.bottom + 32),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // drag handle
           Center(
             child: Container(
               width: 36, height: 4,
-              decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
+              decoration: BoxDecoration(
+                color: Colors.white24,
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
           ),
-          const SizedBox(height: 14),
-          Text(isEdit ? 'Edit Position' : 'Add Position',
-              style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700)),
           const SizedBox(height: 16),
+          Text(isEdit ? 'Edit Position' : 'Add Position',
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700)),
+          const SizedBox(height: 20),
 
-          // ── Symbol field with live lookup ──────────────────────────────────
+          // Symbol field
           TextField(
             controller: _symbolCtrl,
-            enabled: !isEdit,
-            autofocus: !isEdit,
             textCapitalization: TextCapitalization.characters,
-            style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700,
-                letterSpacing: 1.5),
             onChanged: _onSymbolChanged,
+            style: const TextStyle(color: Colors.white),
             decoration: InputDecoration(
-              labelText: 'Symbol — type AAPL, BTC, ETH…',
-              labelStyle: const TextStyle(color: Colors.white38, fontSize: 13),
+              labelText: 'Symbol (e.g. AAPL, BTC)',
+              labelStyle: const TextStyle(color: Colors.white38),
               suffixIcon: _lookingUp
                   ? const Padding(
                       padding: EdgeInsets.all(12),
-                      child: SizedBox(width: 18, height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white38)))
-                  : _lookupDone
-                      ? Icon(_lookupError == null ? Icons.check_circle : Icons.cancel,
-                          color: _lookupError == null ? green : Colors.redAccent, size: 22)
+                      child: SizedBox(
+                          width: 16, height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2)))
+                  : _lookupDone && _lookupError == null
+                      ? const Icon(Icons.check_circle_outline,
+                          color: green, size: 20)
                       : null,
-              enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(
-                      color: _lookupError != null
-                          ? Colors.redAccent
-                          : _lookupDone
-                              ? green
-                              : Colors.white24)),
-              focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: green, width: 2)),
-              disabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: Colors.white12)),
-              filled: true,
-              fillColor: Colors.white.withValues(alpha: 0.05),
+              border: const OutlineInputBorder(),
+              enabledBorder: const OutlineInputBorder(
+                  borderSide: BorderSide(color: Colors.white24)),
+              focusedBorder: const OutlineInputBorder(
+                  borderSide: BorderSide(color: green)),
             ),
+            readOnly: isEdit,
           ),
-
-          // ── Auto-detected result card ──────────────────────────────────────
-          if (_lookupDone && _lookupError == null && _detectedName != null) ...[
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: green.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: green.withValues(alpha: 0.3)),
-              ),
-              child: Row(children: [
-                const Icon(Icons.verified, color: Color(0xFF12A28C), size: 18),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(_detectedName!,
-                        style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
-                    if (_livePrice != null)
-                      Text('Live price: \$${_livePrice!.toStringAsFixed(2)}',
-                          style: const TextStyle(color: Colors.white54, fontSize: 12)),
-                  ]),
-                ),
-                if (_livePrice != null)
-                  TextButton(
-                    onPressed: () => setState(() => _costCtrl.text = _livePrice!.toStringAsFixed(2)),
-                    style: TextButton.styleFrom(
-                      foregroundColor: green,
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    ),
-                    child: const Text('Use live price', style: TextStyle(fontSize: 12)),
-                  ),
-              ]),
+          if (_lookupError != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(_lookupError!,
+                  style: const TextStyle(color: Colors.redAccent, fontSize: 12)),
             ),
-          ],
-          if (_lookupError != null) ...[
-            const SizedBox(height: 6),
-            Row(children: [
-              const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 16),
-              const SizedBox(width: 6),
-              Text(_lookupError!, style: const TextStyle(color: Colors.orange, fontSize: 12)),
-            ]),
-          ],
-
-          const SizedBox(height: 14),
-
-          // ── Shares ────────────────────────────────────────────────────────
-          TextField(
-            controller: _sharesCtrl,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            style: const TextStyle(color: Colors.white),
-            onChanged: (_) => setState(() {}),
-            decoration: InputDecoration(
-              labelText: 'Number of Shares',
-              labelStyle: const TextStyle(color: Colors.white54),
-              suffixText: _livePrice != null &&
-                      (_sharesCtrl.text.isNotEmpty) &&
-                      double.tryParse(_sharesCtrl.text) != null
-                  ? '≈ \$${(double.parse(_sharesCtrl.text) * _livePrice!).toStringAsFixed(2)}'
-                  : null,
-              suffixStyle: const TextStyle(color: Colors.white38, fontSize: 12),
-              enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: Colors.white24)),
-              focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: green, width: 2)),
-              filled: true,
-              fillColor: Colors.white.withValues(alpha: 0.05),
+          if (_detectedName != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(_detectedName!,
+                  style: const TextStyle(color: Colors.white54, fontSize: 12)),
             ),
-          ),
+
           const SizedBox(height: 12),
 
-          // ── Avg cost per share ─────────────────────────────────────────────
-          TextField(
-            controller: _costCtrl,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            style: const TextStyle(color: Colors.white),
-            decoration: InputDecoration(
-              labelText: 'Avg Cost Per Share (\$)',
-              labelStyle: const TextStyle(color: Colors.white54),
-              prefixText: '\$ ',
-              prefixStyle: const TextStyle(color: Colors.white54),
-              enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: Colors.white24)),
-              focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: green, width: 2)),
-              filled: true,
-              fillColor: Colors.white.withValues(alpha: 0.05),
+          // Shares + cost
+          Row(children: [
+            Expanded(
+              child: TextField(
+                controller: _sharesCtrl,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  labelText: 'Shares',
+                  labelStyle: TextStyle(color: Colors.white38),
+                  border: OutlineInputBorder(),
+                  enabledBorder: OutlineInputBorder(
+                      borderSide: BorderSide(color: Colors.white24)),
+                  focusedBorder: OutlineInputBorder(
+                      borderSide: BorderSide(color: green)),
+                ),
+              ),
             ),
-          ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: TextField(
+                controller: _costCtrl,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  labelText: 'Avg Cost (\$)',
+                  labelStyle: TextStyle(color: Colors.white38),
+                  border: OutlineInputBorder(),
+                  enabledBorder: OutlineInputBorder(
+                      borderSide: BorderSide(color: Colors.white24)),
+                  focusedBorder: OutlineInputBorder(
+                      borderSide: BorderSide(color: green)),
+                ),
+              ),
+            ),
+          ]),
 
-          if (_error != null) ...[
-            const SizedBox(height: 10),
-            Text(_error!, style: const TextStyle(color: Colors.redAccent, fontSize: 13)),
-          ],
+          if (_livePrice != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                'Current price: \$${NumberFormat('#,##0.00').format(_livePrice)}',
+                style: const TextStyle(color: Colors.white38, fontSize: 12),
+              ),
+            ),
+
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(_error!,
+                  style: const TextStyle(
+                      color: Colors.redAccent, fontSize: 13)),
+            ),
+
           const SizedBox(height: 20),
-
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: _saving ? null : _save,
               style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 15),
                 backgroundColor: green,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
               ),
+              onPressed: _saving ? null : _save,
               child: _saving
-                  ? const SizedBox(height: 20, width: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  ? const SizedBox(
+                      height: 20, width: 20,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white))
                   : Text(isEdit ? 'Save Changes' : 'Add to Portfolio',
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15)),
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700)),
             ),
           ),
         ],
@@ -1065,5 +1620,3 @@ class _AddHoldingSheetState extends State<_AddHoldingSheet> {
     );
   }
 }
-
-

@@ -1,3 +1,5 @@
+import 'package:intl/intl.dart';
+
 enum SubscriptionTier { free, pro }
 
 class Subscription {
@@ -18,10 +20,14 @@ class Subscription {
 
   factory Subscription.fromMap(Map<String, dynamic> map) {
     final tierStr = map['subscription_tier'] as String? ?? 'free';
+    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final savedDate = (map['ai_messages_date'] as String?) ?? '';
+    // Reset count if the stored date is not today — avoids yesterday's count blocking today's messages
+    final messagesCount = savedDate == today ? ((map['ai_messages_today'] as int?) ?? 0) : 0;
     return Subscription(
       tier: tierStr == 'pro' ? SubscriptionTier.pro : SubscriptionTier.free,
-      aiMessagesToday: (map['ai_messages_today'] as int?) ?? 0,
-      aiMessagesDate: (map['ai_messages_date'] as String?) ?? '',
+      aiMessagesToday: messagesCount,
+      aiMessagesDate: savedDate,
     );
   }
 

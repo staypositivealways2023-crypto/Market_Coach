@@ -17,7 +17,7 @@ class ClaudeService:
             logger.warning("ANTHROPIC_API_KEY not configured")
             self.client = None
         else:
-            self.client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+            self.client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
 
         # Model selection — configurable via CLAUDE_MODEL env var.
         # Default: Sonnet 4.6 for richer macro/pattern reasoning (Phase D).
@@ -55,7 +55,7 @@ class ClaudeService:
             logger.info(f"Generating analysis with {self.model}")
 
             # Call Claude API
-            response = self.client.messages.create(
+            response = await self.client.messages.create(
                 model=self.model,
                 max_tokens=max_tokens or self.max_tokens,
                 system=system_prompt,

@@ -40,6 +40,18 @@ class ComputedSignals(BaseModel):
     signal_label: SignalLabel
 
 
+class ScenarioCase(BaseModel):
+    probability: int    # percentage 0-100
+    price_target: float # ATR-derived price target
+    thesis: str         # one-sentence narrative
+
+
+class Scenarios(BaseModel):
+    bull: ScenarioCase
+    base: ScenarioCase
+    bear: ScenarioCase
+
+
 class AnalyseResponse(BaseModel):
     symbol: str
     interval: str
@@ -47,6 +59,7 @@ class AnalyseResponse(BaseModel):
     prediction: Optional[PredictionResult] = None   # Phase 4 price target
     correlation: Optional[CorrelationResult] = None # Phase 5 news × fundamentals
     patterns: Optional[PatternScanResult] = None    # Phase 6 chart patterns
+    scenarios: Optional[Scenarios] = None           # Bull / Base / Bear cases
     analysis: str                                    # Claude's narrative
     timestamp: str
     is_cached: bool = False

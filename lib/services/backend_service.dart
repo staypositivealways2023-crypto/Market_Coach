@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
@@ -13,6 +14,24 @@ import '../models/signal_analysis.dart';
 class BackendService {
   static String get _base => APIConfig.backendBaseUrl;
   static const _timeout = Duration(seconds: 10);
+
+  // ── Auth headers ──────────────────────────────────────────────────────────
+  // Used by AI-cost endpoints (analyse, portfolio/analyse, trade-debrief, chat).
+  // Falls back to unauthenticated if no user is signed in (should not happen
+  // in practice since auth gates the app).
+  static Future<Map<String, String>> _authHeaders() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return {'Content-Type': 'application/json'};
+    try {
+      final token = await user.getIdToken();
+      return {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      };
+    } catch (_) {
+      return {'Content-Type': 'application/json'};
+    }
+  }
 
   // ── Quotes ────────────────────────────────────────────────────────────────
 
@@ -29,9 +48,12 @@ class BackendService {
   }
 
   /// Fetch quotes for multiple symbols in one call.
-  /// Returns map of symbol → quote data.
+  /// Falls back to Finnhub (stocks) + Binance (crypto) if backend returns no data.
   Future<Map<String, Map<String, dynamic>>> getQuotes(List<String> symbols) async {
     if (symbols.isEmpty) return {};
+
+    // ── 1. Try backend batch endpoint ────────────────────────────────────────
+    Map<String, Map<String, dynamic>> results = {};
     try {
       final joined = symbols.map((s) => s.toUpperCase()).join(',');
       final resp = await http
@@ -39,13 +61,84 @@ class BackendService {
           .timeout(_timeout);
       if (resp.statusCode == 200) {
         final list = jsonDecode(resp.body) as List<dynamic>;
-        return {
+        results = {
           for (final q in list)
             (q as Map<String, dynamic>)['symbol'] as String: q,
         };
       }
     } catch (_) {}
-    return {};
+
+    // ── 2. Direct fallback for any symbols the backend missed ─────────────────
+    final missing = symbols.where((s) => !results.containsKey(s.toUpperCase())).toList();
+    if (missing.isNotEmpty) {
+      final direct = await _fetchDirectPrices(missing);
+      results.addAll(direct);
+    }
+
+    return results;
+  }
+
+  /// Fetch prices directly from Finnhub (stocks) and Binance REST (crypto).
+  /// Used as fallback when the backend is down or missing API keys.
+  static bool _isCryptoSymbol(String s) {
+    const cryptoBases = {
+      'BTC', 'ETH', 'SOL', 'BNB', 'ADA', 'XRP', 'DOGE',
+      'DOT', 'MATIC', 'AVAX', 'LINK', 'LTC', 'XLM', 'USDT'
+    };
+    final base = s.split('-').first.split('/').first.toUpperCase();
+    return cryptoBases.contains(base) ||
+        s.toUpperCase().contains('-USD') ||
+        s.toUpperCase().contains('/USD');
+  }
+
+  Future<Map<String, Map<String, dynamic>>> _fetchDirectPrices(
+      List<String> symbols) async {
+    final prices = <String, Map<String, dynamic>>{};
+    final crypto = symbols.where(_isCryptoSymbol).toList();
+    final stocks = symbols.where((s) => !_isCryptoSymbol(s)).toList();
+
+    // Crypto via Binance public REST (no auth needed)
+    for (final sym in crypto) {
+      try {
+        final base = sym.split('-').first.split('/').first.toUpperCase();
+        final resp = await http
+            .get(Uri.parse(
+                'https://api.binance.com/api/v3/ticker/price?symbol=${base}USDT'))
+            .timeout(const Duration(seconds: 8));
+        if (resp.statusCode == 200) {
+          final data = jsonDecode(resp.body) as Map<String, dynamic>;
+          final price = double.tryParse(data['price'] as String? ?? '');
+          if (price != null && price > 0) {
+            prices[sym.toUpperCase()] = {'symbol': sym.toUpperCase(), 'price': price};
+          }
+        }
+      } catch (_) {}
+    }
+
+    // Stocks via Finnhub (free tier, 60 req/min)
+    for (final sym in stocks) {
+      try {
+        final resp = await http
+            .get(Uri.parse(
+                'https://finnhub.io/api/v1/quote?symbol=${sym.toUpperCase()}'
+                '&token=${APIConfig.finnhubKey}'))
+            .timeout(const Duration(seconds: 8));
+        if (resp.statusCode == 200) {
+          final data = jsonDecode(resp.body) as Map<String, dynamic>;
+          final price = (data['c'] as num?)?.toDouble();
+          if (price != null && price > 0) {
+            prices[sym.toUpperCase()] = {
+              'symbol': sym.toUpperCase(),
+              'price': price,
+              'change': (data['d'] as num?)?.toDouble() ?? 0.0,
+              'change_percent': (data['dp'] as num?)?.toDouble() ?? 0.0,
+            };
+          }
+        }
+      } catch (_) {}
+    }
+
+    return prices;
   }
 
   // ── Candles ───────────────────────────────────────────────────────────────
@@ -175,11 +268,23 @@ class BackendService {
     );
     try {
       if (kDebugMode) debugPrint('[BackendService] analyseStock → $uri');
-      final resp = await http.get(uri).timeout(const Duration(seconds: 45));
+      final resp = await http.get(uri, headers: await _authHeaders()).timeout(const Duration(seconds: 45));
       if (kDebugMode) debugPrint('[BackendService] analyseStock ← ${resp.statusCode}');
       if (resp.statusCode == 200) {
-        return SignalAnalysis.fromJson(
-            jsonDecode(resp.body) as Map<String, dynamic>);
+        if (kDebugMode) {
+          // Log first 400 chars so we can verify field names in raw JSON
+          debugPrint('[BackendService] analyseStock body: ${resp.body.substring(0, resp.body.length.clamp(0, 400))}');
+        }
+        final decoded = jsonDecode(resp.body) as Map<String, dynamic>;
+        if (kDebugMode) {
+          debugPrint('[BackendService] analyseStock top-level keys: ${decoded.keys.toList()}');
+          final signals = decoded['signals'] as Map<String, dynamic>?;
+          if (signals != null) {
+            debugPrint('[BackendService] signals keys: ${signals.keys.toList()}');
+            debugPrint('[BackendService] composite_score=${signals["composite_score"]} signal_label=${signals["signal_label"]}');
+          }
+        }
+        return SignalAnalysis.fromJson(decoded);
       }
       if (kDebugMode) debugPrint('[BackendService] analyseStock error body: ${resp.body.substring(0, resp.body.length.clamp(0, 300))}');
     } catch (e, st) {
@@ -213,6 +318,11 @@ class BackendService {
     required double price,
     double? compositeScore,
     String? trend,
+    double? rsiValue,
+    String? rsiSignal,
+    String? macdSignal,
+    String? patternName,
+    String? emaStack,
   }) async {
     try {
       final body = jsonEncode({
@@ -220,13 +330,18 @@ class BackendService {
         'action': action,
         'shares': shares,
         'price': price,
-        if (compositeScore != null) 'composite_score': compositeScore,
-        if (trend != null) 'trend': trend,
-      });
+        'composite_score': compositeScore,
+        'trend': trend,
+        'rsi_value': rsiValue,
+        'rsi_signal': rsiSignal,
+        'macd_signal': macdSignal,
+        'pattern_name': patternName,
+        'ema_stack': emaStack,
+      }..removeWhere((_, v) => v == null));
       final resp = await http
           .post(
             Uri.parse('$_base/api/trade-debrief'),
-            headers: {'Content-Type': 'application/json'},
+            headers: await _authHeaders(),
             body: body,
           )
           .timeout(const Duration(seconds: 30));
@@ -256,7 +371,7 @@ class BackendService {
       final resp = await http
           .post(
             Uri.parse('$_base/api/portfolio/analyse'),
-            headers: {'Content-Type': 'application/json'},
+            headers: await _authHeaders(),
             body: body,
           )
           .timeout(const Duration(seconds: 45));

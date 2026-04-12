@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 
 import '../config/api_config.dart';
@@ -16,6 +17,15 @@ class ChatService {
     try {
       final request = http.Request('POST', Uri.parse(url));
       request.headers['content-type'] = 'application/json';
+
+      // Attach Firebase ID token for backend auth
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        try {
+          final token = await user.getIdToken();
+          request.headers['authorization'] = 'Bearer $token';
+        } catch (_) {}
+      }
 
       final messages = history
           .map((m) => {'role': m.role, 'content': m.content})

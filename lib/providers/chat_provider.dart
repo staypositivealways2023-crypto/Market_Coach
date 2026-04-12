@@ -6,23 +6,28 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/chat_message.dart';
 import '../models/chat_session.dart';
 import '../services/chat_service.dart';
+import '../services/jarvis_service.dart';
 import '../services/subscription_service.dart';
 import 'subscription_provider.dart';
 
 const _kSessionsKey = 'chat_sessions_v1';
 const _kMaxSessions = 20; // keep last 20 conversations
 
+enum ChatEngine { claude, jarvis }
+
 class ChatState {
   final List<ChatMessage> messages;
   final bool isStreaming;
   final List<ChatSession> sessions;
   final bool limitReached;
+  final ChatEngine engine;
 
   const ChatState({
     required this.messages,
     this.isStreaming = false,
     this.sessions = const [],
     this.limitReached = false,
+    this.engine = ChatEngine.claude,
   });
 
   ChatState copyWith({
@@ -30,12 +35,14 @@ class ChatState {
     bool? isStreaming,
     List<ChatSession>? sessions,
     bool? limitReached,
+    ChatEngine? engine,
   }) =>
       ChatState(
         messages: messages ?? this.messages,
         isStreaming: isStreaming ?? this.isStreaming,
         sessions: sessions ?? this.sessions,
         limitReached: limitReached ?? this.limitReached,
+        engine: engine ?? this.engine,
       );
 }
 
@@ -47,6 +54,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
 
   final SubscriptionService? subscriptionService;
   final _service = ChatService();
+  final _jarvis = JarvisService();
 
   // ── Persistence ────────────────────────────────────────────────────────────
 
@@ -74,6 +82,13 @@ class ChatNotifier extends StateNotifier<ChatState> {
   }
 
   // ── Public API ──────────────────────────────────────────────────────────────
+
+  void toggleEngine() {
+    final next = state.engine == ChatEngine.claude
+        ? ChatEngine.jarvis
+        : ChatEngine.claude;
+    state = state.copyWith(engine: next);
+  }
 
   void clearLimitReached() {
     state = state.copyWith(limitReached: false);
@@ -118,16 +133,37 @@ class ChatNotifier extends StateNotifier<ChatState> {
     );
 
     try {
-      await for (final chunk in _service.streamMessage(history)) {
+      if (state.engine == ChatEngine.jarvis) {
+        // Jarvis: single blocking HTTP call to local Ollama API
+        final response = await _jarvis.ask(text.trim(), history);
         final msgs = state.messages;
-        final last = msgs.last;
         state = state.copyWith(
           messages: [
             ...msgs.sublist(0, msgs.length - 1),
-            last.copyWith(content: last.content + chunk),
+            msgs.last.copyWith(content: response),
           ],
         );
+      } else {
+        // Claude: streaming response
+        await for (final chunk in _service.streamMessage(history)) {
+          final msgs = state.messages;
+          final last = msgs.last;
+          state = state.copyWith(
+            messages: [
+              ...msgs.sublist(0, msgs.length - 1),
+              last.copyWith(content: last.content + chunk),
+            ],
+          );
+        }
       }
+    } catch (e) {
+      final msgs = state.messages;
+      state = state.copyWith(
+        messages: [
+          ...msgs.sublist(0, msgs.length - 1),
+          msgs.last.copyWith(content: 'Error: $e'),
+        ],
+      );
     } finally {
       state = state.copyWith(isStreaming: false);
     }

@@ -11,7 +11,7 @@ Orchestrates all 5 intelligence layers:
 """
 
 from datetime import datetime, timezone
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, Request
 import logging
 
 from app.services.data_fetcher import MarketDataFetcher
@@ -26,7 +26,9 @@ from app.services.claude_service import ClaudeService
 from app.services.fred_service import FredService
 from app.utils.prompt_builder import PromptBuilder
 from app.utils.cache import cache_manager
-from app.models.signals import AnalyseResponse
+from app.utils.auth import require_auth
+from app.utils.rate_limit import limiter
+from app.models.signals import AnalyseResponse, Scenarios, ScenarioCase
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -49,10 +51,13 @@ _CACHE_TTL = 3600
 
 @router.post("/analyse/{symbol}", response_model=AnalyseResponse)
 @router.get("/analyse/{symbol}", response_model=AnalyseResponse)
+@limiter.limit("10/minute")
 async def analyse_symbol(
+    request: Request,
     symbol: str,
     interval: str = "1d",
     user_level: str = "beginner",
+    uid: str = Depends(require_auth),
 ):
     """
     Full 5-layer analysis for a symbol.
@@ -112,6 +117,9 @@ async def analyse_symbol(
         current_price=quote.price if quote else None,
         interval=interval,
     )
+
+    # ── Scenario probabilities (computed from score + ATR targets) ───────────
+    scenarios = _build_scenarios(signals, prediction)
 
     # ── Layer 4: News sentiment ───────────────────────────────────────────────
     news = []
@@ -182,6 +190,9 @@ async def analyse_symbol(
         result = await _claude_svc.generate_analysis(system_prompt, user_prompt)
         analysis_text = result["analysis_text"]
         tokens_used   = result["tokens_used"]
+        # Upgrade scenario theses with Claude-generated ones (extracted from tail of response)
+        if scenarios:
+            scenarios = _apply_claude_theses(scenarios, analysis_text)
     except Exception as e:
         logger.error(f"[analyse] Claude synthesis failed for {symbol}: {e}")
 
@@ -194,6 +205,7 @@ async def analyse_symbol(
             prediction=prediction,
             correlation=correlation,
             patterns=patterns,
+            scenarios=scenarios,
             analysis=analysis_text,
             timestamp=datetime.now(timezone.utc).isoformat(),
             is_cached=False,
@@ -205,6 +217,85 @@ async def analyse_symbol(
         logger.error(f"[analyse] Failed to build AnalyseResponse for {symbol}: {e}", exc_info=True)
         from fastapi import HTTPException as _HTTPException
         raise _HTTPException(status_code=500, detail=f"Signal engine response build failed: {e}")
+
+
+def _build_scenarios(signals, prediction) -> "Scenarios | None":
+    """Compute bull/base/bear scenario probabilities and price targets from signal score + ATR prediction."""
+    if prediction is None:
+        return None
+
+    score = signals.composite_score
+    if score > 0.3:
+        bull_p, base_p, bear_p = 50, 35, 15
+    elif score >= 0:
+        bull_p, base_p, bear_p = 35, 45, 20
+    elif score >= -0.3:
+        bull_p, base_p, bear_p = 20, 45, 35
+    else:
+        bull_p, base_p, bear_p = 15, 35, 50
+
+    cs = signals.candlestick
+    pattern_ctx = cs.pattern or "current setup"
+
+    return Scenarios(
+        bull=ScenarioCase(
+            probability=bull_p,
+            price_target=round(prediction.price_target_high, 4),
+            thesis=f"Price breaks higher as {pattern_ctx} confirms with expanding volume.",
+        ),
+        base=ScenarioCase(
+            probability=base_p,
+            price_target=round(prediction.price_target_base, 4),
+            thesis=f"Price consolidates near current level; signal drift toward the {signals.signal_label.value.lower().replace('_', ' ')} case.",
+        ),
+        bear=ScenarioCase(
+            probability=bear_p,
+            price_target=round(prediction.price_target_low, 4),
+            thesis=f"Support fails and {pattern_ctx} reverses as selling pressure increases.",
+        ),
+    )
+
+
+def _apply_claude_theses(scenarios: "Scenarios", analysis_text: str) -> "Scenarios":
+    """
+    Replace default theses with Claude-generated ones extracted from the
+    BULL_THESIS / BASE_THESIS / BEAR_THESIS lines at the end of the analysis.
+    Returns the original scenarios unchanged if no theses are found.
+    """
+    import re
+    bull = base = bear = ""
+    for line in analysis_text.splitlines():
+        line = line.strip()
+        m = re.match(r"BULL_THESIS:\s*(.+)", line)
+        if m:
+            bull = m.group(1).strip()
+        m = re.match(r"BASE_THESIS:\s*(.+)", line)
+        if m:
+            base = m.group(1).strip()
+        m = re.match(r"BEAR_THESIS:\s*(.+)", line)
+        if m:
+            bear = m.group(1).strip()
+
+    if not (bull or base or bear):
+        return scenarios  # Claude didn't include theses — keep defaults
+
+    return Scenarios(
+        bull=ScenarioCase(
+            probability=scenarios.bull.probability,
+            price_target=scenarios.bull.price_target,
+            thesis=bull or scenarios.bull.thesis,
+        ),
+        base=ScenarioCase(
+            probability=scenarios.base.probability,
+            price_target=scenarios.base.price_target,
+            thesis=base or scenarios.base.thesis,
+        ),
+        bear=ScenarioCase(
+            probability=scenarios.bear.probability,
+            price_target=scenarios.bear.price_target,
+            thesis=bear or scenarios.bear.thesis,
+        ),
+    )
 
 
 def _build_fallback_analysis(symbol: str, signals) -> str:

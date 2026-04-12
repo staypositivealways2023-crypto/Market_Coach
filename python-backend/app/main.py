@@ -1,16 +1,21 @@
 """FastAPI Application Entry Point"""
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import logging
 
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+
 from app.routers import internal, market, indicators, analysis, macro, news, earnings, fundamentals, portfolio
 from app.routers import analyse as analyse_router
 from app.routers import chat as chat_router
+from app.routers import voice as voice_router
 from app.config import settings
 from app.utils.logger import setup_logger
+from app.utils.rate_limit import limiter
 
 # Setup logging
 logger = setup_logger(__name__)
@@ -37,6 +42,10 @@ app = FastAPI(
     openapi_url="/api/openapi.json",
 )
 
+# Rate limiting
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -58,6 +67,7 @@ app.include_router(fundamentals.router, prefix="/api/fundamentals", tags=["Funda
 app.include_router(analyse_router.router, prefix="/api", tags=["Signal Engine"])
 app.include_router(portfolio.router, prefix="/api/portfolio", tags=["Portfolio"])
 app.include_router(chat_router.router, prefix="/api", tags=["Chat"])
+app.include_router(voice_router.router, prefix="/api/voice", tags=["Voice Coach"])
 
 
 @app.get("/")

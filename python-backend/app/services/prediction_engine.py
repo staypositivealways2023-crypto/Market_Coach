@@ -98,19 +98,23 @@ class PredictionEngine:
 
         detected_pattern = signals.candlestick.pattern if signals.candlestick else None
         if detected_pattern:
+            # Normalize display name → table key: "Bearish Engulfing" → "BEARISH_ENGULFING"
+            pattern_key = detected_pattern.upper().replace(" ", "_")
             svc = get_backtest_service()
-            bt = svc.lookup(detected_pattern, interval)
+            bt = svc.lookup(pattern_key, interval)
             if bt:
-                backtest_win_rate   = bt.get("win_rate")
+                backtest_win_rate     = bt.get("win_rate")
                 backtest_sample_count = bt.get("sample_count")
                 raw_gain = bt.get("avg_gain_pct")
                 if raw_gain is not None:
-                    backtest_avg_gain_pct = abs(raw_gain)  # always positive magnitude
-                backtest_pattern_key = detected_pattern
+                    backtest_avg_gain_pct = abs(raw_gain)
+                backtest_pattern_key = detected_pattern  # keep display name for UI
                 logger.info(
-                    f"[prediction] Backtest hit: {detected_pattern}/{interval} "
+                    f"[prediction] Backtest hit: {detected_pattern} ({pattern_key}/{interval}) "
                     f"win_rate={backtest_win_rate} samples={backtest_sample_count}"
                 )
+            else:
+                logger.debug(f"[prediction] No backtest data for {pattern_key}/{interval}")
 
         if backtest_win_rate is not None:
             # Blend: 70% backtest + 30% signal strength (signal may deviate from historical)

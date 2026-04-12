@@ -61,6 +61,7 @@ class _TradeDebriefSheetState extends ConsumerState<TradeDebriefSheet> {
   Future<String> _callClaude() async {
     final action = widget.isBuy ? 'BUY' : 'SELL';
     final sig = widget.signalAnalysis;
+    final ind = sig?.signals.indicators;
     final text = await BackendService().getTradeDebrief(
       symbol: widget.symbol,
       action: action,
@@ -68,6 +69,11 @@ class _TradeDebriefSheetState extends ConsumerState<TradeDebriefSheet> {
       price: widget.price,
       compositeScore: sig?.compositeScore,
       trend: sig?.signals.candlestick.signal,
+      rsiValue: ind?.rsiValue,
+      rsiSignal: ind?.rsiSignal,
+      macdSignal: ind?.macdSignal,
+      patternName: sig?.signals.candlestick.pattern,
+      emaStack: ind?.emaStack,
     );
     if (text == null) throw Exception('Debrief unavailable');
     return text;

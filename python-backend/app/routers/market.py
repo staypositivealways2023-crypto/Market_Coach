@@ -4,8 +4,16 @@ from fastapi import APIRouter, HTTPException, Query
 from typing import List, Optional
 import asyncio
 import logging
+import math
 
-from app.services.data_fetcher import MarketDataFetcher
+import yfinance as yf
+
+from app.services.data_fetcher import (
+    MarketDataFetcher,
+    _is_crypto_symbol,
+    _to_yfinance_symbol,
+    _YF_SEMAPHORE,
+)
 from app.models.stock import Quote, Candle, StockInfo
 from app.utils.cache import cache_manager
 
@@ -14,6 +22,38 @@ router = APIRouter()
 
 # Service instance
 data_fetcher = MarketDataFetcher()
+
+
+async def _get_crypto_year_range(symbol: str) -> dict:
+    """
+    52-week high/low for a crypto symbol via yfinance fast_info.
+    Uses fast_info (Yahoo v7/quote endpoint) — much faster than downloading 365 daily candles.
+    """
+    def _sync():
+        try:
+            yf_sym = _to_yfinance_symbol(symbol)
+            fi = yf.Ticker(yf_sym).fast_info
+
+            def _clean(v):
+                if v is None:
+                    return None
+                try:
+                    f = float(v)
+                    return None if (math.isnan(f) or math.isinf(f) or f <= 0) else f
+                except (TypeError, ValueError):
+                    return None
+
+            return {
+                "year_high": _clean(getattr(fi, "year_high", None)),
+                "year_low":  _clean(getattr(fi, "year_low",  None)),
+            }
+        except Exception as e:
+            logger.warning(f"[crypto year range] {symbol}: {e}")
+            return {"year_high": None, "year_low": None}
+
+    async with _YF_SEMAPHORE:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, _sync)
 
 
 @router.get("/quote/{symbol}", response_model=Quote)
@@ -116,29 +156,39 @@ async def get_price_range(symbol: str):
     if cached:
         return cached
 
-    # Fetch quote (day high/low) + 365 days of daily candles (year range) in parallel
-    quote, candles = await asyncio.gather(
-        data_fetcher.get_quote(sym),
-        data_fetcher.get_candles(sym, interval="1d", limit=365),
-    )
-
-    year_high = max((c.high for c in candles), default=None) if candles else None
-    year_low  = min((c.low  for c in candles), default=None) if candles else None
-
-    # day high/low: prefer quote fields; fall back to most recent candle
-    # (yfinance crypto quotes sometimes omit dayHigh/dayLow)
-    day_high = quote.high if quote else None
-    day_low  = quote.low  if quote else None
-    if (day_high is None or day_low is None) and candles:
-        last = candles[-1]
-        day_high = day_high or last.high
-        day_low  = day_low  or last.low
+    if _is_crypto_symbol(sym):
+        # Crypto path: Binance quote already has 24h high/low; use yfinance fast_info for
+        # 52-week range (much faster than downloading 365 daily candles via yfinance).
+        quote, year_range = await asyncio.gather(
+            data_fetcher.get_quote(sym),
+            _get_crypto_year_range(sym),
+        )
+        day_high  = quote.high if quote else None
+        day_low   = quote.low  if quote else None
+        year_high = year_range.get("year_high")
+        year_low  = year_range.get("year_low")
+        candles   = []  # not fetched for crypto
+    else:
+        # Stock path: existing candle-based logic unchanged
+        quote, candles = await asyncio.gather(
+            data_fetcher.get_quote(sym),
+            data_fetcher.get_candles(sym, interval="1d", limit=365),
+        )
+        year_high = max((c.high for c in candles), default=None) if candles else None
+        year_low  = min((c.low  for c in candles), default=None) if candles else None
+        day_high  = quote.high if quote else None
+        day_low   = quote.low  if quote else None
+        if (day_high is None or day_low is None) and candles:
+            last = candles[-1]
+            day_high = day_high or last.high
+            day_low  = day_low  or last.low
 
     logger.info(
         f"[range] {sym} → price={quote.price if quote else None} "
         f"day_high={day_high} day_low={day_low} "
         f"year_high={year_high} year_low={year_low} "
-        f"candles={len(candles)} quote={'ok' if quote else 'MISSING'}"
+        f"candles={len(candles)} quote={'ok' if quote else 'MISSING'} "
+        f"crypto={_is_crypto_symbol(sym)}"
     )
     if not quote:
         logger.warning(f"[range] {sym} → quote missing — all providers failed for this symbol")

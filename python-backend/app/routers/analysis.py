@@ -1,6 +1,6 @@
 """Analysis Router - AI-powered market analysis endpoints"""
 
-from fastapi import APIRouter, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from datetime import datetime
 from typing import Optional
 import logging
@@ -15,6 +15,8 @@ from app.services.structured_analysis_service import StructuredAnalysisService
 from app.utils.prompt_builder import PromptBuilder
 from app.utils.cache import cache_manager
 from app.utils.analysis_rate_limiter import analysis_rate_limiter
+from app.utils.auth import require_auth
+from app.utils.rate_limit import limiter
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -230,10 +232,16 @@ class TradeDebriefRequest(BaseModel):
     price: float
     composite_score: Optional[float] = None
     trend: Optional[str] = None
+    rsi_value: Optional[float] = None
+    rsi_signal: Optional[str] = None   # OVERSOLD | NEUTRAL | OVERBOUGHT
+    macd_signal: Optional[str] = None  # BULLISH | BEARISH | BULLISH_CROSS | BEARISH_CROSS
+    pattern_name: Optional[str] = None # e.g. DOJI, HAMMER, ENGULFING
+    ema_stack: Optional[str] = None    # PRICE_ABOVE_ALL | MIXED | PRICE_BELOW_ALL etc.
 
 
 @router.post("/trade-debrief")
-async def trade_debrief(req: TradeDebriefRequest):
+@limiter.limit("20/minute")
+async def trade_debrief(request: Request, req: TradeDebriefRequest, uid: str = Depends(require_auth)):
     """
     Generate a 3-sentence AI debrief for a completed paper trade.
     Keeps the Claude API key server-side — never exposed to the Flutter binary.
@@ -241,16 +249,33 @@ async def trade_debrief(req: TradeDebriefRequest):
     if not settings.ANTHROPIC_API_KEY:
         raise HTTPException(status_code=503, detail="AI service not configured on server.")
 
-    score_str = (
-        f"Composite score: {req.composite_score:.1f}, Trend: {req.trend}."
-        if req.composite_score is not None and req.trend
-        else ""
+    # Build indicator context string from available fields
+    ctx_parts = []
+    if req.composite_score is not None:
+        ctx_parts.append(f"composite score {req.composite_score:.1f}/100")
+    if req.trend:
+        ctx_parts.append(f"candlestick trend {req.trend}")
+    if req.pattern_name:
+        ctx_parts.append(f"pattern: {req.pattern_name}")
+    if req.rsi_value is not None and req.rsi_signal:
+        ctx_parts.append(f"RSI {req.rsi_value:.1f} ({req.rsi_signal})")
+    elif req.rsi_signal:
+        ctx_parts.append(f"RSI signal: {req.rsi_signal}")
+    if req.macd_signal:
+        ctx_parts.append(f"MACD: {req.macd_signal}")
+    if req.ema_stack:
+        ctx_parts.append(f"EMA stack: {req.ema_stack}")
+
+    indicator_ctx = (
+        f"Signal context at trade time — {', '.join(ctx_parts)}."
+        if ctx_parts else ""
     )
+
     prompt = (
         f"In 3 sentences max, explain whether market signals supported or "
         f"contradicted this {req.action} of {req.shares:.4f} "
         f"{req.symbol.upper()} at ${req.price:.2f}. "
-        f"{score_str} Include sentiment and momentum context."
+        f"{indicator_ctx} Include sentiment and momentum context."
     )
 
     try:

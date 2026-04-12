@@ -641,6 +641,8 @@ class _StockDetailScreenEnhancedState extends ConsumerState<StockDetailScreenEnh
                                   } else {
                                     if (ctx.mounted) Navigator.pop(ctx);
                                     if (mounted) {
+                                      ref.invalidate(paperHoldingsProvider);
+                                      ref.invalidate(paperAccountProvider);
                                       ref.invalidate(iqScoreProvider);
                                       showModalBottomSheet(
                                         context: context,
@@ -1013,12 +1015,15 @@ class _StockDetailScreenEnhancedState extends ConsumerState<StockDetailScreenEnh
               ),
             ),
 
-          // Correlation card (Phase 5) — news × price scenario + fundamentals
-          if (_signalAnalysis?.correlation != null)
+          // Scenario card — Bull / Base / Bear probability tiles
+          if (_signalAnalysis?.scenarios != null)
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
-                child: _CorrelationCard(correlation: _signalAnalysis!.correlation!),
+                child: _ScenarioCard(
+                  scenarios: _signalAnalysis!.scenarios!,
+                  currentPrice: _signalAnalysis?.prediction?.priceCurrent,
+                ),
               ),
             ),
 
@@ -2493,13 +2498,15 @@ class _SignalBadge extends StatelessWidget {
   }
 
   (Color, Color) _labelColors(String label) {
+    const green = Color(0xFF12A28C);
+    const amber = Color(0xFFF5A623);
     switch (label) {
-      case 'STRONG_BUY': return (Colors.white, const Color(0xFF0D7A3E));
-      case 'BUY':        return (const Color(0xFF12A28C), const Color(0xFF12A28C).withValues(alpha: 0.18));
-      case 'NEUTRAL':    return (const Color(0xFFF5A623), const Color(0xFFF5A623).withValues(alpha: 0.15));
-      case 'STRONG_SELL': return (Colors.white, const Color(0xFF8B1A1A));
-      case 'SELL':       return (Colors.redAccent, Colors.redAccent.withValues(alpha: 0.18));
-      default:           return (Colors.white60, Colors.white12);
+      case 'STRONG_BUY':  return (green, const Color(0xFF0D7A3E));
+      case 'BUY':         return (green, green.withValues(alpha: 0.18));
+      case 'NEUTRAL':     return (amber, amber.withValues(alpha: 0.15));
+      case 'STRONG_SELL': return (Colors.redAccent, const Color(0xFF8B1A1A));
+      case 'SELL':        return (Colors.redAccent, Colors.redAccent.withValues(alpha: 0.18));
+      default:            return (Colors.white60, Colors.white12);
     }
   }
 
@@ -2803,23 +2810,15 @@ class _StatCell extends StatelessWidget {
   }
 }
 
-// ── Correlation Card (Phase 5) ────────────────────────────────────────────────
+// ── Scenario Card (Bull / Base / Bear) ───────────────────────────────────────
 
-class _CorrelationCard extends StatelessWidget {
-  final CorrelationResult correlation;
-  const _CorrelationCard({required this.correlation});
+class _ScenarioCard extends StatelessWidget {
+  final Scenarios scenarios;
+  final double? currentPrice;
+  const _ScenarioCard({required this.scenarios, this.currentPrice});
 
   @override
   Widget build(BuildContext context) {
-    final c = correlation;
-    final sentColor = c.sentimentLabel == 'positive'
-        ? const Color(0xFF12A28C)
-        : c.sentimentLabel == 'negative'
-            ? Colors.redAccent
-            : Colors.white54;
-
-    final scenarioColor = _scenarioColor(c.scenario);
-
     return GlassCard(
       padding: const EdgeInsets.all(14),
       child: Column(
@@ -2828,172 +2827,166 @@ class _CorrelationCard extends StatelessWidget {
           // Header
           Row(
             children: [
-              Icon(Icons.newspaper_outlined, color: Colors.white54, size: 15),
+              const Icon(Icons.fork_right_outlined, color: Colors.white54, size: 15),
               const SizedBox(width: 6),
               const Text(
-                'News × Price Correlation',
+                'Scenario Analysis',
                 style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600),
               ),
               const Spacer(),
-              // Sentiment chip
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: sentColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: sentColor.withValues(alpha: 0.35)),
-                ),
-                child: Text(
-                  c.sentimentLabel.toUpperCase(),
-                  style: TextStyle(color: sentColor, fontSize: 10, fontWeight: FontWeight.w700),
-                ),
+              const Text(
+                'Bull · Base · Bear',
+                style: TextStyle(color: Colors.white30, fontSize: 10),
               ),
             ],
           ),
-
           const SizedBox(height: 10),
 
-          // Scenario label + description
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-            decoration: BoxDecoration(
-              color: scenarioColor.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: scenarioColor.withValues(alpha: 0.25)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          // Three tiles side by side
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  c.scenarioLabel,
-                  style: TextStyle(color: scenarioColor, fontSize: 12, fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  c.scenarioDescription,
-                  style: const TextStyle(color: Colors.white54, fontSize: 11),
-                ),
+                Expanded(child: _ScenarioTile(
+                  label: 'BULL',
+                  sc: scenarios.bull,
+                  color: const Color(0xFF12A28C),
+                  currentPrice: currentPrice,
+                )),
+                const SizedBox(width: 6),
+                Expanded(child: _ScenarioTile(
+                  label: 'BASE',
+                  sc: scenarios.base,
+                  color: const Color(0xFF4A9EDB),
+                  currentPrice: currentPrice,
+                )),
+                const SizedBox(width: 6),
+                Expanded(child: _ScenarioTile(
+                  label: 'BEAR',
+                  sc: scenarios.bear,
+                  color: Colors.redAccent,
+                  currentPrice: currentPrice,
+                )),
               ],
             ),
           ),
-
-          // High-impact flags
-          if (c.highImpactFlags.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 6,
-              runSpacing: 4,
-              children: c.highImpactFlags.map((flag) => Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                decoration: BoxDecoration(
-                  color: Colors.amber.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
-                ),
-                child: Text(
-                  flag,
-                  style: const TextStyle(color: Colors.amber, fontSize: 10, fontWeight: FontWeight.w600),
-                ),
-              )).toList(),
-            ),
-          ],
-
-          // Top headlines
-          if (c.topHeadlines.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            ...c.topHeadlines.map((h) => Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('•  ', style: TextStyle(color: Colors.white30, fontSize: 11)),
-                  Expanded(
-                    child: Text(
-                      h,
-                      style: const TextStyle(color: Colors.white38, fontSize: 11),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-            )),
-          ],
-
-          // Fundamental score (stocks only)
-          if (c.fundamentalScore != null) ...[
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                const Text(
-                  'Fundamental Score',
-                  style: TextStyle(color: Colors.white54, fontSize: 11),
-                ),
-                const Spacer(),
-                Text(
-                  '${c.fundamentalScore}/100',
-                  style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(width: 6),
-                _GradeChip(grade: c.fundamentalGrade ?? '?'),
-              ],
-            ),
-            const SizedBox(height: 6),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(3),
-              child: LinearProgressIndicator(
-                value: (c.fundamentalScore ?? 0) / 100.0,
-                minHeight: 4,
-                backgroundColor: Colors.white10,
-                valueColor: AlwaysStoppedAnimation<Color>(
-                  _gradeColor(c.fundamentalGrade ?? '?'),
-                ),
-              ),
-            ),
-            if (c.fundamentalSignals.isNotEmpty) ...[
-              const SizedBox(height: 6),
-              ...c.fundamentalSignals.take(3).map((sig) => Padding(
-                padding: const EdgeInsets.only(bottom: 3),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('•  ', style: TextStyle(color: Colors.white24, fontSize: 10)),
-                    Expanded(
-                      child: Text(
-                        sig,
-                        style: const TextStyle(color: Colors.white38, fontSize: 10),
-                      ),
-                    ),
-                  ],
-                ),
-              )),
-            ],
-          ],
         ],
       ),
     );
   }
+}
 
-  Color _scenarioColor(String scenario) {
-    if (scenario.contains('BULLISH') || scenario == 'QUIET_RISING' || scenario == 'POSITIVE_FLAT') {
-      return const Color(0xFF12A28C);
-    }
-    if (scenario.contains('BEARISH') || scenario == 'QUIET_FALLING' || scenario == 'NEGATIVE_FLAT') {
-      return Colors.redAccent;
-    }
-    return Colors.white54;
-  }
+// ── Scenario Tile ─────────────────────────────────────────────────────────────
 
-  Color _gradeColor(String grade) {
-    switch (grade) {
-      case 'A': return const Color(0xFF12A28C);
-      case 'B': return Colors.lightGreenAccent;
-      case 'C': return Colors.amber;
-      case 'D': return Colors.orange;
-      default:  return Colors.redAccent;
-    }
+class _ScenarioTile extends StatelessWidget {
+  final String label;          // BULL | BASE | BEAR
+  final ScenarioCase sc;
+  final Color color;
+  final double? currentPrice;
+
+  const _ScenarioTile({
+    required this.label,
+    required this.sc,
+    required this.color,
+    this.currentPrice,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Compute % change from current price to target
+    final pctStr = currentPrice != null && currentPrice! > 0
+        ? '${((sc.priceTarget - currentPrice!) / currentPrice! * 100).toStringAsFixed(1)}%'
+        : null;
+
+    // Format price target compactly
+    final targetStr = sc.priceTarget >= 1000
+        ? '\$${(sc.priceTarget / 1000).toStringAsFixed(1)}k'
+        : '\$${sc.priceTarget.toStringAsFixed(2)}';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // Label chip
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text(
+              label,
+              style: TextStyle(
+                color: color,
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+
+          // Probability
+          Text(
+            '${sc.probability}%',
+            style: TextStyle(
+              color: color,
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              height: 1.1,
+            ),
+          ),
+          Text(
+            'probability',
+            style: const TextStyle(color: Colors.white30, fontSize: 9),
+          ),
+          const SizedBox(height: 6),
+
+          // Price target
+          Text(
+            targetStr,
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          if (pctStr != null)
+            Text(
+              pctStr,
+              style: TextStyle(
+                color: color.withValues(alpha: 0.8),
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          const SizedBox(height: 8),
+
+          // Thesis
+          Text(
+            sc.thesis,
+            style: const TextStyle(
+              color: Colors.white54,
+              fontSize: 10,
+              height: 1.35,
+            ),
+            textAlign: TextAlign.center,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
   }
 }
+
+// ── Grade Chip ────────────────────────────────────────────────────────────────
 
 class _GradeChip extends StatelessWidget {
   final String grade;
