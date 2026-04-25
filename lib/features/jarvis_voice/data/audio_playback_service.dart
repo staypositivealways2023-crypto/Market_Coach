@@ -2,6 +2,7 @@ import 'dart:collection';
 import 'dart:developer' as dev;
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_pcm_sound/flutter_pcm_sound.dart';
 
 /// Plays raw PCM16 audio chunks received from the OpenAI Realtime WebSocket.
@@ -24,6 +25,10 @@ class AudioPlaybackService {
 
   /// Initialise the PCM sound engine. Call once before [feed].
   Future<void> start() async {
+    if (kIsWeb) {
+      dev.log('[AudioPlayback] Web platform — PCM playback not available, transcripts still work', name: 'AudioPlayback');
+      return;
+    }
     if (_started) return;
     try {
       await FlutterPcmSound.setup(
@@ -43,7 +48,7 @@ class AudioPlaybackService {
 
   /// Feed raw PCM16 bytes (little-endian Int16) to the playback buffer.
   void feed(List<int> pcm16Bytes) {
-    if (!_started) return;
+    if (kIsWeb || !_started) return;
     _buffer.add(Uint8List.fromList(pcm16Bytes));
     if (!_playing) {
       _playing = true;

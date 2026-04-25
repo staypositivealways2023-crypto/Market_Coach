@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:developer' as dev;
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:record/record.dart';
 
 /// Captures microphone audio as PCM16 mono 24 kHz chunks and exposes them
@@ -15,8 +16,12 @@ class AudioCaptureService {
   static const _sampleRate = 24000;
   static const _channels = 1;
 
-  final AudioRecorder _recorder = AudioRecorder();
+  // Nullable + lazy: created on first start(), nulled on dispose().
+  // This prevents PlatformException when dispose() is called before start()
+  // (e.g. from Riverpod autoDispose on a provider that was never used).
+  AudioRecorder? _recorder;
   StreamSubscription<Uint8List>? _sub;
+  bool _disposed = false;
 
   final _chunkController = StreamController<Uint8List>.broadcast();
 
@@ -29,33 +34,55 @@ class AudioCaptureService {
   ///
   /// Throws if microphone permission is denied or the recorder fails to start.
   Future<void> start() async {
-    if (_sub != null) return; // already recording
-
-    final hasPermission = await _recorder.hasPermission();
-    if (!hasPermission) {
-      throw Exception('Microphone permission denied');
+    if (kIsWeb) {
+      dev.log('[AudioCapture] Web platform — mic stream not available', name: 'AudioCapture');
+      return;
+    }
+    if (_disposed) {
+      dev.log('[AudioCapture] start() called on disposed service — aborting', name: 'AudioCapture');
+      return;
+    }
+    if (_sub != null) {
+      dev.log('[AudioCapture] already recording, skipping start()', name: 'AudioCapture');
+      return;
     }
 
-    final stream = await _recorder.startStream(
+    // Lazy-create the recorder each session. This avoids reusing a recorder
+    // that was previously stopped/disposed.
+    _recorder ??= AudioRecorder();
+    dev.log('[AudioCapture] AudioRecorder created (lazy)', name: 'AudioCapture');
+
+    final alreadyGranted = await _recorder!.hasPermission();
+    dev.log('[AudioCapture] hasPermission=$alreadyGranted', name: 'AudioCapture');
+
+    dev.log('[AudioCapture] calling startStream (PCM16 24kHz mono)…', name: 'AudioCapture');
+    final stream = await _recorder!.startStream(
       const RecordConfig(
         encoder: AudioEncoder.pcm16bits,
         sampleRate: _sampleRate,
         numChannels: _channels,
-        // Auto gain control + noise suppression for cleaner voice
         autoGain: true,
         echoCancel: true,
         noiseSuppress: true,
       ),
     );
+    dev.log('[AudioCapture] startStream succeeded — recorder is live', name: 'AudioCapture');
 
+    var _chunkCount = 0;
     _sub = stream.listen(
-      (bytes) => _chunkController.add(bytes),
+      (bytes) {
+        _chunkCount++;
+        if (_chunkCount <= 3 || _chunkCount % 50 == 0) {
+          dev.log('[AudioCapture] chunk #$_chunkCount — ${bytes.length} bytes', name: 'AudioCapture');
+        }
+        _chunkController.add(bytes);
+      },
       onError: (e) {
         dev.log('[AudioCapture] stream error: $e', name: 'AudioCapture');
         _chunkController.addError(e);
       },
       onDone: () {
-        dev.log('[AudioCapture] stream done', name: 'AudioCapture');
+        dev.log('[AudioCapture] stream done (total chunks: $_chunkCount)', name: 'AudioCapture');
         _sub = null;
       },
     );
@@ -68,14 +95,26 @@ class AudioCaptureService {
     await _sub?.cancel();
     _sub = null;
     try {
-      await _recorder.stop();
+      await _recorder?.stop();
     } catch (_) {}
-    dev.log('[AudioCapture] stopped', name: 'AudioCapture');
+    // Null out the recorder so start() creates a fresh one next session.
+    try {
+      await _recorder?.dispose();
+    } catch (e) {
+      dev.log('[AudioCapture] recorder.dispose() in stop: $e', name: 'AudioCapture');
+    }
+    _recorder = null;
+    dev.log('[AudioCapture] stopped + recorder nulled', name: 'AudioCapture');
   }
 
   void dispose() {
-    stop();
-    _chunkController.close();
-    _recorder.dispose();
+    if (_disposed) {
+      dev.log('[AudioCapture] dispose() called again — ignoring (already disposed)', name: 'AudioCapture');
+      return;
+    }
+    _disposed = true;
+    dev.log('[AudioCapture] dispose()', name: 'AudioCapture');
+    stop(); // stop() already disposes and nulls _recorder
+    if (!_chunkController.isClosed) _chunkController.close();
   }
 }

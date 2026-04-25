@@ -2,27 +2,31 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as dev;
 
-import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '../../../../config/api_config.dart';
 import 'models/voice_session_bootstrap.dart';
 
 /// OpenAI Realtime API WebSocket connection manager.
 ///
-/// Architecture:
-///   Flutter opens WS directly to OpenAI using the ephemeral token returned
-///   by the backend session bootstrap.  The backend never handles raw audio.
+/// Architecture (updated — backend proxy):
+///   Flutter connects to the MarketCoach backend proxy endpoint
+///   (/api/voice/realtime/ws).  The backend forwards traffic to OpenAI,
+///   adding the Authorization header server-side.
+///
+///   This approach works on ALL platforms including Flutter Web / Chrome,
+///   where IOWebSocketChannel (dart:io) is unavailable and browsers cannot
+///   send custom headers during the WebSocket handshake.
 ///
 /// Audio format: PCM16 mono 24kHz (OpenAI default).
 /// Tool calls flow through the backend: see JarvisRepository.invokeTool().
 ///
 /// Usage:
-///   1. Call connect(bootstrap) to open the WS
+///   1. Call connect(bootstrap, firebaseToken) to open the WS
 ///   2. Listen to onTranscriptDelta, onToolCallReceived, onAssistantSpeaking
 ///   3. On tool call received: call backend → send function_call_output back
 ///   4. Call close() when the session ends
 class JarvisRealtimeService {
-  static const _wsBase = 'wss://api.openai.com/v1/realtime';
 
   WebSocketChannel? _channel;
   StreamSubscription? _sub;
@@ -49,30 +53,46 @@ class JarvisRealtimeService {
 
   // ── Connection ─────────────────────────────────────────────────────────────
 
-  Future<void> connect(VoiceSessionBootstrap bootstrap) async {
+  /// Connect to the backend WebSocket proxy.
+  ///
+  /// [firebaseToken] is the current user's Firebase ID token — passed as a
+  /// URL query param (browsers and all mobile platforms support this).
+  /// The backend verifies the token and forwards traffic to OpenAI.
+  Future<void> connect(VoiceSessionBootstrap bootstrap, String firebaseToken) async {
     if (_channel != null) {
       dev.log('[Realtime] Already connected — closing previous session', name: 'JarvisRealtime');
       await close();
     }
 
-    final uri = Uri.parse('$_wsBase?model=${bootstrap.openaiModel}');
-    dev.log('[Realtime] Connecting to $uri', name: 'JarvisRealtime');
-
-    // IOWebSocketChannel is required on mobile to pass Authorization headers.
-    // WebSocketChannel.connect() silently drops custom headers on Android/iOS.
-    _channel = IOWebSocketChannel.connect(
-      uri,
-      headers: {
-        'Authorization': 'Bearer ${bootstrap.openaiEphemeralToken}',
-        'OpenAI-Beta': 'realtime=v1',
-      },
-      protocols: ['realtime'],
+    // Build proxy URL — token in query param (works on web + mobile)
+    final encodedToken = Uri.encodeQueryComponent(firebaseToken);
+    final proxyUri = Uri.parse(
+      '${APIConfig.backendWsUrl}/api/voice/realtime/ws'
+      '?token=$encodedToken'
+      '&model=${Uri.encodeQueryComponent(bootstrap.openaiModel)}',
     );
 
-    // Wait for the socket handshake to complete before sending events.
-    await _channel!.ready.catchError((_) {});
-    await _authenticate();
+    dev.log('[Realtime] ② connecting to backend proxy: ${proxyUri.host}${proxyUri.path}', name: 'JarvisRealtime');
 
+    // WebSocketChannel.connect() is platform-adaptive:
+    //   Mobile/Desktop → uses dart:io WebSocket
+    //   Web (Chrome)   → uses browser WebSocket
+    // No custom headers needed — token travels in the URL.
+    _channel = WebSocketChannel.connect(proxyUri);
+
+    // Wait for handshake — MUST rethrow so startSession() can catch it.
+    // The previous catchError() swallowed the error, hiding connection failures.
+    try {
+      await _channel!.ready;
+      dev.log('[Realtime] ② WebSocket handshake OK', name: 'JarvisRealtime');
+    } catch (e) {
+      dev.log('[Realtime] ② WebSocket handshake FAILED: $e', name: 'JarvisRealtime');
+      _channel = null;
+      rethrow; // propagate to startSession() catch block
+    }
+
+    // ⚠️  Register listener BEFORE sending session.update so we never miss
+    // the session.created confirmation or any early error from OpenAI.
     _sub = _channel!.stream.listen(
       _onMessage,
       onError: (e) {
@@ -80,10 +100,16 @@ class JarvisRealtimeService {
         _errorController.add('WebSocket error: $e');
       },
       onDone: () {
-        dev.log('[Realtime] WS closed', name: 'JarvisRealtime');
+        // WS closed — surface as an error so the UI exits "Listening" state.
+        dev.log('[Realtime] WS closed by remote', name: 'JarvisRealtime');
         _speakingController.add(false);
+        _errorController.add('__ws_closed__'); // sentinel consumed by notifier
+        _channel = null;
       },
     );
+
+    await _authenticate();
+    dev.log('[Realtime] ② session.update sent', name: 'JarvisRealtime');
   }
 
   Future<void> _authenticate() async {
@@ -120,6 +146,14 @@ class JarvisRealtimeService {
     dev.log('[Realtime] event: $type', name: 'JarvisRealtime');
 
     switch (type) {
+      // OpenAI Realtime handshake confirmations — log so they appear in devtools
+      case 'session.created':
+        dev.log('[Realtime] session.created — OpenAI session is live', name: 'JarvisRealtime');
+        break;
+      case 'session.updated':
+        dev.log('[Realtime] session.updated — VAD + modalities confirmed', name: 'JarvisRealtime');
+        break;
+
       // Transcript streaming
       case 'response.audio_transcript.delta':
         final delta = event['delta'] as String? ?? '';

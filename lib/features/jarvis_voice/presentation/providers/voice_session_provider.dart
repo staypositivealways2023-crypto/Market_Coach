@@ -80,6 +80,7 @@ class VoiceSessionNotifier extends StateNotifier<VoiceSessionState> {
   final List<Map<String, dynamic>> _transcriptTurns = [];
   final Stopwatch _sessionTimer = Stopwatch();
   final List<StreamSubscription> _subs = [];
+  bool _isDisposed = false;
 
   // ── Session lifecycle ──────────────────────────────────────────────────────
 
@@ -89,8 +90,20 @@ class VoiceSessionNotifier extends StateNotifier<VoiceSessionState> {
     String? activeLessonId,
     String screenContext = '',
   }) async {
+    dev.log(
+      '[VoiceSessionNotifier] Session create requested '
+      'mode=${mode.value} state=${state.connectionState.name} '
+      'session=${state.sessionId ?? 'none'}',
+      name: 'Voice',
+    );
+
     if (state.connectionState == VoiceConnectionState.connecting ||
         state.connectionState == VoiceConnectionState.connected) {
+      dev.log(
+        '[VoiceSessionNotifier] Existing session found. '
+        'Reusing session ${state.sessionId ?? '(connecting)'}',
+        name: 'Voice',
+      );
       return;
     }
 
@@ -102,8 +115,11 @@ class VoiceSessionNotifier extends StateNotifier<VoiceSessionState> {
       clearError: true,
     );
 
+    String? createdSessionId;
+
     try {
       // 1. Bootstrap via backend
+      dev.log('[VoiceSessionNotifier] ① createSession → HTTP POST to backend', name: 'Voice');
       final bootstrap = await _repo.createSession(
         _user,
         mode: mode,
@@ -111,20 +127,50 @@ class VoiceSessionNotifier extends StateNotifier<VoiceSessionState> {
         activeSymbol: activeSymbol,
         activeLessonId: activeLessonId,
       );
+      createdSessionId = bootstrap.sessionId;
+      dev.log('[VoiceSessionNotifier] ① createSession OK — sessionId=${bootstrap.sessionId}', name: 'Voice');
 
-      // 2. Connect WebSocket to OpenAI Realtime
-      await _realtime.connect(bootstrap);
+      if (_isDisposed) {
+        await _cleanupOrphanedSession(
+          createdSessionId,
+          reason: 'notifier_disposed_after_create',
+        );
+        return;
+      }
 
-      // 3. Start audio I/O
-      await _playback.start();
-      await _capture.start();
+      // 2. Connect via backend proxy WebSocket (works on all platforms)
+      dev.log('[VoiceSessionNotifier] ② getIdToken + connect WebSocket…', name: 'Voice');
+      final firebaseToken = await _user.getIdToken() ?? '';
+      await _realtime.connect(bootstrap, firebaseToken);
+      dev.log('[VoiceSessionNotifier] ② WebSocket connected OK', name: 'Voice');
 
-      // 4. Wire realtime event streams (including audio piping)
+      // 3. Wire ALL event streams FIRST — before audio services start.
+      //    Audio capture begins producing chunks immediately on start(); if
+      //    _wireStreams() runs after, those first chunks are never sent to OpenAI.
+      //    Similarly the WS disconnect sentinel (__ws_closed__) must be handled
+      //    before we start playing/recording.
       _wireStreams(bootstrap.sessionId);
+      dev.log('[VoiceSessionNotifier] ③ streams wired', name: 'Voice');
+
+      // 4. Start audio I/O after streams are live
+      dev.log('[VoiceSessionNotifier] ④ starting AudioPlaybackService…', name: 'Voice');
+      await _playback.start();
+      dev.log('[VoiceSessionNotifier] ④ AudioPlaybackService started', name: 'Voice');
+      dev.log('[VoiceSessionNotifier] ⑤ starting AudioCaptureService…', name: 'Voice');
+      await _capture.start();
+      dev.log('[VoiceSessionNotifier] ⑤ AudioCaptureService started — mic is live', name: 'Voice');
 
       _sessionTimer
         ..reset()
         ..start();
+
+      if (_isDisposed) {
+        await _cleanupOrphanedSession(
+          createdSessionId,
+          reason: 'notifier_disposed_during_start',
+        );
+        return;
+      }
 
       state = state.copyWith(
         connectionState: VoiceConnectionState.connected,
@@ -134,19 +180,30 @@ class VoiceSessionNotifier extends StateNotifier<VoiceSessionState> {
       dev.log('[VoiceSessionNotifier] Session started: ${bootstrap.sessionId}', name: 'Voice');
     } on VoiceLimitReachedException catch (e) {
       dev.log('[VoiceSessionNotifier] Limit reached: $e', name: 'Voice');
+      if (_isDisposed) return;
       state = state.copyWith(
         connectionState: VoiceConnectionState.idle,
         isLimitReached: true,
         errorMessage: e.message,
       );
     } on VoiceSessionConflictException catch (e) {
-      dev.log('[VoiceSessionNotifier] Session conflict: $e', name: 'Voice');
+      dev.log('[VoiceSessionNotifier] Existing session found on backend: $e', name: 'Voice');
+      if (_isDisposed) return;
       state = state.copyWith(
         connectionState: VoiceConnectionState.error,
         errorMessage: 'Another session is already active. Please wait a moment and try again.',
       );
     } catch (e) {
       dev.log('[VoiceSessionNotifier] Start failed: $e', name: 'Voice');
+      if (createdSessionId != null) {
+        await _cleanupOrphanedSession(
+          createdSessionId,
+          reason: 'start_failed',
+        );
+      } else {
+        await _closeLocalSessionResources();
+      }
+      if (_isDisposed) return;
       state = state.copyWith(
         connectionState: VoiceConnectionState.error,
         errorMessage: 'Failed to start voice session: $e',
@@ -165,13 +222,11 @@ class VoiceSessionNotifier extends StateNotifier<VoiceSessionState> {
 
     final sessionId = state.sessionId;
 
-    for (final sub in _subs) {
-      await sub.cancel();
+    if (sessionId != null) {
+      dev.log('[VoiceSessionNotifier] Closing session $sessionId', name: 'Voice');
     }
-    _subs.clear();
-    await _capture.stop();
-    await _playback.stop();
-    await _realtime.close();
+
+    await _closeLocalSessionResources();
 
     if (sessionId != null) {
       await _repo.endSession(
@@ -184,7 +239,10 @@ class VoiceSessionNotifier extends StateNotifier<VoiceSessionState> {
 
     state = const VoiceSessionState(); // Reset to idle
     _transcriptTurns.clear();
-    dev.log('[VoiceSessionNotifier] Session ended', name: 'Voice');
+    dev.log(
+      '[VoiceSessionNotifier] Session closed ${sessionId ?? '(local only)'}',
+      name: 'Voice',
+    );
   }
 
   void setMode(VoiceMode mode) {
@@ -220,12 +278,20 @@ class VoiceSessionNotifier extends StateNotifier<VoiceSessionState> {
 
     // Speaking state
     _subs.add(_realtime.onAssistantSpeaking.listen((speaking) {
+      if (_isDisposed) return;
       state = state.copyWith(isAssistantSpeaking: speaking);
     }));
 
-    // Errors
+    // Errors + WS disconnect sentinel
     _subs.add(_realtime.onError.listen((msg) {
-      state = state.copyWith(errorMessage: msg);
+      if (_isDisposed) return;
+      if (msg == '__ws_closed__') {
+        // OpenAI closed the WebSocket — end the session so UI exits Listening state.
+        dev.log('[VoiceSessionNotifier] WS closed by remote — ending session', name: 'Voice');
+        endSession();
+      } else {
+        state = state.copyWith(errorMessage: msg);
+      }
     }));
 
     // Interruption — user started speaking while assistant was talking
@@ -238,6 +304,7 @@ class VoiceSessionNotifier extends StateNotifier<VoiceSessionState> {
   }
 
   void _onTranscriptDelta(String role, String delta) {
+    if (_isDisposed) return;
     final transcript = List<TranscriptItem>.from(state.transcript);
 
     // Append to existing item if same role, else start a new item
@@ -268,6 +335,7 @@ class VoiceSessionNotifier extends StateNotifier<VoiceSessionState> {
   }
 
   Future<void> _onToolCallReceived(String sessionId, ToolCallEvent event) async {
+    if (_isDisposed) return;
     dev.log('[VoiceSessionNotifier] Tool call: ${event.name}', name: 'Voice');
 
     // Add a tool badge to the transcript
@@ -290,7 +358,7 @@ class VoiceSessionNotifier extends StateNotifier<VoiceSessionState> {
 
     // Update active symbol from result if present
     final symbol = result['symbol'] as String?;
-    if (symbol != null) {
+    if (!_isDisposed && symbol != null) {
       state = state.copyWith(activeSymbol: symbol);
     }
 
@@ -298,13 +366,73 @@ class VoiceSessionNotifier extends StateNotifier<VoiceSessionState> {
     _realtime.sendToolResult(event.callId, result);
   }
 
+  Future<void> _closeLocalSessionResources() async {
+    for (final sub in _subs) {
+      await sub.cancel();
+    }
+    _subs.clear();
+    await _capture.stop();
+    await _playback.stop();
+    await _realtime.close();
+    _sessionTimer.stop();
+  }
+
+  Future<void> _cleanupOrphanedSession(
+    String sessionId, {
+    required String reason,
+  }) async {
+    dev.log(
+      '[VoiceSessionNotifier] Existing session found. '
+      'Closing/replacing orphaned session $sessionId reason=$reason',
+      name: 'Voice',
+    );
+    await _closeLocalSessionResources();
+    await _repo.endSession(
+      _user,
+      sessionId: sessionId,
+      transcriptTurns: List.from(_transcriptTurns),
+      voiceSeconds: _sessionTimer.elapsed.inSeconds.toDouble(),
+    );
+    _transcriptTurns.clear();
+    _sessionTimer.reset();
+    dev.log('[VoiceSessionNotifier] Session replaced $sessionId', name: 'Voice');
+  }
+
   @override
   void dispose() {
+    _isDisposed = true;
+    final sessionId = state.sessionId;
+    final shouldReleaseBackendSession =
+        sessionId != null &&
+        (state.connectionState == VoiceConnectionState.connected ||
+            state.connectionState == VoiceConnectionState.connecting ||
+            state.connectionState == VoiceConnectionState.ending);
+
     for (final sub in _subs) {
-      sub.cancel();
+      unawaited(sub.cancel());
     }
-    _capture.dispose();
-    _playback.stop();
+    _subs.clear();
+    _sessionTimer.stop();
+    if (shouldReleaseBackendSession) {
+      dev.log(
+        '[VoiceSessionNotifier] Provider disposed with active session. '
+        'Closing session $sessionId',
+        name: 'Voice',
+      );
+      unawaited(
+        _repo.endSession(
+          _user,
+          sessionId: sessionId,
+          transcriptTurns: List.from(_transcriptTurns),
+          voiceSeconds: _sessionTimer.elapsed.inSeconds.toDouble(),
+        ),
+      );
+    }
+    // stop() not dispose() — audioCaptureServiceProvider.ref.onDispose owns
+    // the single true dispose. Calling dispose() here too causes double
+    // _recorder.dispose() → PlatformException.
+    unawaited(_capture.stop());
+    unawaited(_playback.stop());
     _realtime.dispose();
     super.dispose();
   }
