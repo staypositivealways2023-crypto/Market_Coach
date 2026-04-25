@@ -56,7 +56,11 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
       }
 
       if (mounted) {
-        Navigator.of(context).pop();
+        // Only pop if we were pushed on top of something.
+        // When used as the root screen, let the auth stream drive navigation.
+        if (Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        }
         if (widget.isUpgrade) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(

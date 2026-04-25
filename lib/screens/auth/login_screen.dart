@@ -16,6 +16,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
+  bool _isGuestLoading = false;
   bool _obscurePassword = true;
 
   @override
@@ -37,7 +38,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         password: _passwordController.text,
       );
 
-      if (mounted) {
+      // Only pop if we were pushed on top of something (e.g. from GuestGate).
+      // When LoginScreen is the root home:, canPop() is false and the auth
+      // state stream drives navigation automatically via MarketCoachApp.
+      if (mounted && Navigator.of(context).canPop()) {
         Navigator.of(context).pop();
       }
     } catch (e) {
@@ -51,6 +55,26 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _handleGuestSignIn() async {
+    setState(() => _isGuestLoading = true);
+    try {
+      final authService = ref.read(authServiceProvider);
+      await authService.signInAnonymously();
+      // Auth state change drives navigation — no pop needed.
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Guest sign-in failed: ${e.toString().replaceFirst('Exception: ', '')}'),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isGuestLoading = false);
     }
   }
 
@@ -290,6 +314,61 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ),
                     ],
                   ),
+
+                  const SizedBox(height: 8),
+
+                  // Divider
+                  Row(children: [
+                    Expanded(child: Divider(color: Colors.white.withOpacity(0.12))),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Text('or', style: TextStyle(color: Colors.white.withOpacity(0.35), fontSize: 13)),
+                    ),
+                    Expanded(child: Divider(color: Colors.white.withOpacity(0.12))),
+                  ]),
+
+                  const SizedBox(height: 12),
+
+                  // Continue as Guest
+                  OutlinedButton(
+                    onPressed: (_isLoading || _isGuestLoading) ? null : _handleGuestSignIn,
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      side: BorderSide(color: Colors.white.withOpacity(0.25)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: _isGuestLoading
+                        ? const SizedBox(
+                            height: 18,
+                            width: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white54),
+                          )
+                        : const Text(
+                            'Continue as Guest',
+                            style: TextStyle(
+                              color: Colors.white54,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // Guest disclaimer
+                  Text(
+                    'Guests can browse charts and one lesson.\nSign up free for full access.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.28),
+                      fontSize: 11,
+                      height: 1.5,
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
                 ],
               ),
             ),
