@@ -1,3 +1,10 @@
+// DEMO DATA — Static placeholder values for UI development and screenshots.
+// These prices are NOT real-time and are intentionally approximate.
+// They must NOT be used for investment decisions.
+//
+// To replace with live data: wire the relevant screen to a Firestore/API provider
+// instead of referencing these mock constants.
+
 import '../models/analysis_highlight.dart';
 import '../models/lesson.dart';
 import '../models/market_index.dart';

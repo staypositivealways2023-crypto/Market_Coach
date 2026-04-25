@@ -62,6 +62,8 @@ class SignalAnalysis {
   final PatternScanResult? patterns;
   final Scenarios? scenarios;
   final String analysis;
+  final String? coachingNudge;    // Phase 2 — Dean Agent coaching nudge
+  final String? coachingLessonId; // Phase 3 — GuidedLesson.id to navigate to
   final String timestamp;
   final bool isCached;
   final int tokensUsed;
@@ -75,6 +77,8 @@ class SignalAnalysis {
     this.patterns,
     this.scenarios,
     required this.analysis,
+    this.coachingNudge,
+    this.coachingLessonId,
     required this.timestamp,
     this.isCached = false,
     this.tokensUsed = 0,
@@ -97,10 +101,12 @@ class SignalAnalysis {
       scenarios:   json['scenarios'] != null
           ? Scenarios.fromJson(json['scenarios'] as Map<String, dynamic>)
           : null,
-      analysis:    json['analysis'] as String,
-      timestamp:   json['timestamp'] as String,
-      isCached:    json['is_cached'] as bool? ?? false,
-      tokensUsed:  json['tokens_used'] as int? ?? 0,
+      analysis:      json['analysis'] as String,
+      coachingNudge:    json['coaching_nudge'] as String?,
+      coachingLessonId: json['coaching_lesson_id'] as String?,
+      timestamp:        json['timestamp'] as String,
+      isCached:      json['is_cached'] as bool? ?? false,
+      tokensUsed:    json['tokens_used'] as int? ?? 0,
     );
   }
 

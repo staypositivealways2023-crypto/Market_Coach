@@ -88,6 +88,16 @@ class NewsArticleItem {
     }
   }
 
+  String get formattedDate {
+    try {
+      final dt = DateTime.parse(publishedAt).toLocal();
+      const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      return '${months[dt.month - 1]} ${dt.day}, ${dt.year}';
+    } catch (_) {
+      return publishedAt.length > 10 ? publishedAt.substring(0, 10) : publishedAt;
+    }
+  }
+
   String get timeAgo {
     try {
       final dt = DateTime.parse(publishedAt).toLocal();
