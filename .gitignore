@@ -93,3 +93,16 @@ python-backend/*.log
 __pycache__/
 *.py[cod]
 *$py.class
+
+# ChromaDB vector database — runtime data, not source
+python-backend/chroma_data/
+
+# Stray empty files created by shell scripts
+/flutter
+/adb
+/Get
+/Process
+/Run
+
+# Android build artifacts
+/android/build/
