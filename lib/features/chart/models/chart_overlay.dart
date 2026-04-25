@@ -27,10 +27,18 @@ class OverlayData {
   final List<SRLine> srLines;
   final dynamic patterns; // PatternScanResult?
 
+  /// VWAP values aligned 1:1 to candle indices. Null list = no VWAP overlay.
+  final List<double?>? vwapLine;
+
+  /// Live price for the horizontal dashed current-price line. Null = hidden.
+  final double? currentPriceLine;
+
   const OverlayData({
     this.maLines = const [],
     this.bollinger,
     this.srLines = const [],
     this.patterns,
+    this.vwapLine,
+    this.currentPriceLine,
   });
 }

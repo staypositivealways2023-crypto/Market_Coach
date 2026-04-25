@@ -19,6 +19,11 @@ import '../../../services/technical_analysis_service.dart';
 import '../../../services/pattern_recognition_service.dart';
 import '../../../services/backend_service.dart';
 import '../../../utils/crypto_helper.dart';
+import '../../../widgets/coaching_nudge_card.dart';
+import '../../../widgets/guest_gate.dart';
+import '../../../providers/auth_provider.dart';
+import '../../lesson_engine/lessons/lesson_registry.dart';
+import '../../lesson_engine/screens/guided_lesson_screen.dart';
 import '../../../widgets/glass_card.dart';
 import '../../../widgets/macro_card.dart';
 import '../../../widgets/chart/advanced_indicator_settings.dart';
@@ -30,12 +35,18 @@ import '../../../widgets/price_range_bar.dart';
 import '../../../providers/analysis_provider.dart';
 import '../../../providers/portfolio_provider.dart';
 import '../../../providers/paper_trading_provider.dart';
+import '../../../providers/watchlist_service_provider.dart';
 import '../../../screens/analysis/_enhanced_analysis_display.dart';
 import '../controllers/chart_controller.dart';
 import '../models/chart_overlay.dart';
 import '../widgets/market_chart.dart';
 import '../widgets/timeframe_selector.dart';
 import '../widgets/chart_toolbar.dart';
+import '../../../widgets/crew_analysis_sheet.dart';
+import '../../../widgets/realtime/price_hero_widget.dart';
+import '../../../widgets/realtime/market_position_widget.dart';
+import '../../../widgets/realtime/money_flow_widget.dart';
+import '../../../widgets/realtime/order_book_widget.dart';
 
 /// Drop-in replacement for StockDetailScreenEnhanced using native CustomPainter charts.
 class AssetChartScreen extends ConsumerStatefulWidget {
@@ -54,7 +65,9 @@ class AssetChartScreen extends ConsumerStatefulWidget {
   ConsumerState<AssetChartScreen> createState() => _AssetChartScreenState();
 }
 
-class _AssetChartScreenState extends ConsumerState<AssetChartScreen> {
+class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
+    with TickerProviderStateMixin {
+  late TabController _tabController;
   final _candleService = BinanceCandleService();
   final _quoteService = BinanceQuoteService();
   final _backendService = BackendService();
@@ -62,10 +75,10 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen> {
 
   StreamSubscription<List<Candle>>? _candleSubscription;
   StreamSubscription<Map<String, Quote>>? _quoteSubscription;
+  Timer? _stockQuoteTimer;
 
   List<Candle> _candles = [];
   Quote? _liveQuote;
-  bool _isWatchlisted = false;
   bool _hasError = false;
   bool _isLoading = false;
   String? _errorMessage;
@@ -79,6 +92,7 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen> {
   // Indicator settings
   MAType _maType = MAType.none;
   bool _showBollingerBands = false;
+  bool _showVWAP = false;
   SRType _srType = SRType.none;
   SubChartType _subChartType = SubChartType.rsi;
 
@@ -108,6 +122,7 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen> {
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 5, vsync: this);
     _showRSI = widget.initialShowRSI;
     _showMACD = widget.initialShowMACD;
     // Keep subChartType in sync with initial show flags
@@ -131,7 +146,10 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen> {
       _fetchStockCandles();
     }
     _fetchMarketRange();
-    if (!widget.stock.isCrypto) _fetchFundamentals();
+    if (!widget.stock.isCrypto) {
+      _fetchFundamentals();
+      _startStockQuotePolling();
+    }
   }
 
   Future<void> _fetchMarketRange() async {
@@ -143,6 +161,31 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen> {
     final data = await _backendService.getFundamentals(widget.stock.ticker);
     if (mounted && data != null) setState(() => _fundamentals = data);
   }
+
+  void _startStockQuotePolling() {
+    _stockQuoteTimer?.cancel();
+    _pollStockQuote(); // immediate first fetch
+    _stockQuoteTimer = Timer.periodic(const Duration(seconds: 30), (_) => _pollStockQuote());
+  }
+
+  Future<void> _pollStockQuote() async {
+    if (!mounted) return;
+    try {
+      final data = await _backendService.getQuote(widget.stock.ticker);
+      if (mounted && data != null) {
+        final price = (data['price'] as num?)?.toDouble();
+        final changePct = (data['change_percent'] as num?)?.toDouble();
+        if (price != null) {
+          setState(() => _liveQuote = Quote(
+            symbol: widget.stock.ticker,
+            price: price,
+            changePercent: changePct ?? 0.0,
+          ));
+        }
+      }
+    } catch (_) {}
+  }
+
 
   Future<void> _fetchMacroOverview() async {
     final data = await _backendService.getMacroOverview();
@@ -234,12 +277,6 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen> {
     if (raw.isNotEmpty) candles = raw.map((r) => Candle.fromMap(r)).toList();
 
     if (candles.isEmpty) {
-      final av = AlphaVantageCandleService();
-      final all = await av.fetchDailyCandles(widget.stock.ticker, days: 400);
-      if (all.isNotEmpty) candles = all.length > limit ? all.sublist(all.length - limit) : all;
-    }
-
-    if (candles.isEmpty) {
       final yf = YahooFinanceCandleService();
       candles = await yf.fetchCandles(widget.stock.ticker, interval: interval, range: yfRange);
     }
@@ -264,12 +301,27 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen> {
     }
   }
 
-  void _toggleWatchlist() {
-    setState(() => _isWatchlisted = !_isWatchlisted);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(_isWatchlisted ? 'Added to watchlist' : 'Removed from watchlist'),
-      duration: const Duration(seconds: 1),
-    ));
+  Future<void> _toggleWatchlist() async {
+    final service = ref.read(watchlistServiceProvider);
+    try {
+      final nowInList = await service.toggleWatchlist(widget.stock.ticker);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(nowInList
+              ? '${widget.stock.ticker} added to watchlist'
+              : '${widget.stock.ticker} removed from watchlist'),
+          duration: const Duration(seconds: 1),
+        ));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Could not update watchlist'),
+          backgroundColor: Colors.redAccent,
+          duration: Duration(seconds: 2),
+        ));
+      }
+    }
   }
 
   OverlayData _buildOverlays() {
@@ -307,11 +359,19 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen> {
       fibs.forEach((k, v) => srLines.add(SRLine(price: v, color: Colors.purple, label: k)));
     }
 
+    final vwapLine = _showVWAP
+        ? TechnicalAnalysisService.calculateVWAP(_candles)
+        : null;
+
+    final currentPriceLine = _liveQuote?.price ?? widget.stock.price;
+
     return OverlayData(
       maLines: maLines,
       bollinger: bollinger,
       srLines: srLines,
       patterns: _signalAnalysis?.patterns,
+      vwapLine: vwapLine,
+      currentPriceLine: currentPriceLine,
     );
   }
 
@@ -786,6 +846,7 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen> {
 
   @override
   void dispose() {
+    _tabController.dispose();
     _candleSubscription?.cancel();
     _quoteSubscription?.cancel();
     _candleService.dispose();
@@ -803,6 +864,12 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen> {
     if (_analysisRequested) {
       analysisAsync = ref.watch(aiAnalysisProvider(widget.stock.ticker));
     }
+
+    final currentUser = ref.watch(currentUserProvider);
+    final isGuest = currentUser == null || currentUser.isAnonymous;
+
+    // Live watchlist state — streams from Firestore for guests it's always false.
+    final isWatchlisted = ref.watch(isInWatchlistProvider(widget.stock.ticker)).valueOrNull ?? false;
 
     final displayPrice = _liveQuote?.price ?? widget.stock.price;
     final displayChange = _liveQuote?.changePercent ?? widget.stock.changePercent;
@@ -826,10 +893,10 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen> {
             tooltip: _inPortfolio ? 'In portfolio — tap to edit' : 'Add to portfolio',
           ),
           IconButton(
-            icon: Icon(_isWatchlisted ? Icons.bookmark : Icons.bookmark_border,
-                color: _isWatchlisted ? colorScheme.primary : Colors.white70),
+            icon: Icon(isWatchlisted ? Icons.bookmark : Icons.bookmark_border,
+                color: isWatchlisted ? colorScheme.primary : Colors.white70),
             onPressed: _toggleWatchlist,
-            tooltip: _isWatchlisted ? 'Remove from watchlist' : 'Add to watchlist',
+            tooltip: isWatchlisted ? 'Remove from watchlist' : 'Add to watchlist',
           ),
           const SizedBox(width: 8),
         ],
@@ -874,44 +941,111 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen> {
           ]),
         ),
       ),
-      body: CustomScrollView(
-        physics: const BouncingScrollPhysics(),
-        slivers: [
-          // ── Asset Header ──
+      body: Column(
+        children: [
+          // ── Decision Strip (pinned — always visible) ─────────────────────
+          _DecisionStrip(
+            price: displayPrice,
+            changePercent: displayChange,
+            signalAnalysis: _signalAnalysis,
+            signalLoading: _signalLoading,
+          ),
+
+          // ── Data latency badge (stocks only) ─────────────────────────────
+          if (!widget.stock.isCrypto)
+            Container(
+              color: const Color(0xFF0D131A),
+              padding: const EdgeInsets.only(left: 16, bottom: 6),
+              child: const Row(children: [
+                Icon(Icons.access_time, size: 10, color: Color(0xFF8A95A3)),
+                SizedBox(width: 3),
+                Text('Market data ~15 min delayed',
+                    style: TextStyle(color: Color(0xFF8A95A3), fontSize: 9.5)),
+              ]),
+            ),
+
+          // ── Tab bar ───────────────────────────────────────────────────────
+          Container(
+            color: const Color(0xFF0D131A),
+            child: TabBar(
+              controller: _tabController,
+              isScrollable: true,
+              tabAlignment: TabAlignment.start,
+              labelColor: const Color(0xFF12A28C),
+              unselectedLabelColor: const Color(0xFF8A95A3),
+              labelStyle: const TextStyle(
+                  fontSize: 12.5, fontWeight: FontWeight.w600),
+              unselectedLabelStyle: const TextStyle(
+                  fontSize: 12.5, fontWeight: FontWeight.w500),
+              indicatorColor: const Color(0xFF12A28C),
+              indicatorWeight: 2,
+              dividerColor: Colors.white10,
+              tabs: const [
+                Tab(text: 'Overview'),
+                Tab(text: 'Technical'),
+                Tab(text: 'Fundamental'),
+                Tab(text: 'Flow'),
+                Tab(text: 'Macro'),
+              ],
+            ),
+          ),
+
+          // ── Tab content ───────────────────────────────────────────────────
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                _buildOverviewTab(isGuest, theme, colorScheme, analysisAsync),
+                _buildTechnicalTab(isGuest, rsiValues, macdData),
+                _buildFundamentalTab(isGuest, theme, colorScheme, analysisAsync),
+                _buildFlowTab(),
+                _buildMacroTab(isGuest),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // TAB BUILDERS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // ── Tab 0: Overview ─────────────────────────────────────────────────────
+  // Scenario cards, price targets, coaching nudge, correlation sentiment.
+  Widget _buildOverviewTab(
+    bool isGuest,
+    ThemeData theme,
+    ColorScheme colorScheme,
+    AsyncValue<EnhancedAIAnalysis>? analysisAsync,
+  ) {
+    return CustomScrollView(
+      physics: const BouncingScrollPhysics(),
+      slivers: [
+        const SliverToBoxAdapter(child: SizedBox(height: 12)),
+
+        // Price range bar (open/high/low/close)
+        if (_marketRange != null)
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-              child: _AssetHeader(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: PriceHeroWidget(
                 stock: widget.stock,
-                price: displayPrice,
-                changePercent: displayChange,
-                isPositive: isPositive,
-                changeColor: changeColor,
-                isLive: _liveQuote != null,
+                liveQuote: _liveQuote,
+                marketRange: _marketRange,
               ),
             ),
           ),
 
-          if (_marketRange != null)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                child: PriceRangeBars(range: _marketRange!, isCrypto: widget.stock.isCrypto),
-              ),
-            ),
-
-          if (_fundamentals != null && !widget.stock.isCrypto && _fundamentals!.hasRatios)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
-                child: _FundamentalQuickStats(fundamentals: _fundamentals!),
-              ),
-            ),
-
-          // ── Signal Badge ──
-          SliverToBoxAdapter(
+        // Signal score bar (compact)
+        SliverToBoxAdapter(
+          child: GuestGate(
+            feature: 'AI signal analysis',
+            message: 'Create a free account to unlock AI-powered signal analysis, '
+                'Bull/Base/Bear scenarios, price targets, and coaching nudges.',
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
               child: _SignalBadge(
                 signalAnalysis: _signalAnalysis,
                 isLoading: _signalLoading,
@@ -919,247 +1053,437 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen> {
               ),
             ),
           ),
+        ),
 
-          if (_signalAnalysis?.prediction != null)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
-                child: _PredictionCard(prediction: _signalAnalysis!.prediction!),
+        // Scenario Card (Bull / Base / Bear)
+        if (!isGuest && _signalAnalysis?.scenarios != null)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              child: _ScenarioCard(scenarios: _signalAnalysis!.scenarios!),
+            ),
+          ),
+
+        // Price prediction targets
+        if (!isGuest && _signalAnalysis?.prediction != null)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              child: _PredictionCard(prediction: _signalAnalysis!.prediction!),
+            ),
+          ),
+
+        // Coaching nudge
+        if (!isGuest &&
+            _signalAnalysis?.coachingNudge != null &&
+            _signalAnalysis!.coachingNudge!.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: CoachingNudgeCard(
+                nudge: _signalAnalysis!.coachingNudge!,
+                onLearnMore: _signalAnalysis?.coachingLessonId != null
+                    ? () {
+                        final lesson = LessonRegistry.byId(
+                            _signalAnalysis!.coachingLessonId!);
+                        if (lesson != null && context.mounted) {
+                          Navigator.of(context).push(MaterialPageRoute(
+                            builder: (_) => GuidedLessonScreen(lesson: lesson),
+                            fullscreenDialog: true,
+                          ));
+                        }
+                      }
+                    : null,
               ),
             ),
+          ),
 
-          if (_signalAnalysis?.correlation != null)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
-                child: _CorrelationCard(correlation: _signalAnalysis!.correlation!),
-              ),
+        // Correlation / news sentiment
+        if (!isGuest && _signalAnalysis?.correlation != null)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              child: _CorrelationCard(correlation: _signalAnalysis!.correlation!),
             ),
+          ),
 
-          // Macro card (Phase A) — FRED macro environment + context flags
-          if (_macroOverview != null ||
-              (_signalAnalysis?.correlation?.macroFlags.isNotEmpty ?? false))
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
-                child: MacroCard(
-                  macro: _macroOverview,
-                  macroFlags: _signalAnalysis?.correlation?.macroFlags ?? [],
+        const SliverToBoxAdapter(child: SizedBox(height: 16)),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: _EducationalDisclaimer(),
+          ),
+        ),
+        const SliverToBoxAdapter(child: SizedBox(height: 32)),
+      ],
+    );
+  }
+
+  // ── Tab 1: Technical ────────────────────────────────────────────────────
+  // Chart, timeframe, type, indicators, pattern card, technical highlights.
+  Widget _buildTechnicalTab(
+    bool isGuest,
+    List<double?> rsiValues,
+    Map<String, List<double?>> macdData,
+  ) {
+    return CustomScrollView(
+      physics: const BouncingScrollPhysics(),
+      slivers: [
+        // Chart toolbar row (timeframe + type + gear icon)
+        SliverToBoxAdapter(
+          child: Container(
+            color: const Color(0xFF0D1117),
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+            child: Row(children: [
+              Expanded(
+                child: TimeframeSelector(
+                  selectedTimeframe: _timeframe,
+                  onChanged: _onTimeframeChanged,
+                  isCrypto: isCryptoSymbol(widget.stock.ticker),
                 ),
               ),
-            ),
-
-          if (_signalAnalysis?.patterns != null)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
-                child: _PatternCard(patterns: _signalAnalysis!.patterns!),
+              const SizedBox(width: 8),
+              ChartToolbar(
+                chartType: _chartType,
+                onChartTypeChanged: (t) {
+                  setState(() {
+                    _chartType = t;
+                    _chartController.setChartType(t);
+                  });
+                },
+                onSettingsTap: _showIndicatorSettings,
+                onZoomReset: () => _chartController.resetZoom(),
+                showVWAP: _showVWAP,
+                onVwapToggle: () => setState(() => _showVWAP = !_showVWAP),
+                onDeepAiTap: isGuest
+                    ? null
+                    : () async {
+                        final result = await showCrewAnalysisSheet(
+                          context,
+                          symbol: widget.stock.ticker,
+                          userLevel: 'intermediate',
+                        );
+                        if (result != null && mounted) _fetchSignalAnalysis();
+                      },
               ),
-            ),
+            ]),
+          ),
+        ),
 
-          const SliverToBoxAdapter(child: SizedBox(height: 16)),
+        // Main chart
+        SliverToBoxAdapter(
+          child: Container(
+            color: const Color(0xFF0D1117),
+            child: _hasError
+                ? _buildErrorChart()
+                : (_isLoading || _candles.isEmpty)
+                    ? _buildLoadingChart()
+                    : MarketChart(
+                        key: ValueKey('${widget.stock.ticker}_$_timeframe'),
+                        controller: _chartController,
+                        overlays: _buildOverlays(),
+                        height: _chartHeight,
+                        onPatternTap: _showChartPatternSheet,
+                        rsiValues: rsiValues,
+                        macdLine: macdData['macd'] ?? [],
+                        signalLine: macdData['signal'] ?? [],
+                        histogram: macdData['histogram'] ?? [],
+                        showRSI: _showRSI,
+                        showMACD: _showMACD,
+                      ),
+          ),
+        ),
 
-          // ── Chart Toolbar (timeframe + type + gear) ──
+        // Indicator toggles
+        if (_candles.isNotEmpty)
           SliverToBoxAdapter(
             child: Container(
               color: const Color(0xFF0D1117),
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               child: Row(children: [
-                Expanded(
-                  child: TimeframeSelector(
-                    selectedTimeframe: _timeframe,
-                    onChanged: _onTimeframeChanged,
-                    isCrypto: isCryptoSymbol(widget.stock.ticker),
-                  ),
-                ),
+                _IndicatorToggle(
+                    label: 'RSI',
+                    active: _showRSI,
+                    color: const Color(0xFF4CAF50),
+                    onTap: () => setState(() => _showRSI = !_showRSI)),
                 const SizedBox(width: 8),
-                ChartToolbar(
-                  chartType: _chartType,
-                  onChartTypeChanged: (t) {
-                    setState(() {
-                      _chartType = t;
-                      _chartController.setChartType(t);
-                    });
-                  },
-                  onSettingsTap: _showIndicatorSettings,
-                  onZoomReset: () => _chartController.resetZoom(),
-                ),
+                _IndicatorToggle(
+                    label: 'MACD',
+                    active: _showMACD,
+                    color: const Color(0xFFFFEB3B),
+                    onTap: () => setState(() => _showMACD = !_showMACD)),
+                const SizedBox(width: 8),
+                _IndicatorToggle(
+                    label: 'VWAP',
+                    active: _showVWAP,
+                    color: const Color(0xFF2196F3),
+                    onTap: () => setState(() => _showVWAP = !_showVWAP)),
               ]),
             ),
           ),
 
-          // ── Main CustomPainter Chart ──
-          SliverToBoxAdapter(
-            child: Container(
-              color: const Color(0xFF0D1117),
-              child: _hasError
-                  ? _buildErrorChart()
-                  : (_isLoading || _candles.isEmpty)
-                      ? _buildLoadingChart()
-                      : MarketChart(
-                          key: ValueKey('${widget.stock.ticker}_$_timeframe'),
-                          controller: _chartController,
-                          overlays: _buildOverlays(),
-                          height: _chartHeight,
-                          onPatternTap: _showChartPatternSheet,
-                          rsiValues: rsiValues,
-                          macdLine: macdData['macd'] ?? [],
-                          signalLine: macdData['signal'] ?? [],
-                          histogram: macdData['histogram'] ?? [],
-                          showRSI: _showRSI,
-                          showMACD: _showMACD,
-                        ),
-            ),
-          ),
+        const SliverToBoxAdapter(child: SizedBox(height: 16)),
 
-          // ── Indicator toggles (RSI / MACD) ──
-          if (_candles.isNotEmpty)
-            SliverToBoxAdapter(
-              child: Container(
-                color: const Color(0xFF0D1117),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                child: Row(children: [
-                  _IndicatorToggle(
-                      label: 'RSI', active: _showRSI,
-                      color: const Color(0xFF4CAF50),
-                      onTap: () => setState(() => _showRSI = !_showRSI)),
-                  const SizedBox(width: 8),
-                  _IndicatorToggle(
-                      label: 'MACD', active: _showMACD,
-                      color: const Color(0xFFFFEB3B),
-                      onTap: () => setState(() => _showMACD = !_showMACD)),
-                ]),
-              ),
-            ),
-
-          const SliverToBoxAdapter(child: SizedBox(height: 16)),
-
-          // ── AI Analysis ──
-          if (!_analysisRequested)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: _AnalyseCTACard(onTap: () => setState(() => _analysisRequested = true)),
-              ),
-            )
-          else ...[
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(children: [
-                      Icon(Icons.auto_awesome, color: colorScheme.primary, size: 20),
-                      const SizedBox(width: 8),
-                      Text('AI Analysis', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-                      const Spacer(),
-                      IconButton(
-                        icon: const Icon(Icons.refresh, size: 20),
-                        color: colorScheme.primary,
-                        onPressed: () => ref.invalidate(aiAnalysisProvider(widget.stock.ticker)),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close, size: 20),
-                        color: Colors.white54,
-                        onPressed: () => setState(() => _analysisRequested = false),
-                      ),
-                    ]),
-                    const SizedBox(height: 12),
-                    if (analysisAsync != null)
-                      analysisAsync.when(
-                        loading: () => GlassCard(
-                          padding: const EdgeInsets.symmetric(vertical: 40),
-                          child: Column(children: [
-                            CircularProgressIndicator(color: colorScheme.primary),
-                            const SizedBox(height: 16),
-                            Text('Claude is analysing ${widget.stock.ticker}…',
-                                style: theme.textTheme.bodyMedium?.copyWith(color: Colors.white70)),
-                          ]),
-                        ),
-                        error: (err, _) => GlassCard(
-                          color: Colors.red.withValues(alpha: 0.08),
-                          padding: const EdgeInsets.all(20),
-                          child: Column(children: [
-                            const Icon(Icons.error_outline, color: Colors.redAccent, size: 40),
-                            const SizedBox(height: 12),
-                            Text(err.toString().replaceFirst('Exception: ', ''),
-                                style: theme.textTheme.bodyMedium?.copyWith(color: Colors.white70)),
-                            const SizedBox(height: 16),
-                            ElevatedButton.icon(
-                              icon: const Icon(Icons.refresh),
-                              label: const Text('Retry'),
-                              onPressed: () => ref.invalidate(aiAnalysisProvider(widget.stock.ticker)),
-                            ),
-                          ]),
-                        ),
-                        data: (analysis) => EnhancedAnalysisDisplay(
-                          analysis: analysis,
-                          onRefresh: () => ref.invalidate(aiAnalysisProvider(widget.stock.ticker)),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-
-          const SliverToBoxAdapter(child: SizedBox(height: 16)),
-
-          // ── Coaching Tip ──
-          if (_candles.isNotEmpty)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: CoachingTip(message: _getChartCoachingTip(), icon: Icons.lightbulb_outline),
-              ),
-            ),
-
-          if (_candles.isNotEmpty) const SliverToBoxAdapter(child: SizedBox(height: 24)),
-
-          // ── Fundamentals ──
-          if (_fundamentals != null && _fundamentals!.hasRatios) ...[
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: FundamentalsCard(data: _fundamentals!),
-              ),
-            ),
-            const SliverToBoxAdapter(child: SizedBox(height: 16)),
-          ],
-
-          if (_fundamentals != null && _fundamentals!.quarterlyEps.isNotEmpty)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: EarningsChart(quarters: _fundamentals!.quarterlyEps),
-              ),
-            ),
-
-          const SliverToBoxAdapter(child: SizedBox(height: 24)),
-
-          if (widget.stock.technicalHighlights != null)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: _TechnicalHighlightsSection(highlights: widget.stock.technicalHighlights!),
-              ),
-            ),
-
-          const SliverToBoxAdapter(child: SizedBox(height: 24)),
-
+        // Chart coaching tip
+        if (_candles.isNotEmpty)
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: _EducationalDisclaimer(),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child:
+                  CoachingTip(message: _getChartCoachingTip(), icon: Icons.lightbulb_outline),
             ),
           ),
 
-          const SliverToBoxAdapter(child: SizedBox(height: 40)),
-        ],
-      ),
+        // Pattern card
+        if (!isGuest && _signalAnalysis?.patterns != null)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: _PatternCard(patterns: _signalAnalysis!.patterns!),
+            ),
+          ),
+
+        // Technical highlights
+        if (widget.stock.technicalHighlights != null)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: _TechnicalHighlightsSection(
+                  highlights: widget.stock.technicalHighlights!),
+            ),
+          ),
+
+        const SliverToBoxAdapter(child: SizedBox(height: 32)),
+      ],
     );
   }
+
+  // ── Tab 2: Fundamental ──────────────────────────────────────────────────
+  // Quick stat chips, full ratios, earnings chart, AI Claude analysis.
+  Widget _buildFundamentalTab(
+    bool isGuest,
+    ThemeData theme,
+    ColorScheme colorScheme,
+    AsyncValue<EnhancedAIAnalysis>? analysisAsync,
+  ) {
+    return CustomScrollView(
+      physics: const BouncingScrollPhysics(),
+      slivers: [
+        const SliverToBoxAdapter(child: SizedBox(height: 12)),
+
+        // Quick stat chips (P/E, EPS, ROE …)
+        if (_fundamentals != null && !widget.stock.isCrypto && _fundamentals!.hasRatios)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: _FundamentalQuickStats(fundamentals: _fundamentals!),
+            ),
+          ),
+
+        // Full fundamentals card
+        if (_fundamentals != null && _fundamentals!.hasRatios) ...[
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: FundamentalsCard(data: _fundamentals!),
+            ),
+          ),
+        ],
+
+        // Earnings chart
+        if (_fundamentals != null && _fundamentals!.quarterlyEps.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: EarningsChart(quarters: _fundamentals!.quarterlyEps),
+            ),
+          ),
+
+        // Claude AI analysis (gated CTA → result)
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child: !_analysisRequested
+                ? _AnalyseCTACard(
+                    onTap: () => setState(() => _analysisRequested = true))
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(children: [
+                        Icon(Icons.auto_awesome,
+                            color: colorScheme.primary, size: 18),
+                        const SizedBox(width: 8),
+                        Text('AI Analysis',
+                            style: theme.textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w700)),
+                        const Spacer(),
+                        IconButton(
+                          icon: const Icon(Icons.refresh, size: 18),
+                          color: colorScheme.primary,
+                          onPressed: () => ref
+                              .invalidate(aiAnalysisProvider(widget.stock.ticker)),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close, size: 18),
+                          color: Colors.white54,
+                          onPressed: () =>
+                              setState(() => _analysisRequested = false),
+                        ),
+                      ]),
+                      const SizedBox(height: 10),
+                      if (analysisAsync != null)
+                        analysisAsync.when(
+                          loading: () => GlassCard(
+                            padding: const EdgeInsets.symmetric(vertical: 36),
+                            child: Column(children: [
+                              CircularProgressIndicator(
+                                  color: colorScheme.primary),
+                              const SizedBox(height: 14),
+                              Text(
+                                  'Claude is analysing ${widget.stock.ticker}…',
+                                  style: theme.textTheme.bodyMedium
+                                      ?.copyWith(color: Colors.white70)),
+                            ]),
+                          ),
+                          error: (err, _) => GlassCard(
+                            color: Colors.red.withValues(alpha: 0.08),
+                            padding: const EdgeInsets.all(20),
+                            child: Column(children: [
+                              const Icon(Icons.error_outline,
+                                  color: Colors.redAccent, size: 36),
+                              const SizedBox(height: 10),
+                              Text(
+                                  err
+                                      .toString()
+                                      .replaceFirst('Exception: ', ''),
+                                  style: theme.textTheme.bodyMedium
+                                      ?.copyWith(color: Colors.white70)),
+                              const SizedBox(height: 14),
+                              ElevatedButton.icon(
+                                icon: const Icon(Icons.refresh),
+                                label: const Text('Retry'),
+                                onPressed: () => ref.invalidate(
+                                    aiAnalysisProvider(widget.stock.ticker)),
+                              ),
+                            ]),
+                          ),
+                          data: (analysis) => EnhancedAnalysisDisplay(
+                            analysis: analysis,
+                            onRefresh: () => ref.invalidate(
+                                aiAnalysisProvider(widget.stock.ticker)),
+                          ),
+                        ),
+                    ],
+                  ),
+          ),
+        ),
+
+        const SliverToBoxAdapter(child: SizedBox(height: 32)),
+      ],
+    );
+  }
+
+  // ── Tab 3: Flow ─────────────────────────────────────────────────────────
+  // Market position gauge, money flow bars, order book depth.
+  Widget _buildFlowTab() {
+    return CustomScrollView(
+      physics: const BouncingScrollPhysics(),
+      slivers: [
+        const SliverToBoxAdapter(child: SizedBox(height: 12)),
+
+        // Market position sentiment gauge
+        if (_signalAnalysis != null)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: MarketPositionWidget(
+                signal: _signalAnalysis!,
+                currentPrice: _liveQuote?.price ?? widget.stock.price,
+              ),
+            ),
+          ),
+
+        // Money flow 7-day bars
+        if (_candles.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: MoneyFlowWidget(
+                candles: _candles,
+                isCrypto: widget.stock.isCrypto,
+              ),
+            ),
+          ),
+
+        // Order book depth
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: OrderBookWidget(
+              symbol: widget.stock.ticker,
+              isCrypto: widget.stock.isCrypto,
+              currentPrice: _liveQuote?.price ?? widget.stock.price,
+            ),
+          ),
+        ),
+
+        const SliverToBoxAdapter(child: SizedBox(height: 32)),
+      ],
+    );
+  }
+
+  // ── Tab 4: Macro ────────────────────────────────────────────────────────
+  // FRED macro environment, inflation/rates context, macro flags.
+  Widget _buildMacroTab(bool isGuest) {
+    final hasMacro = _macroOverview != null ||
+        (_signalAnalysis?.correlation?.macroFlags.isNotEmpty ?? false);
+
+    if (isGuest) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(32),
+          child: Text(
+            'Sign in to view macro environment data.',
+            style: TextStyle(color: Color(0xFF8A95A3), fontSize: 14),
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+
+    if (!hasMacro) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(32),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.public_off, color: Color(0xFF8A95A3), size: 36),
+            SizedBox(height: 12),
+            Text('Macro data loading…',
+                style: TextStyle(color: Color(0xFF8A95A3), fontSize: 14)),
+          ]),
+        ),
+      );
+    }
+
+    return CustomScrollView(
+      physics: const BouncingScrollPhysics(),
+      slivers: [
+        const SliverToBoxAdapter(child: SizedBox(height: 12)),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: MacroCard(
+              macro: _macroOverview,
+              macroFlags: _signalAnalysis?.correlation?.macroFlags ?? [],
+            ),
+          ),
+        ),
+        const SliverToBoxAdapter(child: SizedBox(height: 32)),
+      ],
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
 
   Widget _buildLoadingChart() => Container(
     height: 320,
@@ -1685,6 +2009,200 @@ class _InsightCard extends StatelessWidget {
   }
 }
 
+// ── Decision Strip ─────────────────────────────────────────────────────────
+// Pinned top panel: price · % change · AI signal pill · one-line insight.
+// Replaces the combination of PriceHeroWidget + _SignalBadge in the old scroll.
+
+class _DecisionStrip extends StatelessWidget {
+  final double price;
+  final double changePercent;
+  final SignalAnalysis? signalAnalysis;
+  final bool signalLoading;
+
+  const _DecisionStrip({
+    required this.price,
+    required this.changePercent,
+    required this.signalAnalysis,
+    required this.signalLoading,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isPositive = changePercent >= 0;
+    final changeColor =
+        isPositive ? const Color(0xFF2ECC9A) : const Color(0xFFFF5C5C);
+    final changeSign = isPositive ? '+' : '';
+
+    // Derive signal display values
+    final label = signalAnalysis?.signalLabel ?? '';
+    final score = signalAnalysis?.compositeScore ?? 0.0;
+    final insight = signalAnalysis?.correlation?.scenarioDescription;
+
+    final (pillText, pillFg, pillBg) = _pillStyle(label, signalLoading);
+
+    return Container(
+      color: const Color(0xFF0D131A),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Row 1: price + signal pill ──────────────────────────────────
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // Price
+              Text(
+                '\$${price.toStringAsFixed(price >= 1000 ? 2 : price >= 10 ? 2 : 4)}',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 28,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.5,
+                ),
+              ),
+              const SizedBox(width: 10),
+              // % change badge
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: changeColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  '$changeSign${changePercent.toStringAsFixed(2)}%',
+                  style: TextStyle(
+                    color: changeColor,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const Spacer(),
+              // AI signal pill
+              if (signalLoading)
+                Container(
+                  width: 88,
+                  height: 26,
+                  decoration: BoxDecoration(
+                    color: Colors.white10,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                )
+              else
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: pillBg,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 6,
+                        height: 6,
+                        decoration: BoxDecoration(
+                          color: pillFg,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        pillText,
+                        style: TextStyle(
+                          color: pillFg,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.4,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+
+          // ── Row 2: score bar (only when loaded) ─────────────────────────
+          if (!signalLoading && signalAnalysis != null) ...[
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(2),
+              child: LinearProgressIndicator(
+                value: (score.clamp(-1.0, 1.0) + 1.0) / 2.0,
+                minHeight: 2,
+                backgroundColor: Colors.white10,
+                valueColor: AlwaysStoppedAnimation(
+                  score >= 0
+                      ? const Color(0xFF2ECC9A)
+                      : const Color(0xFFFF5C5C),
+                ),
+              ),
+            ),
+          ],
+
+          // ── Row 3: one-line actionable insight ──────────────────────────
+          if (!signalLoading && insight != null && insight.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.lightbulb_outline,
+                    size: 13, color: Color(0xFF8A95A3)),
+                const SizedBox(width: 5),
+                Expanded(
+                  child: Text(
+                    insight,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Color(0xFF8A95A3),
+                      fontSize: 11.5,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+
+          if (signalLoading) ...[
+            const SizedBox(height: 8),
+            Container(
+              height: 10,
+              width: 220,
+              decoration: BoxDecoration(
+                color: Colors.white10,
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// Returns (pillText, foreground color, background color) for the signal label.
+  static (String, Color, Color) _pillStyle(String label, bool loading) {
+    if (loading) return ('…', Colors.white38, Colors.white10);
+    final u = label.toUpperCase();
+    if (u == 'STRONG_BUY') {
+      return ('STRONG BUY', const Color(0xFF12A28C), const Color(0x2012A28C));
+    }
+    if (u == 'BUY') {
+      return ('BUY', const Color(0xFF2ECC9A), const Color(0x2000E676));
+    }
+    if (u == 'STRONG_SELL') {
+      return ('STRONG SELL', const Color(0xFFFF5C5C), const Color(0x20F44336));
+    }
+    if (u == 'SELL') {
+      return ('SELL', const Color(0xFFFF7070), const Color(0x20EF5350));
+    }
+    return ('NEUTRAL', const Color(0xFFF5A623), const Color(0x26F5A623));
+  }
+}
+
 // ── Signal Engine Badge & skeleton ───────────────────────────────────────────
 
 class _SignalBadge extends StatelessWidget {
@@ -1803,6 +2321,98 @@ class _SignalSkeleton extends StatelessWidget {
 }
 
 // ── Prediction + Correlation + Pattern cards (delegated from signal analysis) ─
+
+class _ScenarioCard extends StatelessWidget {
+  final Scenarios scenarios;
+  const _ScenarioCard({required this.scenarios});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    return GlassCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(Icons.bar_chart, color: cs.primary, size: 18),
+          const SizedBox(width: 8),
+          Text('Scenarios',
+              style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+        ]),
+        const SizedBox(height: 12),
+        _ScenarioRow(
+          label: 'Bull',
+          color: const Color(0xFF26A69A),
+          scenario: scenarios.bull,
+        ),
+        const SizedBox(height: 8),
+        _ScenarioRow(
+          label: 'Base',
+          color: cs.primary,
+          scenario: scenarios.base,
+        ),
+        const SizedBox(height: 8),
+        _ScenarioRow(
+          label: 'Bear',
+          color: const Color(0xFFEF5350),
+          scenario: scenarios.bear,
+        ),
+      ]),
+    );
+  }
+}
+
+class _ScenarioRow extends StatelessWidget {
+  final String label;
+  final Color color;
+  final ScenarioCase scenario;
+
+  const _ScenarioRow({
+    required this.label,
+    required this.color,
+    required this.scenario,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final pct = scenario.probability.clamp(0, 100);
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        SizedBox(
+          width: 36,
+          child: Text(label,
+              style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700)),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(3),
+            child: LinearProgressIndicator(
+              value: pct / 100.0,
+              backgroundColor: color.withValues(alpha: 0.12),
+              valueColor: AlwaysStoppedAnimation<Color>(color.withValues(alpha: 0.75)),
+              minHeight: 6,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text('$pct%',
+            style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600)),
+        const SizedBox(width: 8),
+        Text('\$${scenario.priceTarget.toStringAsFixed(2)}',
+            style: const TextStyle(color: Colors.white70, fontSize: 11)),
+      ]),
+      const SizedBox(height: 3),
+      Padding(
+        padding: const EdgeInsets.only(left: 44),
+        child: Text(scenario.thesis,
+            style: const TextStyle(color: Colors.white38, fontSize: 10),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis),
+      ),
+    ]);
+  }
+}
 
 class _PredictionCard extends StatelessWidget {
   final PredictionResult prediction;

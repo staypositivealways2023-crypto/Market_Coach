@@ -149,7 +149,7 @@ class CandlestickPainter extends CustomPainter {
       canvas.drawRect(
         Rect.fromLTWH(x - barW / 2, volBottom - barH, barW, barH),
         Paint()
-          ..color = (isBull ? _bullColor : _bearColor).withValues(alpha: 0.25),
+          ..color = (isBull ? _bullColor : _bearColor).withValues(alpha: 0.40),
       );
     }
   }
