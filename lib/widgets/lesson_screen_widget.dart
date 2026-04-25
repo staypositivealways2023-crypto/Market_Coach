@@ -53,6 +53,7 @@ class LessonScreenWidget extends StatelessWidget {
         return _QuizSingleScreen(
           screen: screen,
           onAnswered: onQuizAnswered,
+          onPassed: onQuizPassed,
         );
       case 'quiz_multi':
         // TODO: Implement multi-choice quiz widget
@@ -226,9 +227,11 @@ class _QuizSingleScreen extends StatefulWidget {
   const _QuizSingleScreen({
     required this.screen,
     this.onAnswered,
+    this.onPassed,
   });
   final LessonScreen screen;
   final Function(bool isCorrect)? onAnswered;
+  final VoidCallback? onPassed;
 
   @override
   State<_QuizSingleScreen> createState() => _QuizSingleScreenState();
@@ -247,7 +250,7 @@ class _QuizSingleScreenState extends State<_QuizSingleScreen> {
             ?.map((e) => e.toString())
             .toList() ??
         [];
-    final correctIndex = content['correctIndex'] as int? ?? 0;
+    final correctIndex = (content['correctIndex'] as num?)?.toInt() ?? 0;
     final explanation = content['explanation'] as String?;
 
     return SingleChildScrollView(
@@ -315,10 +318,11 @@ class _QuizSingleScreenState extends State<_QuizSingleScreen> {
               child: FilledButton(
                 onPressed: () {
                   setState(() => _showAnswer = true);
-                  // Notify parent if callback provided
-                  if (widget.onAnswered != null && _selectedIndex != null) {
+                  if (_selectedIndex != null) {
                     final isCorrect = _selectedIndex == correctIndex;
-                    widget.onAnswered!(isCorrect);
+                    widget.onAnswered?.call(isCorrect);
+                    // Advance lesson if the answer was correct
+                    if (isCorrect) widget.onPassed?.call();
                   }
                 },
                 child: const Text('Check Answer'),

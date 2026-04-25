@@ -35,31 +35,20 @@ class _GlassCardState extends State<GlassCard> {
     final cardContent = Container(
       width: widget.width,
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            effectiveColor.withOpacity(0.85),
-            effectiveColor.withOpacity(0.65),
-          ],
-        ),
+        // Flat fill — no gradient to reduce visual noise
+        color: effectiveColor,
         borderRadius: effectiveBorderRadius,
         border: Border.all(
-          color: const Color(0xFF2563EB).withOpacity(0.12),
+          // Subtle border: 6% white instead of blue-tinted 12%
+          color: Colors.white.withOpacity(0.06),
           width: 1.0,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.55),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
+            color: Colors.black.withOpacity(0.35),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
             spreadRadius: 0,
-          ),
-          BoxShadow(
-            color: const Color(0xFF06B6D4).withOpacity(0.04),
-            blurRadius: 24,
-            offset: const Offset(0, 10),
-            spreadRadius: -4,
           ),
         ],
       ),
