@@ -34,6 +34,16 @@ class Settings(BaseSettings):
     FIREBASE_CREDENTIALS_PATH: str = ""
     FIREBASE_CREDENTIALS_JSON: str = ""  # base64-encoded service account JSON (used in production/Railway)
 
+    # Development auth bypass — decodes JWT without signature verification.
+    # NEVER enable in production.  Set DEV_BYPASS_AUTH=true in .env for local dev.
+    DEV_BYPASS_AUTH: bool = False
+
+    # Jarvis local AI — set JARVIS_URL to the address of your running Jarvis API.
+    # Default assumes both services run on the same machine.
+    # Set JARVIS_URL=http://<host-ip>:7700 when running on separate machines.
+    JARVIS_URL: str = "http://localhost:7700"
+    JARVIS_TIMEOUT_SECONDS: int = 25
+
     # API Rate Limits (requests per minute)
     ALPHA_VANTAGE_RATE_LIMIT: int = 5
     FINNHUB_RATE_LIMIT: int = 60

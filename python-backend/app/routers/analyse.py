@@ -1,17 +1,21 @@
 """
-/api/analyse  — Phase 3+4 Signal Engine + Probability Engine endpoint.
+/api/analyse  — Phase 9 CrewAI Agent Swarm + Phase 3+4 Signal Engine.
 
-Orchestrates all 5 intelligence layers:
+Orchestrates all intelligence layers:
   1. Data Ingestion      → candles + quote
   2. Signal Engine       → composite_score + signal_label
-  3. Probability Engine  → ATR price range, risk/reward, stop-loss  [Phase 4]
+  3. Probability Engine  → ATR price range, risk/reward, stop-loss
   4. News sentiment      → sentiment score + headlines
   5. Fundamentals        → P/E, revenue growth (stocks only)
-  6. Claude synthesis    → plain-English narrative
+  6. CrewAI Swarm        → 4-agent synthesis (streamed via SSE)
+  7. Claude synthesis    → plain-English narrative (fallback)
 """
 
+import json
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, Request
+from fastapi.responses import StreamingResponse
+import asyncio
 import logging
 
 from app.services.data_fetcher import MarketDataFetcher
@@ -24,11 +28,23 @@ from app.services.correlation_engine import CorrelationEngine
 from app.services.pattern_engine import PatternEngine
 from app.services.claude_service import ClaudeService
 from app.services.fred_service import FredService
+from app.services.dean_agent import get_coaching_nudge, record_analysis_event
 from app.utils.prompt_builder import PromptBuilder
 from app.utils.cache import cache_manager
 from app.utils.auth import require_auth
 from app.utils.rate_limit import limiter
 from app.models.signals import AnalyseResponse, Scenarios, ScenarioCase
+
+# Firestore client (lazy — only initialised if Firebase is configured)
+def _get_db():
+    try:
+        import firebase_admin
+        import firebase_admin.firestore
+        if firebase_admin._apps:
+            return firebase_admin.firestore.client()
+    except Exception:
+        pass
+    return None
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -196,6 +212,53 @@ async def analyse_symbol(
     except Exception as e:
         logger.error(f"[analyse] Claude synthesis failed for {symbol}: {e}")
 
+    # ── Phase 2/3: Dean Agent — coaching nudge + lesson id + behaviour event ─
+    coaching_nudge: str | None = None
+    coaching_lesson_id: str | None = None
+    db = _get_db()
+    if db and uid:
+        ind = signals.indicators
+        try:
+            coaching_nudge, coaching_lesson_id = await get_coaching_nudge(
+                uid=uid,
+                symbol=symbol,
+                rsi_signal=ind.rsi_signal,
+                macd_signal=ind.macd_signal,
+                ema_stack=ind.ema_stack,
+                db=db,
+            )
+        except Exception as _e:
+            logger.warning(f"[analyse] Dean Agent nudge failed: {_e}")
+
+        # Fire-and-forget: record that this user analysed this symbol
+        try:
+            scenario_label = (
+                scenarios.base.thesis[:40] if scenarios else signals.signal_label.value
+            )
+            await record_analysis_event(
+                uid=uid,
+                symbol=symbol,
+                signal_label=signals.signal_label.value,
+                scenario_label=scenario_label,
+                db=db,
+            )
+        except Exception as _e:
+            logger.warning(f"[analyse] Dean Agent event record failed: {_e}")
+
+        # ── Phase 11: Store analysis event in ChromaDB memory ────────────────
+        try:
+            from app.services.chroma_memory_service import ChromaMemoryService
+            _mem = ChromaMemoryService()
+            memory_text = (
+                f"User analysed {symbol} on {datetime.now(timezone.utc).strftime('%Y-%m-%d')}. "
+                f"Signal: {signals.signal_label.value}. "
+                f"Composite score: {signals.composite_score:+.2f}. "
+                + (f"Base thesis: {scenarios.base.thesis}" if scenarios else "")
+            )
+            _mem.store(uid, memory_text, category="portfolio", symbol=symbol)
+        except Exception as _e:
+            logger.debug(f"[analyse] ChromaDB store skipped: {_e}")
+
     # ── Build response + cache ────────────────────────────────────────────────
     try:
         response = AnalyseResponse(
@@ -207,6 +270,8 @@ async def analyse_symbol(
             patterns=patterns,
             scenarios=scenarios,
             analysis=analysis_text,
+            coaching_nudge=coaching_nudge,
+            coaching_lesson_id=coaching_lesson_id,
             timestamp=datetime.now(timezone.utc).isoformat(),
             is_cached=False,
             tokens_used=tokens_used,
@@ -319,3 +384,69 @@ def _build_fallback_analysis(symbol: str, signals) -> str:
     lines.append("(AI narrative unavailable — Claude API not configured)")
 
     return "\n".join(lines)
+
+
+# ── Phase 9: CrewAI Streaming SSE Endpoint ────────────────────────────────────
+
+@router.get("/analyse/{symbol}/stream")
+@limiter.limit("5/minute")
+async def analyse_symbol_stream(
+    request: Request,
+    symbol: str,
+    user_level: str = "beginner",
+    uid: str = Depends(require_auth),
+):
+    """
+    Server-Sent Events endpoint that streams CrewAI agent progress.
+
+    Flutter listens via Dio's ResponseType.stream and shows each agent's
+    status as it completes:
+      {"agent": "MarketDataAgent",  "status": "running"}
+      {"agent": "SentimentAgent",   "status": "running"}
+      {"agent": "TechnicalAgent",   "status": "running"}
+      {"agent": "CoachAgent",       "status": "running"}
+      {"agent": "done",             "result": {...scenario card...}}
+
+    Falls back gracefully if crewai is not installed.
+    """
+    sym = symbol.upper()
+
+    async def event_stream():
+        agents = [
+            ("MarketDataAgent",  "Fetching price, indicators & patterns…"),
+            ("SentimentAgent",   "Reading news & macro context…"),
+            ("TechnicalAgent",   "Interpreting signals & key levels…"),
+            ("CoachAgent",       "Personalising coaching for you…"),
+        ]
+
+        # Send agent-start events so the UI can show a progress list
+        for name, description in agents:
+            yield f"data: {json.dumps({'agent': name, 'status': 'running', 'description': description})}\n\n"
+            await asyncio.sleep(0.1)  # small delay so UI renders each chip
+
+        # Run the crew
+        try:
+            from app.agents.crew import run_crew
+            result = await run_crew(symbol=sym, uid=uid, user_level=user_level)
+
+            for name, _ in agents:
+                yield f"data: {json.dumps({'agent': name, 'status': 'done'})}\n\n"
+
+            yield f"data: {json.dumps({'agent': 'done', 'result': result})}\n\n"
+
+        except ImportError:
+            # CrewAI not installed — fall back to single-agent analysis
+            logger.warning("[stream] crewai not installed, sending fallback")
+            yield f"data: {json.dumps({'agent': 'done', 'result': {}, 'fallback': True})}\n\n"
+        except Exception as e:
+            logger.error(f"[stream] crew error for {sym}: {e}")
+            yield f"data: {json.dumps({'agent': 'error', 'error': str(e)})}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control":  "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )

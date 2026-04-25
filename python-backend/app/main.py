@@ -13,6 +13,8 @@ from app.routers import internal, market, indicators, analysis, macro, news, ear
 from app.routers import analyse as analyse_router
 from app.routers import chat as chat_router
 from app.routers import voice as voice_router
+from app.routers import voice_ws as voice_ws_router
+from app.routers import jarvis_chat as jarvis_chat_router
 from app.config import settings
 from app.utils.logger import setup_logger
 from app.utils.rate_limit import limiter
@@ -27,6 +29,16 @@ async def lifespan(app: FastAPI):
     logger.info("Starting MarketCoach Backend API...")
     logger.info(f"Environment: {settings.ENVIRONMENT}")
     logger.info(f"Firebase Project: {settings.FIREBASE_PROJECT_ID}")
+    # ── Validate and initialize Firebase auth paths ──────────────────────────
+    try:
+        from app.services.voice_auth_service import validate_auth_config
+        auth_ok = validate_auth_config()
+        if not auth_ok:
+            logger.warning(
+                "[startup] No auth paths available. Voice endpoints will fail authentication."
+            )
+    except Exception as _auth_exc:
+        logger.warning(f"[startup] Auth validation error: {_auth_exc}")
     yield
     logger.info("Shutting down MarketCoach Backend API...")
 
@@ -68,6 +80,8 @@ app.include_router(analyse_router.router, prefix="/api", tags=["Signal Engine"])
 app.include_router(portfolio.router, prefix="/api/portfolio", tags=["Portfolio"])
 app.include_router(chat_router.router, prefix="/api", tags=["Chat"])
 app.include_router(voice_router.router, prefix="/api/voice", tags=["Voice Coach"])
+app.include_router(voice_ws_router.router, prefix="/api/voice", tags=["Voice WebSocket Proxy"])
+app.include_router(jarvis_chat_router.router, prefix="/api/jarvis", tags=["Jarvis Local AI"])
 
 
 @app.get("/")

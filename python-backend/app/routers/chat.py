@@ -18,8 +18,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# Sonnet for chat — quality matters here; Haiku is used for analysis/portfolio
-CHAT_MODEL = "claude-sonnet-4-6"
+# Claude 3.5 Sonnet for chat — quality matters here; Haiku is used for analysis/portfolio
+CHAT_MODEL = "claude-3-5-sonnet-20241022"
 CHAT_MAX_TOKENS = 1024
 
 
@@ -40,6 +40,9 @@ async def chat(request: Request, body: ChatRequest, uid: str = Depends(require_a
     Streaming Coach chat endpoint.
     Emits SSE chunks: data: {"text": "..."}\n\n
     Terminates with: data: [DONE]\n\n
+
+    Gracefully handles client disconnects by checking request.is_disconnected()
+    and breaking the stream loop.
     """
     if not settings.ANTHROPIC_API_KEY:
         raise HTTPException(status_code=503, detail="AI service not configured")
@@ -61,6 +64,10 @@ async def chat(request: Request, body: ChatRequest, uid: str = Depends(require_a
                 messages=messages,
             ) as stream:
                 async for text in stream.text_stream:
+                    # Check if client has disconnected before sending chunk
+                    if await request.is_disconnected():
+                        logger.info("[chat] Client disconnected, terminating stream")
+                        break
                     chunk = json.dumps({"text": text})
                     yield f"data: {chunk}\n\n"
             yield "data: [DONE]\n\n"

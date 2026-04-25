@@ -61,8 +61,16 @@ logger = logging.getLogger(__name__)
 # ── Dependency helpers ────────────────────────────────────────────────────────
 
 def _get_db():
-    """Return Firestore client (initialised by firebase_admin)."""
-    return firebase_admin.firestore.client()
+    """Return Firestore client, or None if firebase_admin is not yet ready."""
+    try:
+        # Ensure Firebase admin is initialised (idempotent — returns fast if already done)
+        if not firebase_admin._apps:
+            from app.services.voice_auth_service import _try_init_firebase_admin
+            _try_init_firebase_admin()
+        return firebase_admin.firestore.client()
+    except Exception as exc:
+        logger.warning(f"[voice] _get_db() failed — Firebase not configured: {exc}")
+        return None
 
 
 def _get_tool_registry(db=Depends(_get_db)) -> ToolRegistry:
@@ -413,3 +421,57 @@ async def get_usage_status(
         voice_sessions_limit=limits["sessions"],
         tier=tier,
     )
+
+
+# ── Phase 11: ChromaDB Memory Endpoints ──────────────────────────────────────
+
+@router.get("/memory/summary")
+async def get_memory_summary(uid: str = Depends(get_verified_uid)):
+    """Return a plain-English summary of what ChromaDB knows about the user."""
+    try:
+        from app.services.chroma_memory_service import ChromaMemoryService
+        svc = ChromaMemoryService()
+        return {"uid": uid, "summary": svc.summarise_user(uid)}
+    except Exception as e:
+        logger.error(f"[memory] summary error for {uid}: {e}")
+        return {"uid": uid, "summary": "Memory unavailable."}
+
+
+@router.post("/memory/store")
+async def store_memory(
+    payload: dict,
+    uid: str = Depends(get_verified_uid),
+):
+    """
+    Manually store a memory snippet for the user.
+    Body: { "text": "...", "category": "preference|portfolio|learning|conversation|event" }
+    """
+    text     = payload.get("text", "").strip()
+    category = payload.get("category", "event")
+    symbol   = payload.get("symbol")
+
+    if not text:
+        from fastapi import HTTPException as _HTTPException
+        raise _HTTPException(status_code=400, detail="text is required")
+
+    try:
+        from app.services.chroma_memory_service import ChromaMemoryService
+        svc     = ChromaMemoryService()
+        success = svc.store(uid, text, category=category, symbol=symbol)
+        return {"stored": success}
+    except Exception as e:
+        logger.error(f"[memory] store error for {uid}: {e}")
+        return {"stored": False, "error": str(e)}
+
+
+@router.delete("/memory")
+async def delete_memory(uid: str = Depends(get_verified_uid)):
+    """GDPR: delete all ChromaDB memories for the authenticated user."""
+    try:
+        from app.services.chroma_memory_service import ChromaMemoryService
+        svc     = ChromaMemoryService()
+        success = svc.delete_user(uid)
+        return {"deleted": success}
+    except Exception as e:
+        logger.error(f"[memory] delete error for {uid}: {e}")
+        return {"deleted": False, "error": str(e)}

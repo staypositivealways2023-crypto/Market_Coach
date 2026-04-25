@@ -15,10 +15,16 @@ services:
       - ./scripts:/app/scripts
       # Mount Firebase credentials
       - ./serviceAccountKey.json:/app/serviceAccountKey.json:ro
+      # ChromaDB persistent storage
+      - chroma_data:/app/chroma_data
     environment:
       - ENVIRONMENT=development
       - DEBUG=true
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - CHROMA_PERSIST_PATH=/app/chroma_data
+    depends_on:
+      - ollama
+    command: "8000"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -26,6 +32,36 @@ services:
       timeout: 3s
       retries: 3
       start_period: 10s
+
+  # ── Phase 10: Ollama local LLM ───────────────────────────────────────────────
+  # Runs mistral:7b for CrewAI data agents (free, no API cost).
+  # Pull models after first start: docker exec market-coach-ollama ollama pull mistral
+  ollama:
+    image: ollama/ollama:latest
+    container_name: market-coach-ollama
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
+    restart: unless-stopped
+    # Uncomment if you have a GPU:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  ollama_data:
+    name: market-coach-ollama-models
+  chroma_data:
+    name: market-coach-chroma
 
 networks:
   default:

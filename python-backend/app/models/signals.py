@@ -61,6 +61,8 @@ class AnalyseResponse(BaseModel):
     patterns: Optional[PatternScanResult] = None    # Phase 6 chart patterns
     scenarios: Optional[Scenarios] = None           # Bull / Base / Bear cases
     analysis: str                                    # Claude's narrative
+    coaching_nudge: Optional[str] = None            # Phase 2 Dean Agent nudge
+    coaching_lesson_id: Optional[str] = None        # Phase 3 — GuidedLesson.id to open
     timestamp: str
     is_cached: bool = False
     tokens_used: int = 0

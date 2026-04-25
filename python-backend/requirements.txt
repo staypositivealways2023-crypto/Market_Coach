@@ -31,6 +31,16 @@ vaderSentiment==3.3.2
 transformers>=4.40.0
 torch
 
+# Phase 9 — CrewAI Agent Swarm
+crewai>=0.80.0
+crewai-tools>=0.17.0
+
+# Phase 10 — Ollama local LLM client
+ollama>=0.3.0
+
+# Phase 11 — ChromaDB per-user memory
+chromadb>=0.5.0
+
 # Utilities
 python-dotenv==1.0.1
 python-multipart==0.0.20
