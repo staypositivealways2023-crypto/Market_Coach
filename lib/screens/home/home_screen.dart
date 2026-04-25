@@ -5,12 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/mock_data.dart';
-import '../../data/watchlist_repository.dart';
 import '../../models/market_index.dart';
 import '../../models/quote.dart';
 import '../../models/stock_summary.dart';
+import '../../providers/watchlist_service_provider.dart';
 import '../../services/quote_service.dart';
-import '../../utils/crypto_helper.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/iq_score_card.dart';
 import '../learn/learn_screen.dart';
@@ -36,83 +35,144 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
-  late WatchlistRepository _repository;
-  final _yahooService = YahooQuoteService();
-  final _binanceService = BinanceQuoteService();
+  // 35s gives Yahoo Finance one full 30-second poll cycle to respond
+  // before showing the "Quote unavailable" fallback.
+  static const _watchlistQuoteTimeout = Duration(seconds: 35);
 
-  StreamSubscription<Map<String, Quote>>? _stockSubscription;
-  StreamSubscription<Map<String, Quote>>? _binanceSubscription;
-  StreamSubscription<Map<String, Quote>>? _indexStockSubscription;
-  StreamSubscription<Map<String, Quote>>? _indexCryptoSubscription;
+  // Backend-powered quote services — handles stocks + crypto uniformly.
+  final _indexService = BackendQuoteService();
+  final _watchlistService = BackendQuoteService();
+
+  StreamSubscription<Map<String, Quote>>? _watchlistSubscription;
+  StreamSubscription<Map<String, Quote>>? _indexSubscription;
 
   Set<String> _symbols = {};
   final Map<String, Quote> _quotes = {};
   final Map<String, Quote> _indexQuotes = {};
+  final Map<String, String> _quoteFailures = {};
+  final Map<String, Timer> _quoteTimeouts = {};
   bool _loading = true;
 
   @override
   void initState() {
     super.initState();
-    _initWatchlist();
     _initIndexQuotes();
+    // Watchlist is loaded reactively from Firestore in build() via ref.listen
   }
 
-  // ── Watchlist quotes ────────────────────────────────────────────────────────
+  // ── Subscribe to live quotes for a given symbol set ──────────────────────────
 
-  Future<void> _initWatchlist() async {
-    _repository = await WatchlistRepository.create();
-    final symbols = await _repository.getWatchlist();
+  void _subscribeToWatchlistQuotes(Set<String> symbols) {
+    // Cancel previous subscription.
+    _watchlistSubscription?.cancel();
+    _watchlistSubscription = null;
 
-    if (symbols.isEmpty) {
-      await _repository.addSymbol('AAPL');
-      await _repository.addSymbol('BHP');
-      await _repository.addSymbol('BTC');
-      _symbols = {'AAPL', 'BHP', 'BTC'};
-    } else {
-      _symbols = symbols;
-    }
+    // Stop the loading spinner immediately; skeleton cards fill in as quotes arrive.
+    _syncWatchlistResolutionState(symbols);
 
-    final cryptoSymbols = _symbols.where((s) => isCryptoSymbol(s)).toSet();
-    final stockSymbols = _symbols.where((s) => !isCryptoSymbol(s)).toSet();
-
-    if (cryptoSymbols.isNotEmpty) {
-      _binanceSubscription =
-          _binanceService.streamQuotes(cryptoSymbols).listen((quotes) {
-        if (mounted) setState(() { _quotes.addAll(quotes); _loading = false; });
+    if (mounted) {
+      setState(() {
+        _symbols = symbols;
+        _loading = false;
       });
     }
-    if (stockSymbols.isNotEmpty) {
-      _stockSubscription =
-          _yahooService.streamQuotes(stockSymbols).listen((quotes) {
-        if (mounted) setState(() { _quotes.addAll(quotes); _loading = false; });
+
+    if (symbols.isEmpty) return;
+
+    // BackendQuoteService handles stocks + crypto uniformly in one batch call.
+    _watchlistSubscription = _watchlistService.streamQuotes(symbols).listen(
+      _handleResolvedQuotes,
+      onError: (_) => _markSymbolsUnavailable(symbols, reason: 'Quote unavailable'),
+    );
+  }
+
+  void _syncWatchlistResolutionState(Set<String> symbols) {
+    final removedSymbols = {
+      ..._quotes.keys.where((symbol) => !symbols.contains(symbol)),
+      ..._quoteFailures.keys.where((symbol) => !symbols.contains(symbol)),
+      ..._quoteTimeouts.keys.where((symbol) => !symbols.contains(symbol)),
+    };
+
+    for (final symbol in removedSymbols) {
+      _quoteTimeouts.remove(symbol)?.cancel();
+      _quotes.remove(symbol);
+      _quoteFailures.remove(symbol);
+    }
+
+    for (final symbol in symbols) {
+      if (_quotes.containsKey(symbol) || _quoteFailures.containsKey(symbol)) {
+        continue;
+      }
+      _startQuoteTimeout(symbol);
+    }
+  }
+
+  void _startQuoteTimeout(String symbol) {
+    _quoteTimeouts.remove(symbol)?.cancel();
+    _quoteTimeouts[symbol] = Timer(_watchlistQuoteTimeout, () {
+      if (!mounted || !_symbols.contains(symbol) || _quotes.containsKey(symbol)) {
+        return;
+      }
+
+      setState(() {
+        _quoteFailures[symbol] = 'Quote unavailable';
       });
-    }
-    if (stockSymbols.isEmpty && cryptoSymbols.isNotEmpty) {
-      setState(() => _loading = false);
-    }
+      _quoteTimeouts.remove(symbol)?.cancel();
+    });
+  }
+
+  void _handleResolvedQuotes(Map<String, Quote> quotes) {
+    if (!mounted || quotes.isEmpty) return;
+
+    setState(() {
+      _quotes.addAll(quotes);
+      for (final symbol in quotes.keys) {
+        _quoteFailures.remove(symbol);
+        _quoteTimeouts.remove(symbol)?.cancel();
+      }
+    });
+  }
+
+  void _markSymbolsUnavailable(
+    Iterable<String> symbols, {
+    required String reason,
+  }) {
+    if (!mounted) return;
+
+    setState(() {
+      for (final symbol in symbols) {
+        if (!_quotes.containsKey(symbol)) {
+          _quoteFailures[symbol] = reason;
+        }
+        _quoteTimeouts.remove(symbol)?.cancel();
+      }
+    });
   }
 
   // ── Live index quotes (SPY, QQQ, BTC, ETH) ─────────────────────────────────
 
   void _initIndexQuotes() {
-    _indexStockSubscription =
-        _yahooService.streamQuotes(_indexStockSymbols).listen((quotes) {
-      if (mounted) setState(() => _indexQuotes.addAll(quotes));
-    });
-    _indexCryptoSubscription =
-        _binanceService.streamQuotes(_indexCryptoSymbols).listen((quotes) {
-      if (mounted) setState(() => _indexQuotes.addAll(quotes));
-    });
+    // Fetch all 4 index proxies in a single backend batch call.
+    const allIndexSymbols = {
+      ..._indexStockSymbols,
+      ..._indexCryptoSymbols,
+    };
+    _indexSubscription = _indexService.streamQuotes(allIndexSymbols).listen(
+      (quotes) {
+        if (mounted) setState(() => _indexQuotes.addAll(quotes));
+      },
+    );
   }
 
   @override
   void dispose() {
-    _stockSubscription?.cancel();
-    _binanceSubscription?.cancel();
-    _indexStockSubscription?.cancel();
-    _indexCryptoSubscription?.cancel();
-    _yahooService.dispose();
-    _binanceService.dispose();
+    _watchlistSubscription?.cancel();
+    _indexSubscription?.cancel();
+    for (final timer in _quoteTimeouts.values) {
+      timer.cancel();
+    }
+    _indexService.dispose();
+    _watchlistService.dispose();
     super.dispose();
   }
 
@@ -165,6 +225,31 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+
+    // React to Firestore watchlist changes — re-subscribe to quote streams.
+    ref.listen<AsyncValue<Set<String>>>(watchlistSymbolsProvider, (prev, next) {
+      next.whenData((symbols) {
+        if (symbols != _symbols) {
+          _subscribeToWatchlistQuotes(symbols);
+        }
+      });
+    });
+
+    // Seed on first load when the stream emits before any listen fires.
+    final watchlistAsync = ref.watch(watchlistSymbolsProvider);
+    if (_symbols.isEmpty && watchlistAsync.valueOrNull != null) {
+      final symbols = watchlistAsync.valueOrNull!;
+      if (symbols.isNotEmpty &&
+          _watchlistSubscription == null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _subscribeToWatchlistQuotes(symbols);
+        });
+      } else if (symbols.isEmpty && _loading) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) setState(() => _loading = false);
+        });
+      }
+    }
 
     // Live index data (falls back to mock if not yet loaded)
     final liveMarkets = _buildIndexList();
@@ -309,16 +394,59 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
           ),
         ),
-        _loading
-            ? const SliverToBoxAdapter(
-                child: Center(child: CircularProgressIndicator()),
-              )
-            : SliverList.builder(
+        if (_loading)
+          const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 32),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          )
+        else if (_symbols.isEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+              child: Column(
+                children: [
+                  Icon(Icons.bookmark_add_outlined, size: 40, color: Colors.white38),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Your watchlist is empty',
+                    style: TextStyle(color: Colors.white54, fontSize: 15, fontWeight: FontWeight.w500),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Tap the ♡ on any stock or crypto to add it here.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.white38, fontSize: 13),
+                  ),
+                ],
+              ),
+            ),
+          )
+        else
+          SliverList.builder(
                 itemCount: _symbols.length,
                 itemBuilder: (context, index) {
                   final symbol = _symbols.elementAt(index);
                   final quote = _quotes[symbol];
-                  if (quote == null) return const SizedBox.shrink();
+                  final failure = _quoteFailures[symbol];
+
+                  if (quote == null && failure == null) {
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+                      child: _WatchlistSkeletonCard(symbol: symbol),
+                    );
+                  }
+
+                  if (quote == null) {
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+                      child: _WatchlistUnavailableCard(
+                        symbol: symbol,
+                        message: failure ?? 'Quote unavailable',
+                      ),
+                    );
+                  }
 
                   final mockStock = mockWatchlist.firstWhere(
                     (s) => s.ticker == symbol,
@@ -342,9 +470,30 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     technicalHighlights: mockStock.technicalHighlights,
                   );
 
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-                    child: StockCard(stock: liveStock),
+                  // Swipe-to-remove wrapper
+                  return Dismissible(
+                    key: ValueKey(symbol),
+                    direction: DismissDirection.endToStart,
+                    background: Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade900.withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      alignment: Alignment.centerRight,
+                      padding: const EdgeInsets.only(right: 20),
+                      child: const Icon(Icons.bookmark_remove_outlined,
+                          color: Colors.redAccent, size: 22),
+                    ),
+                    confirmDismiss: (_) async {
+                      final svc = ref.read(watchlistServiceProvider);
+                      await svc.removeFromWatchlist(symbol);
+                      return true;
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+                      child: StockCard(stock: liveStock),
+                    ),
                   );
                 },
               ),
@@ -741,6 +890,157 @@ class TodayLessonCard extends StatelessWidget {
             child: const Icon(Icons.arrow_forward, color: Colors.white),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ── Watchlist skeleton card ────────────────────────────────────────────────────
+
+class _WatchlistUnavailableCard extends StatelessWidget {
+  final String symbol;
+  final String message;
+
+  const _WatchlistUnavailableCard({
+    required this.symbol,
+    required this.message,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return GlassCard(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFB020).withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: const Color(0xFFFFB020).withValues(alpha: 0.28),
+              ),
+            ),
+            child: const Icon(
+              Icons.error_outline_rounded,
+              color: Color(0xFFFFB020),
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  symbol,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  message,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: Colors.white70,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            'Unavailable',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: const Color(0xFFFFB020),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WatchlistSkeletonCard extends StatefulWidget {
+  final String symbol;
+  const _WatchlistSkeletonCard({required this.symbol});
+
+  @override
+  State<_WatchlistSkeletonCard> createState() => _WatchlistSkeletonCardState();
+}
+
+class _WatchlistSkeletonCardState extends State<_WatchlistSkeletonCard>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late Animation<double> _opacity;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
+    _opacity = Tween<double>(begin: 0.35, end: 0.65).animate(
+      CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _opacity,
+      builder: (_, __) => Container(
+        height: 68,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(_opacity.value * 0.05),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.white.withOpacity(0.06)),
+        ),
+        child: Row(
+          children: [
+            // Ticker shimmer
+            Container(
+              width: 48,
+              height: 14,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(_opacity.value * 0.4),
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+            const SizedBox(width: 12),
+            // Name shimmer
+            Expanded(
+              child: Container(
+                height: 12,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(_opacity.value * 0.2),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+            ),
+            const SizedBox(width: 16),
+            // Price shimmer
+            Container(
+              width: 56,
+              height: 14,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(_opacity.value * 0.25),
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

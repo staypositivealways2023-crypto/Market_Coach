@@ -9,8 +9,12 @@ import '../../providers/paper_trading_provider.dart';
 import '../../providers/portfolio_provider.dart';
 import '../../providers/subscription_provider.dart';
 import '../../services/backend_service.dart';
+import '../../services/paper_trading_service.dart';
 import '../../services/portfolio_service.dart';
+import '../../providers/auth_provider.dart';
+import '../../widgets/disclaimer_banner.dart';
 import '../../widgets/glass_card.dart';
+import '../../widgets/guest_gate.dart';
 import '../../widgets/paywall_bottom_sheet.dart';
 
 class PortfolioScreen extends ConsumerStatefulWidget {
@@ -137,8 +141,37 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen>
     );
   }
 
+  void _showSellSheet(HoldingWithValue holding) {
+    final service = ref.read(portfolioServiceProvider);
+    if (service == null) return;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _SellHoldingSheet(
+        holding: holding,
+        service: service,
+        onSold: () {
+          final holdings = ref.read(portfolioHoldingsProvider).valueOrNull ?? [];
+          _refreshPrices(holdings);
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Gate the entire Portfolio screen for guest users.
+    final currentUser = ref.watch(currentUserProvider);
+    if (currentUser == null || currentUser.isAnonymous) {
+      return GuestGateScreen(
+        feature: 'Portfolio',
+        message: 'Create a free account to track your investments, '
+            'monitor P&L, and practise paper trading.',
+        child: const SizedBox.shrink(),
+      );
+    }
+
     final holdingsAsync = ref.watch(portfolioHoldingsProvider);
 
     // Real portfolio: fetch prices whenever holdings change.
@@ -216,7 +249,14 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen>
               ],
             ),
           ),
-          body: TabBarView(
+          body: Column(
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 6, 16, 0),
+                child: DisclaimerBanner(),
+              ),
+              Expanded(
+                child: TabBarView(
             controller: _tabController,
             children: [
               // ── Tab 1: Real Portfolio ──────────────────────────────────────
@@ -283,6 +323,7 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen>
                               totalValue: totalValue,
                               onEdit: () => _showAddSheet(existing: enriched[i].holding),
                               onDelete: () => _confirmDelete(enriched[i].holding),
+                              onSell: () => _showSellSheet(enriched[i]),
                             ),
                           ),
                           childCount: enriched.length,
@@ -306,6 +347,9 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen>
               ),
             ],
           ),
+                ), // Expanded
+              ], // Column
+            ), // body Column
         );
       },
     );
@@ -487,10 +531,17 @@ class _PaperTab extends ConsumerWidget {
                   // ── Holdings list ─────────────────────────────────────────
                   SliverList(
                     delegate: SliverChildBuilderDelegate(
-                      (context, i) => Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                        child: _PaperHoldingCard(holding: enriched[i]),
-                      ),
+                      (context, i) {
+                        final svc = ref.read(paperTradingServiceProvider);
+                        return Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                          child: _PaperHoldingCard(
+                            holding: enriched[i],
+                            onSell: svc == null ? null : () => _showPaperSellSheet(
+                              context, enriched[i], svc, onRefresh),
+                          ),
+                        );
+                      },
                       childCount: enriched.length,
                     ),
                   ),
@@ -659,7 +710,8 @@ class _StatCol extends StatelessWidget {
 
 class _PaperHoldingCard extends StatelessWidget {
   final PaperHoldingWithValue holding;
-  const _PaperHoldingCard({required this.holding});
+  final VoidCallback? onSell;
+  const _PaperHoldingCard({required this.holding, this.onSell});
 
   @override
   Widget build(BuildContext context) {
@@ -754,9 +806,273 @@ class _PaperHoldingCard extends StatelessWidget {
                 ),
               ]),
             ),
+
+          // Sell button
+          if (onSell != null) ...[
+            const SizedBox(height: 12),
+            GestureDetector(
+              onTap: onSell,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 9),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                      colors: [Color(0xFFDC2626), Color(0xFFB91C1C)]),
+                  borderRadius: BorderRadius.circular(8),
+                  boxShadow: const [
+                    BoxShadow(
+                        color: Color(0x33DC2626), blurRadius: 8, offset: Offset(0, 2))
+                  ],
+                ),
+                alignment: Alignment.center,
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.sell_outlined, size: 13, color: Colors.white),
+                    SizedBox(width: 6),
+                    Text('Sell Position',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700)),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
+  }
+}
+
+// ── Paper sell helper (called from _PaperTab) ─────────────────────────────────
+
+void _showPaperSellSheet(
+  BuildContext context,
+  PaperHoldingWithValue holding,
+  PaperTradingService svc,
+  VoidCallback onRefresh,
+) {
+  showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (_) => _PaperSellSheet(
+      holding: holding,
+      service: svc,
+      onSold: onRefresh,
+    ),
+  );
+}
+
+class _PaperSellSheet extends StatefulWidget {
+  final PaperHoldingWithValue holding;
+  final PaperTradingService service;
+  final VoidCallback onSold;
+  const _PaperSellSheet(
+      {required this.holding, required this.service, required this.onSold});
+
+  @override
+  State<_PaperSellSheet> createState() => _PaperSellSheetState();
+}
+
+class _PaperSellSheetState extends State<_PaperSellSheet> {
+  late double _sharesToSell;
+  bool _selling = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _sharesToSell = widget.holding.shares;
+  }
+
+  double get _currentPrice =>
+      widget.holding.currentPrice ?? widget.holding.avgCost;
+  double get _proceeds => _sharesToSell * _currentPrice;
+  double get _grossPnl =>
+      _sharesToSell * (_currentPrice - widget.holding.avgCost);
+  bool get _isFullSell =>
+      (_sharesToSell - widget.holding.shares).abs() < 0.0001;
+
+  @override
+  Widget build(BuildContext context) {
+    final fmt = NumberFormat('#,##0.00');
+    const red = Color(0xFFEF4444);
+    final pnlColor = _grossPnl >= 0 ? const Color(0xFF22C55E) : red;
+    final maxShares = widget.holding.shares;
+    final isWhole = maxShares == maxShares.floorToDouble();
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: Color(0xFF0D1520),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        border: Border(top: BorderSide(color: Color(0xFF1A2535), width: 0.5)),
+      ),
+      padding: EdgeInsets.fromLTRB(
+          20, 16, 20, MediaQuery.of(context).viewInsets.bottom + 24),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 36, height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white24, borderRadius: BorderRadius.circular(2)),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Row(children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: red.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: red.withValues(alpha: 0.3)),
+                ),
+                child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.sell_outlined, size: 14, color: Color(0xFFEF4444)),
+                  SizedBox(width: 6),
+                  Text('Sell', style: TextStyle(
+                      color: Color(0xFFEF4444), fontWeight: FontWeight.w700, fontSize: 13)),
+                ]),
+              ),
+              const SizedBox(width: 12),
+              Text(widget.holding.symbol,
+                  style: const TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.w800, fontSize: 22)),
+              const SizedBox(width: 8),
+              const Text('Paper Trade',
+                  style: TextStyle(color: Colors.white38, fontSize: 12)),
+            ]),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.04),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+              ),
+              child: Row(children: [
+                _SellStat('You hold',
+                    '${isWhole ? maxShares.toInt() : maxShares.toStringAsFixed(4)} sh'),
+                _SellStat('Avg Cost', '\$${fmt.format(widget.holding.avgCost)}'),
+                if (widget.holding.currentPrice != null)
+                  _SellStat('Price', '\$${fmt.format(widget.holding.currentPrice!)}'),
+              ]),
+            ),
+            const SizedBox(height: 16),
+            Row(children: [
+              const Text('Shares to sell',
+                  style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)),
+              const Spacer(),
+              Text(
+                isWhole ? _sharesToSell.toInt().toString()
+                    : _sharesToSell.toStringAsFixed(4),
+                style: const TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.w700, fontSize: 16),
+              ),
+            ]),
+            SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                activeTrackColor: red, thumbColor: red,
+                inactiveTrackColor: Colors.white12,
+                overlayColor: red.withValues(alpha: 0.15),
+                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 10),
+              ),
+              child: Slider(
+                value: _sharesToSell.clamp(0.0, maxShares),
+                min: 0, max: maxShares,
+                divisions: isWhole ? maxShares.toInt().clamp(1, 200) : 100,
+                onChanged: (v) => setState(() => _sharesToSell = v == 0 ? 0.0001 : v),
+              ),
+            ),
+            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+              TextButton(onPressed: () => setState(() => _sharesToSell = maxShares * 0.25),
+                  child: const Text('25%', style: TextStyle(fontSize: 12))),
+              TextButton(onPressed: () => setState(() => _sharesToSell = maxShares * 0.5),
+                  child: const Text('50%', style: TextStyle(fontSize: 12))),
+              TextButton(onPressed: () => setState(() => _sharesToSell = maxShares * 0.75),
+                  child: const Text('75%', style: TextStyle(fontSize: 12))),
+              TextButton(onPressed: () => setState(() => _sharesToSell = maxShares),
+                  child: const Text('All', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700))),
+            ]),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.04),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+              ),
+              child: Row(children: [
+                _SellStat('Proceeds', '\$${fmt.format(_proceeds)}'),
+                _SellStat('Gross P&L',
+                    '${_grossPnl >= 0 ? '+' : ''}\$${fmt.format(_grossPnl)}',
+                    color: pnlColor),
+              ]),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity, height: 50,
+              child: ElevatedButton(
+                onPressed: _selling || _sharesToSell <= 0 ? null : _confirmSell,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: red, foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14)),
+                  elevation: 0,
+                ),
+                child: _selling
+                    ? const SizedBox(width: 20, height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : Text(
+                        _isFullSell ? 'Close Position' :
+                            'Sell ${isWhole ? _sharesToSell.toInt() : _sharesToSell.toStringAsFixed(4)} Shares',
+                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Center(
+              child: Text('Virtual trade — no real money involved',
+                  style: TextStyle(color: Colors.white30, fontSize: 11)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmSell() async {
+    setState(() => _selling = true);
+    final price = widget.holding.currentPrice;
+    if (price == null) {
+      setState(() => _selling = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No live price available. Refresh and try again.'),
+              backgroundColor: Colors.redAccent),
+        );
+      }
+      return;
+    }
+    final err = await widget.service.sell(
+        widget.holding.symbol, widget.holding.name, _sharesToSell, price);
+    if (mounted) {
+      Navigator.pop(context);
+      widget.onSold();
+      if (err != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(err), backgroundColor: Colors.redAccent));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Sold ${_sharesToSell.toStringAsFixed(2)} ${widget.holding.symbol}'),
+          backgroundColor: const Color(0xFF1E293B),
+        ));
+      }
+    }
   }
 }
 
@@ -1236,12 +1552,14 @@ class _HoldingCard extends StatelessWidget {
   final double totalValue;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
+  final VoidCallback onSell;
 
   const _HoldingCard({
     required this.holding,
     required this.totalValue,
     required this.onEdit,
     required this.onDelete,
+    required this.onSell,
   });
 
   @override
@@ -1254,7 +1572,6 @@ class _HoldingCard extends StatelessWidget {
         : 0.0;
 
     return GlassCard(
-      onTap: onEdit,
       padding: const EdgeInsets.all(14),
       child: Column(
         children: [
@@ -1299,9 +1616,10 @@ class _HoldingCard extends StatelessWidget {
                   ),
               ],
             ),
+            const SizedBox(width: 4),
             IconButton(
-              icon: const Icon(Icons.close, size: 16, color: Colors.white24),
-              onPressed: onDelete,
+              icon: const Icon(Icons.more_vert, size: 18, color: Colors.white38),
+              onPressed: () => _showActions(context),
               visualDensity: VisualDensity.compact,
             ),
           ]),
@@ -1315,9 +1633,104 @@ class _HoldingCard extends StatelessWidget {
             _Detail('Avg Cost', '\$${fmt.format(holding.avgCost)}'),
             if (holding.currentPrice != null)
               _Detail('Price', '\$${fmt.format(holding.currentPrice!)}'),
-            _Detail('Allocation', '${alloc.toStringAsFixed(1)}%'),
+            _Detail('Alloc.', '${alloc.toStringAsFixed(1)}%'),
+          ]),
+          const SizedBox(height: 12),
+          // Action buttons row
+          Row(children: [
+            Expanded(
+              child: GestureDetector(
+                onTap: onEdit,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.white12),
+                  ),
+                  alignment: Alignment.center,
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.edit_outlined, size: 13, color: Colors.white54),
+                      SizedBox(width: 5),
+                      Text('Edit',
+                          style: TextStyle(
+                              color: Colors.white54,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: GestureDetector(
+                onTap: onSell,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFDC2626), Color(0xFFB91C1C)],
+                    ),
+                    borderRadius: BorderRadius.circular(8),
+                    boxShadow: const [
+                      BoxShadow(
+                          color: Color(0x33DC2626),
+                          blurRadius: 8,
+                          offset: Offset(0, 2)),
+                    ],
+                  ),
+                  alignment: Alignment.center,
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.sell_outlined, size: 13, color: Colors.white),
+                      SizedBox(width: 5),
+                      Text('Sell',
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ]),
         ],
+      ),
+    );
+  }
+
+  void _showActions(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF111925),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (_) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.edit_outlined, color: Colors.white70),
+                title: const Text('Edit position',
+                    style: TextStyle(color: Colors.white)),
+                onTap: () { Navigator.pop(context); onEdit(); },
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                title: const Text('Remove position',
+                    style: TextStyle(color: Colors.redAccent)),
+                onTap: () { Navigator.pop(context); onDelete(); },
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1342,6 +1755,300 @@ class _Detail extends StatelessWidget {
                   fontSize: 12,
                   fontWeight: FontWeight.w600),
               maxLines: 1,
+              overflow: TextOverflow.ellipsis),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Sell Holding Sheet ────────────────────────────────────────────────────────
+
+class _SellHoldingSheet extends StatefulWidget {
+  final HoldingWithValue holding;
+  final PortfolioService service;
+  final VoidCallback onSold;
+
+  const _SellHoldingSheet({
+    required this.holding,
+    required this.service,
+    required this.onSold,
+  });
+
+  @override
+  State<_SellHoldingSheet> createState() => _SellHoldingSheetState();
+}
+
+class _SellHoldingSheetState extends State<_SellHoldingSheet> {
+  late double _sharesToSell;
+  bool _selling = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _sharesToSell = widget.holding.shares; // default: sell all
+  }
+
+  double get _proceeds =>
+      _sharesToSell * (widget.holding.currentPrice ?? widget.holding.avgCost);
+
+  double get _realisedPnl =>
+      _sharesToSell * ((widget.holding.currentPrice ?? widget.holding.avgCost) -
+          widget.holding.avgCost);
+
+  bool get _isFullSell =>
+      (_sharesToSell - widget.holding.shares).abs() < 0.0001;
+
+  @override
+  Widget build(BuildContext context) {
+    final fmt = NumberFormat('#,##0.00');
+    const red = Color(0xFFEF4444);
+    const green = Color(0xFF22C55E);
+    final pnlColor = _realisedPnl >= 0 ? green : red;
+    final maxShares = widget.holding.shares;
+    final isWhole = maxShares == maxShares.floorToDouble();
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: Color(0xFF0D1520),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        border: Border(top: BorderSide(color: Color(0xFF1A2535), width: 0.5)),
+      ),
+      padding: EdgeInsets.fromLTRB(
+          20, 16, 20, MediaQuery.of(context).viewInsets.bottom + 24),
+      child: SingleChildScrollView(
+        child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Handle
+          Center(
+            child: Container(
+              width: 36, height: 4,
+              decoration: BoxDecoration(
+                color: Colors.white24,
+                borderRadius: BorderRadius.circular(2)),
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // Header
+          Row(children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: red.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: red.withValues(alpha: 0.3)),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.sell_outlined, size: 14, color: Color(0xFFEF4444)),
+                const SizedBox(width: 6),
+                const Text('Sell', style: TextStyle(
+                    color: Color(0xFFEF4444),
+                    fontWeight: FontWeight.w700, fontSize: 13)),
+              ]),
+            ),
+            const SizedBox(width: 12),
+            Text(widget.holding.symbol,
+                style: const TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.w800, fontSize: 22)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(widget.holding.name,
+                  style: const TextStyle(color: Colors.white38, fontSize: 13),
+                  overflow: TextOverflow.ellipsis),
+            ),
+          ]),
+
+          const SizedBox(height: 20),
+
+          // Position summary
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.04),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+            ),
+            child: Row(children: [
+              _SellStat('You hold', '${isWhole ? maxShares.toInt() : maxShares.toStringAsFixed(4)} shares'),
+              _SellStat('Avg Cost', '\$${fmt.format(widget.holding.avgCost)}'),
+              if (widget.holding.currentPrice != null)
+                _SellStat('Current', '\$${fmt.format(widget.holding.currentPrice!)}'),
+            ]),
+          ),
+
+          const SizedBox(height: 20),
+
+          // Shares to sell
+          Row(children: [
+            const Text('Shares to sell',
+                style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)),
+            const Spacer(),
+            Text(
+              isWhole
+                  ? _sharesToSell.toInt().toString()
+                  : _sharesToSell.toStringAsFixed(4),
+              style: const TextStyle(
+                  color: Colors.white, fontWeight: FontWeight.w700, fontSize: 16),
+            ),
+          ]),
+          const SizedBox(height: 8),
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              activeTrackColor: red,
+              thumbColor: red,
+              inactiveTrackColor: Colors.white12,
+              overlayColor: red.withValues(alpha: 0.15),
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 10),
+            ),
+            child: Slider(
+              value: _sharesToSell.clamp(0.0, maxShares),
+              min: 0,
+              max: maxShares,
+              divisions: isWhole ? maxShares.toInt().clamp(1, 200) : 100,
+              onChanged: (v) => setState(() => _sharesToSell = v == 0 ? 0.0001 : v),
+            ),
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              TextButton(
+                onPressed: () => setState(() => _sharesToSell = maxShares * 0.25),
+                child: const Text('25%', style: TextStyle(fontSize: 12)),
+              ),
+              TextButton(
+                onPressed: () => setState(() => _sharesToSell = maxShares * 0.50),
+                child: const Text('50%', style: TextStyle(fontSize: 12)),
+              ),
+              TextButton(
+                onPressed: () => setState(() => _sharesToSell = maxShares * 0.75),
+                child: const Text('75%', style: TextStyle(fontSize: 12)),
+              ),
+              TextButton(
+                onPressed: () => setState(() => _sharesToSell = maxShares),
+                child: const Text('All', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 8),
+
+          // Proceeds preview
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.04),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+            ),
+            child: Row(children: [
+              _SellStat('Proceeds', '\$${fmt.format(_proceeds)}'),
+              _SellStat(
+                'Realised P&L',
+                '${_realisedPnl >= 0 ? '+' : ''}\$${fmt.format(_realisedPnl)}',
+                color: pnlColor,
+              ),
+              if (!_isFullSell)
+                _SellStat(
+                  'Remaining',
+                  '${isWhole ? (maxShares - _sharesToSell).toInt() : (maxShares - _sharesToSell).toStringAsFixed(4)} shs',
+                ),
+            ]),
+          ),
+
+          const SizedBox(height: 20),
+
+          // Confirm button
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: ElevatedButton(
+              onPressed: _selling || _sharesToSell <= 0 ? null : _confirmSell,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: red,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+                elevation: 0,
+              ),
+              child: _selling
+                  ? const SizedBox(
+                      width: 20, height: 20,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white))
+                  : Text(
+                      _isFullSell
+                          ? 'Sell All — Close Position'
+                          : 'Sell ${isWhole ? _sharesToSell.toInt() : _sharesToSell.toStringAsFixed(4)} Shares',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w700, fontSize: 15),
+                    ),
+            ),
+          ),
+
+          const SizedBox(height: 8),
+          const Center(
+            child: Text('⚠️ For tracking only. Not a real trade.',
+                style: TextStyle(color: Colors.white30, fontSize: 11)),
+          ),
+        ],
+      ),
+    ),
+  );
+  }
+
+  Future<void> _confirmSell() async {
+    setState(() => _selling = true);
+    try {
+      await widget.service.sell(widget.holding.symbol, _sharesToSell);
+      if (mounted) {
+        Navigator.pop(context);
+        widget.onSold();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Sold ${_sharesToSell.toStringAsFixed(2)} ${widget.holding.symbol}',
+            ),
+            backgroundColor: const Color(0xFF1E293B),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _selling = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    }
+  }
+}
+
+class _SellStat extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color? color;
+  const _SellStat(this.label, this.value, {this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(color: Colors.white38, fontSize: 10)),
+          const SizedBox(height: 3),
+          Text(value,
+              style: TextStyle(
+                  color: color ?? Colors.white70,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13),
               overflow: TextOverflow.ellipsis),
         ],
       ),

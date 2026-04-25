@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../models/paper_account.dart';
 import '../../providers/paper_trading_provider.dart';
 import '../../services/backend_service.dart';
+import '../../widgets/disclaimer_banner.dart';
 import '../../widgets/glass_card.dart';
 
 class PaperTradingScreen extends ConsumerStatefulWidget {
@@ -237,6 +238,12 @@ class _TradingDashboard extends ConsumerWidget {
             Tab(text: 'Holdings'),
             Tab(text: 'Transactions'),
           ],
+        ),
+
+        // ── Disclaimer ────────────────────────────────────────────────────
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 4, 16, 0),
+          child: DisclaimerBanner(),
         ),
 
         // ── Tab views ──────────────────────────────────────────────────────

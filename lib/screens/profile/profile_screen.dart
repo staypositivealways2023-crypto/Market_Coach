@@ -4,8 +4,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../models/subscription.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/iq_score_provider.dart';
+import '../../providers/subscription_provider.dart';
 import '../../services/auth_service.dart';
 import '../../services/notification_service.dart';
 import '../../widgets/glass_card.dart';
@@ -21,6 +23,7 @@ class ProfileScreen extends ConsumerWidget {
     final profileAsync = ref.watch(userProfileProvider);
     final isGuest = ref.watch(isGuestProvider);
     final iqAsync = ref.watch(iqScoreProvider);
+    final subscriptionAsync = ref.watch(subscriptionProvider);
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -30,11 +33,11 @@ class ProfileScreen extends ConsumerWidget {
             if (user == null) return _buildSignInPrompt(context);
             return profileAsync.when(
               data: (profile) => _buildIdentityScreen(
-                  context, ref, user, profile, isGuest, iqAsync),
+                  context, ref, user, profile, isGuest, iqAsync, subscriptionAsync),
               loading: () =>
                   const Center(child: CircularProgressIndicator()),
               error: (_, __) => _buildIdentityScreen(
-                  context, ref, user, null, isGuest, iqAsync),
+                  context, ref, user, null, isGuest, iqAsync, subscriptionAsync),
             );
           },
           loading: () => const Center(child: CircularProgressIndicator()),
@@ -51,9 +54,11 @@ class ProfileScreen extends ConsumerWidget {
     dynamic profile,
     bool isGuest,
     AsyncValue<IQScoreData> iqAsync,
+    AsyncValue<Subscription?> subscriptionAsync,
   ) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
+    final subscription = subscriptionAsync.valueOrNull;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
@@ -70,25 +75,26 @@ class ProfileScreen extends ConsumerWidget {
                     style: theme.textTheme.titleLarge
                         ?.copyWith(fontWeight: FontWeight.w800),
                   ),
-                  if (isGuest)
-                    Container(
-                      margin: const EdgeInsets.only(top: 4),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: Colors.orange.withOpacity(0.18),
-                        borderRadius: BorderRadius.circular(4),
+                  const SizedBox(height: 5),
+                  Row(children: [
+                    if (isGuest)
+                      _TierBadge(label: 'Guest', color: Colors.orange)
+                    else if (subscription?.isAdmin == true)
+                      _TierBadge(label: 'Admin', color: const Color(0xFF8B5CF6))
+                    else if (subscription?.isPro == true)
+                      _TierBadge(label: 'Pro', color: const Color(0xFF12A28C))
+                    else
+                      _TierBadge(label: 'Free', color: Colors.white38),
+                    if (!isGuest && user.email != null) ...[
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(user.email!,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall
+                                ?.copyWith(color: Colors.white54)),
                       ),
-                      child: const Text('Guest',
-                          style: TextStyle(
-                              color: Colors.orange,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600)),
-                    )
-                  else if (user.email != null)
-                    Text(user.email!,
-                        style: theme.textTheme.bodySmall
-                            ?.copyWith(color: Colors.white54)),
+                    ],
+                  ]),
                 ],
               ),
             ),
@@ -119,10 +125,48 @@ class ProfileScreen extends ConsumerWidget {
                     MaterialPageRoute(builder: (_) => const SignupScreen())),
                 style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 12)),
-                child: const Text('Sign Up'),
+                child: const Text('Sign Up Free'),
               ),
             ),
           ]),
+        ],
+
+        // ── Upgrade banner for free users ─────────────────────────────────
+        if (!isGuest && subscription != null && !subscription.isPro) ...[
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  const Color(0xFF12A28C).withOpacity(0.15),
+                  const Color(0xFF8B5CF6).withOpacity(0.10),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFF12A28C).withOpacity(0.3)),
+            ),
+            child: Row(children: [
+              const Icon(Icons.auto_awesome, color: Color(0xFF12A28C), size: 18),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'Upgrade to Pro for unlimited AI chats, voice coach & more.',
+                  style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.4),
+                ),
+              ),
+              const SizedBox(width: 8),
+              TextButton(
+                onPressed: () {},
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  backgroundColor: const Color(0xFF12A28C),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                child: const Text('Upgrade', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
+              ),
+            ]),
+          ),
         ],
 
         const SizedBox(height: 28),
@@ -543,6 +587,35 @@ class _ScoreBar extends StatelessWidget {
                 color: color, fontSize: 11, fontWeight: FontWeight.w600)),
       ),
     ]);
+  }
+}
+
+// ── Tier badge ────────────────────────────────────────────────────────────────
+
+class _TierBadge extends StatelessWidget {
+  final String label;
+  final Color color;
+  const _TierBadge({required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: color.withOpacity(0.4)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.3,
+        ),
+      ),
+    );
   }
 }
 

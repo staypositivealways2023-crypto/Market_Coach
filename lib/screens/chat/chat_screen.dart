@@ -174,15 +174,64 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       appBar: _buildAppBar(isStreaming, chatState),
       body: Stack(
         children: [
-          // Background
+          // ── Programmatic dark-navy glassmorphic background ──────────────
           Positioned.fill(
-            child: Image.asset(
-              'assests/chatbackground.png',
-              fit: BoxFit.cover,
+            child: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Color(0xFF010812), // near-black top
+                    Color(0xFF020D1F), // deep navy
+                    Color(0xFF031428), // mid dark blue
+                    Color(0xFF041A30), // slightly lighter near bottom
+                  ],
+                  stops: [0.0, 0.35, 0.70, 1.0],
+                ),
+              ),
             ),
           ),
+          // World-map dot grid
           Positioned.fill(
-            child: Container(color: Colors.black.withValues(alpha: 0.72)),
+            child: CustomPaint(painter: _WorldMapDotPainter()),
+          ),
+          // Blue horizon glow at the bottom
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            height: 260,
+            child: Container(
+              decoration: const BoxDecoration(
+                gradient: RadialGradient(
+                  center: Alignment(0.0, 1.4),
+                  radius: 1.0,
+                  colors: [
+                    Color(0x7F063B6B),
+                    Color(0x4F0A4D8A),
+                    Colors.transparent,
+                  ],
+                  stops: [0.0, 0.45, 1.0],
+                ),
+              ),
+            ),
+          ),
+          // Subtle top vignette
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 180,
+            child: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0xCC000000), Colors.transparent],
+                ),
+              ),
+            ),
           ),
           // Main content
           SafeArea(
@@ -1200,4 +1249,101 @@ class _SuggestionChip extends StatelessWidget {
       ),
     );
   }
+}
+
+
+/// Paints a world-map-style dot grid — dark dots representing continental
+/// landmasses, dimly visible against the deep-navy background.
+class _WorldMapDotPainter extends CustomPainter {
+  // Very rough continent dot map expressed as (xFraction, yFraction) pairs
+  // scaled into the widget's actual size at paint time.
+  static const List<(double, double)> _landDots = [
+    // North America
+    (0.08,0.18),(0.10,0.22),(0.12,0.25),(0.14,0.20),(0.16,0.28),(0.18,0.30),
+    (0.20,0.25),(0.22,0.32),(0.19,0.38),(0.17,0.42),(0.21,0.44),(0.24,0.40),
+    (0.13,0.30),(0.11,0.35),(0.15,0.36),(0.26,0.35),(0.28,0.30),(0.25,0.27),
+    (0.10,0.28),(0.12,0.32),(0.08,0.24),(0.06,0.20),(0.07,0.28),
+    // South America
+    (0.24,0.52),(0.26,0.56),(0.28,0.60),(0.27,0.65),(0.25,0.68),(0.23,0.72),
+    (0.22,0.60),(0.24,0.64),(0.26,0.70),(0.28,0.55),(0.30,0.58),(0.29,0.63),
+    (0.21,0.55),(0.20,0.62),(0.22,0.68),
+    // Europe
+    (0.44,0.18),(0.46,0.16),(0.48,0.20),(0.50,0.18),(0.52,0.22),(0.46,0.24),
+    (0.48,0.26),(0.50,0.24),(0.42,0.22),(0.44,0.26),(0.54,0.20),(0.56,0.18),
+    (0.52,0.16),(0.50,0.14),(0.45,0.14),(0.47,0.12),(0.49,0.10),
+    // Africa
+    (0.46,0.32),(0.48,0.36),(0.50,0.40),(0.52,0.44),(0.50,0.48),(0.48,0.52),
+    (0.46,0.56),(0.48,0.60),(0.50,0.55),(0.52,0.50),(0.54,0.46),(0.52,0.40),
+    (0.44,0.38),(0.44,0.44),(0.46,0.48),(0.54,0.38),(0.56,0.42),
+    // Asia
+    (0.56,0.14),(0.60,0.16),(0.64,0.18),(0.68,0.20),(0.72,0.22),(0.76,0.24),
+    (0.70,0.28),(0.66,0.26),(0.62,0.24),(0.58,0.22),(0.56,0.26),(0.60,0.30),
+    (0.64,0.32),(0.68,0.28),(0.72,0.30),(0.76,0.26),(0.80,0.22),(0.82,0.20),
+    (0.74,0.18),(0.78,0.16),(0.84,0.18),(0.86,0.22),(0.80,0.28),(0.78,0.32),
+    (0.74,0.34),(0.70,0.36),(0.66,0.34),(0.62,0.36),(0.58,0.30),(0.56,0.32),
+    (0.84,0.24),(0.86,0.28),(0.88,0.26),(0.82,0.26),(0.80,0.30),
+    // Australia / Oceania
+    (0.76,0.56),(0.78,0.58),(0.80,0.60),(0.82,0.58),(0.84,0.56),(0.80,0.54),
+    (0.78,0.62),(0.80,0.64),(0.82,0.62),(0.86,0.54),(0.84,0.60),
+    // Japan / SE Asia
+    (0.82,0.30),(0.84,0.32),(0.74,0.40),(0.72,0.44),(0.70,0.42),(0.76,0.44),
+    (0.78,0.46),(0.74,0.48),(0.72,0.50),(0.70,0.48),
+  ];
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = const Color(0xFF1A3456).withOpacity(0.55)
+      ..style = PaintingStyle.fill;
+
+    const dotRadius = 1.6;
+    const spacing = 18.0;
+
+    // Draw subtle full grid first (very dim ocean dots)
+    final gridPaint = Paint()
+      ..color = const Color(0xFF0B1E33).withOpacity(0.35)
+      ..style = PaintingStyle.fill;
+
+    for (double x = spacing / 2; x < size.width; x += spacing) {
+      for (double y = spacing / 2; y < size.height; y += spacing) {
+        canvas.drawCircle(Offset(x, y), 1.0, gridPaint);
+      }
+    }
+
+    // Draw land dots (brighter)
+    for (final (fx, fy) in _landDots) {
+      final cx = fx * size.width;
+      final cy = fy * size.height;
+      // Paint a small cluster of dots around each landmark
+      for (var dx = -spacing; dx <= spacing; dx += spacing) {
+        for (var dy = -spacing * 0.5; dy <= spacing * 0.5; dy += spacing * 0.5) {
+          final ox = cx + dx + (dx * 0.1);
+          final oy = cy + dy;
+          if (ox >= 0 && ox <= size.width && oy >= 0 && oy <= size.height) {
+            canvas.drawCircle(Offset(ox, oy), dotRadius, paint);
+          }
+        }
+      }
+    }
+
+    // Cyan horizon shimmer line
+    final shimmerPaint = Paint()
+      ..shader = LinearGradient(
+        colors: [
+          Colors.transparent,
+          const Color(0xFF06B6D4).withOpacity(0.18),
+          const Color(0xFF0891B2).withOpacity(0.30),
+          const Color(0xFF06B6D4).withOpacity(0.18),
+          Colors.transparent,
+        ],
+        stops: const [0.0, 0.25, 0.5, 0.75, 1.0],
+      ).createShader(Rect.fromLTWH(0, size.height * 0.72, size.width, 2));
+    canvas.drawRect(
+      Rect.fromLTWH(0, size.height * 0.72, size.width, 1.5),
+      shimmerPaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
