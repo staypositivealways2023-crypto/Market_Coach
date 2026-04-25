@@ -20,6 +20,7 @@ import logging
 from typing import Any
 
 from app.models.voice_session import VoiceMode
+from app.services.jarvis_adapter_service import jarvis_snapshot, jarvis_analyse
 
 logger = logging.getLogger(__name__)
 
@@ -70,8 +71,46 @@ class ToolRegistry:
     # ── Market tools ──────────────────────────────────────────────────────────
 
     async def _get_asset_snapshot(self, *, uid: str, symbol: str, **_) -> dict:
-        """Live price + key indicators for a symbol."""
+        """Live price + key indicators for a symbol.
+
+        Strategy (Hybrid Option B):
+          1. Try Jarvis first — local yfinance, instant, zero API cost.
+          2. Fall back to MarketDataFetcher + SignalEngine if Jarvis is offline
+             or returns an error (e.g. Ollama not running).
+
+        The result always has the same schema regardless of which path was used.
+        """
         symbol = symbol.upper()
+
+        # ── 1. Jarvis fast-path ───────────────────────────────────────────────
+        jarvis_data = await jarvis_snapshot(symbol)
+        if "error" not in jarvis_data:
+            logger.info(f"[tool_registry] {symbol} snapshot via Jarvis (local)")
+            # Jarvis returns: price, day_change_pct, rsi, macd_line,
+            # macd_signal, macd_histogram, 52wk_high, 52wk_low, 52wk_position
+            return {
+                "symbol": symbol,
+                "price": jarvis_data.get("price"),
+                "change_pct": jarvis_data.get("day_change_pct"),
+                "rsi": jarvis_data.get("rsi"),
+                "macd_signal": jarvis_data.get("macd_signal", "NEUTRAL"),
+                "macd_line": jarvis_data.get("macd_line"),
+                "macd_histogram": jarvis_data.get("macd_histogram"),
+                "ema_stack": "MIXED",  # Jarvis doesn't compute EMA stack
+                "composite_score": 0.0,
+                "signal_label": "NEUTRAL",
+                "week_52_high": jarvis_data.get("52wk_high"),
+                "week_52_low": jarvis_data.get("52wk_low"),
+                "week_52_position": jarvis_data.get("52wk_position"),
+                "source": "jarvis-local",
+                "_meta": {"metric": "composite_score", "timeframe": "1d"},
+            }
+
+        # ── 2. Fallback: MarketDataFetcher + SignalEngine ─────────────────────
+        logger.warning(
+            f"[tool_registry] Jarvis unavailable for {symbol} "
+            f"({jarvis_data.get('error')}), falling back to cloud sources"
+        )
         quote = await self._df.get_quote(symbol)
         candles = await self._df.get_candles(symbol, interval="1d", limit=50)
 
@@ -103,6 +142,7 @@ class ToolRegistry:
             "ema_stack": ema_stack,
             "composite_score": composite,
             "signal_label": signal_label,
+            "source": "cloud",
             "_meta": {"metric": "composite_score", "timeframe": "1d"},
         }
 

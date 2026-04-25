@@ -2,9 +2,9 @@
 
 Coordinates all steps required to create a new voice session:
   1. Check usage limits (Redis)
-  2. Assemble user context (Firestore)
+  2. Assemble user context (Firestore + ChromaDB)
   3. Rank coaching memories for prompt injection
-  4. Build typed prompt blocks → instructions string
+  4. Build typed prompt blocks -> instructions string
   5. Get OpenAI tool schemas for the requested mode
   6. Create OpenAI Realtime ephemeral token
   7. Persist SessionState to Redis
@@ -56,39 +56,55 @@ class SessionBootstrapOrchestrator:
     async def build(
         self, uid: str, request: VoiceSessionCreateRequest
     ) -> VoiceSessionBootstrap:
-        # ── 1. Usage check ────────────────────────────────────────────────────
-        # Phase 1: prototype_owner tier = unlimited.  Wire tiers in Phase 4.
-        tier = await self._get_user_tier(uid)
-        allowed, reason = await self._usage_repo.check_can_start(uid, tier)
-        if not allowed:
+        # 1. Usage check — wrapped so a Redis outage never blocks voice startup.
+        try:
+            tier = await self._get_user_tier(uid)
+            allowed, reason = await self._usage_repo.check_can_start(uid, tier)
+            if not allowed:
+                from fastapi import HTTPException
+                raise HTTPException(status_code=429, detail=reason)
+        except Exception as usage_exc:
+            # If the usage check itself throws (e.g. Redis timeout), log and
+            # allow the session — usage tracking is non-critical for dev.
             from fastapi import HTTPException
-            raise HTTPException(status_code=429, detail=reason)
+            if isinstance(usage_exc, HTTPException):
+                raise
+            logger.warning(f"[bootstrap] Usage check failed (non-fatal): {usage_exc}")
 
-        # ── 2. Acquire session lock (prevents double-open) ────────────────────
+        # 2. Acquire session lock — wrapped so Redis outage is non-blocking.
         session_id = str(uuid.uuid4())
-        locked = await self._session_repo.acquire_lock(uid, session_id)
-        if not locked:
-            existing = await self._session_repo.get_lock(uid)
-            logger.warning(f"[bootstrap] User {uid} already has active session {existing}")
+        try:
+            locked = await self._session_repo.acquire_lock(uid, session_id)
+            if not locked:
+                existing = await self._session_repo.get_lock(uid)
+                logger.warning(f"[bootstrap] User {uid} already has active session {existing}")
+                from fastapi import HTTPException
+                raise HTTPException(
+                    status_code=409,
+                    detail="A voice session is already active. End the current session first.",
+                )
+        except Exception as lock_exc:
             from fastapi import HTTPException
-            raise HTTPException(
-                status_code=409,
-                detail="A voice session is already active. End the current session first.",
-            )
+            if isinstance(lock_exc, HTTPException):
+                raise
+            # Redis timeout or connection refused — allow session to continue
+            logger.warning(f"[bootstrap] Session lock failed (non-fatal): {lock_exc}")
 
-        # ── 3. Assemble context ───────────────────────────────────────────────
+        # 3. Assemble context (Firestore + ChromaDB)
         ctx = await self._context_assembler.assemble(uid, request)
         user_level: str = ctx["user_level"]
         profile_memory = ctx["profile_memory"]
         coaching_memory_raw = ctx["coaching_memory"]
+        chroma_memories: list[str] = ctx.get("chroma_memories", [])
 
-        # ── 4. Rank coaching memories ─────────────────────────────────────────
+        # 4. Rank coaching memories
         ranked_coaching = rank_memories(coaching_memory_raw, request.mode)
 
-        # ── 5. Build instructions ─────────────────────────────────────────────
+        # 5. Build instructions (includes ChromaDB semantic block)
         instructions = self._prompt_builder.build(
             profile_memory=profile_memory,
             coaching_memory=ranked_coaching,
+            chroma_memories=chroma_memories,
             user_level=user_level,
             mode=request.mode,
             screen_context=request.screen_context,
@@ -96,16 +112,16 @@ class SessionBootstrapOrchestrator:
             active_lesson_id=request.active_lesson_id,
         )
 
-        # ── 6. Get tool schemas ───────────────────────────────────────────────
+        # 6. Get tool schemas
         tools = self._tool_registry.get_openai_tool_schemas(request.mode)
 
-        # ── 7. Create OpenAI ephemeral token ──────────────────────────────────
+        # 7. Create OpenAI ephemeral token
         ephemeral_token, expires_at = await self._realtime_svc.create_ephemeral_token(
             instructions=instructions,
             tools=tools,
         )
 
-        # ── 8. Persist SessionState to Redis ──────────────────────────────────
+        # 8. Persist SessionState to Redis
         now = datetime.now(timezone.utc)
         state = SessionState(
             session_id=session_id,
@@ -117,7 +133,7 @@ class SessionBootstrapOrchestrator:
         )
         await self._session_repo.set(session_id, state)
 
-        # ── 9. Write Firestore session doc ────────────────────────────────────
+        # 9. Write Firestore session doc
         try:
             from google.cloud.firestore import SERVER_TIMESTAMP
             self._db.collection("voice_sessions").document(session_id).set({
@@ -136,7 +152,8 @@ class SessionBootstrapOrchestrator:
 
         logger.info(
             f"[bootstrap] Session {session_id} created for uid={uid} "
-            f"mode={request.mode.value} level={user_level}"
+            f"mode={request.mode.value} level={user_level} "
+            f"chroma_memories={len(chroma_memories)}"
         )
 
         return VoiceSessionBootstrap(

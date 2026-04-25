@@ -1,13 +1,14 @@
-"""Memory extraction worker — runs after every voice session.
+"""Memory extraction worker -- runs after every voice session.
 
 Triggered as a FastAPI BackgroundTask from POST /api/voice/session/end.
 
 Steps:
   1. Build transcript text from transcript_turns
   2. Call Claude to extract structured profile facts + coaching patterns
-  3. Upsert extracted facts to:
+  3. Upsert extracted facts to Firestore:
        users/{uid}/voice_profile_memory/{key}   (profile facts)
        users/{uid}/coaching_memory/{memory_id}  (coaching patterns)
+  4. Store extracted facts in ChromaDB for semantic recall
 
 Claude returns JSON with two arrays:
   - profile_facts:  [{key, value, confidence}]
@@ -39,7 +40,7 @@ _EXTRACTION_PROMPT = """You are a memory extractor for MarketCoach AI, a financi
 
 Given a voice session transcript between a user and the AI coach, extract two types of information:
 
-1. **profile_facts** — stable facts about who the user is (extract only what is clearly stated or strongly implied):
+1. **profile_facts** -- stable facts about who the user is (extract only what is clearly stated or strongly implied):
    - experience_level: "beginner" | "intermediate" | "advanced"
    - primary_market: e.g. "crypto", "stocks", "forex", "mixed"
    - preferred_examples: specific tickers/assets they mentioned or seem focused on
@@ -49,13 +50,13 @@ Given a voice session transcript between a user and the AI coach, extract two ty
    - trading_style: "day_trader" | "swing_trader" | "long_term_investor" | "learner"
    - time_horizon: e.g. "short_term", "long_term", "mixed"
 
-2. **coaching_observations** — behavioural patterns observed in this session:
+2. **coaching_observations** -- behavioural patterns observed in this session:
    - category: one of: learning_gap | trading_habit | style_preference | risk_pattern | goal | motivation_pattern
    - summary: one concise sentence describing the observation
-   - confidence: 0.0–1.0
+   - confidence: 0.0-1.0
 
 Rules:
-- Only extract what you actually observed — do not invent or assume.
+- Only extract what you actually observed -- do not invent or assume.
 - If the session is very short or off-topic, return empty arrays.
 - confidence should reflect how clearly the fact/pattern was demonstrated.
 - preferred_examples should be a comma-separated string of tickers if multiple.
@@ -78,14 +79,14 @@ async def run(
     db,
     claude_svc: Optional[ClaudeService] = None,
 ) -> None:
-    """Extract memory from transcript and write to Firestore."""
+    """Extract memory from transcript and write to Firestore + ChromaDB."""
     logger.info(f"[memory_worker] Starting extraction for session {session_id}")
 
     if not transcript_turns or not claude_svc:
-        logger.info(f"[memory_worker] Skipping — no transcript or claude_svc for {session_id}")
+        logger.info(f"[memory_worker] Skipping -- no transcript or claude_svc for {session_id}")
         return
 
-    # ── 1. Build transcript text ───────────────────────────────────────────────
+    # 1. Build transcript text
     lines = []
     for turn in transcript_turns:
         prefix = "User:" if turn.role == "user" else "Coach:"
@@ -95,7 +96,7 @@ async def run(
     if not transcript_text:
         return
 
-    # ── 2. Call Claude for extraction ─────────────────────────────────────────
+    # 2. Call Claude for extraction
     extracted: dict = {"profile_facts": [], "coaching_observations": []}
     try:
         result = await claude_svc.generate_analysis(
@@ -119,7 +120,7 @@ async def run(
 
     now = datetime.now(timezone.utc)
 
-    # ── 3a. Upsert profile facts ───────────────────────────────────────────────
+    # 3a. Upsert profile facts to Firestore
     profile_facts = extracted.get("profile_facts", [])
     if profile_facts:
         try:
@@ -149,7 +150,7 @@ async def run(
         except Exception as exc:
             logger.error(f"[memory_worker] Profile fact write failed for {uid}: {exc}")
 
-    # ── 3b. Upsert coaching observations ──────────────────────────────────────
+    # 3b. Upsert coaching observations to Firestore
     coaching_obs = extracted.get("coaching_observations", [])
     if coaching_obs:
         try:
@@ -186,7 +187,7 @@ async def run(
                 )
 
                 if existing_id:
-                    # Reinforce existing memory — increase strength by 0.1, cap at 1.0
+                    # Reinforce existing memory -- increase strength by 0.1, cap at 1.0
                     ref = coaching_col.document(existing_id)
                     batch.set(
                         ref,
@@ -216,5 +217,22 @@ async def run(
             )
         except Exception as exc:
             logger.error(f"[memory_worker] Coaching memory write failed for {uid}: {exc}")
+
+    # 4. Persist extracted facts to ChromaDB for semantic recall
+    try:
+        from app.services.chroma_memory_service import ChromaMemoryService
+        chroma = ChromaMemoryService()
+        for fact in profile_facts:
+            key = fact.get("key", "").strip()
+            value = str(fact.get("value", "")).strip()
+            if key and value:
+                chroma.store(uid, f"{key}: {value}", category="preference")
+        for obs in coaching_obs:
+            summary_text = obs.get("summary", "").strip()
+            category = obs.get("category", "event")
+            if summary_text:
+                chroma.store(uid, summary_text, category=category)
+    except Exception as exc:
+        logger.warning(f"[memory_worker] ChromaDB store failed for {uid}: {exc}")
 
     logger.info(f"[memory_worker] Completed for session {session_id}")

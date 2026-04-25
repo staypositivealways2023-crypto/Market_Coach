@@ -97,4 +97,16 @@ async def run(
     except Exception as exc:
         logger.error(f"[summary_worker] Transcript message write failed: {exc}")
 
+    # ── 5. Store summary in ChromaDB for future recall ────────────────────────
+    if summary:
+        try:
+            from app.services.chroma_memory_service import ChromaMemoryService
+            ChromaMemoryService().store(
+                uid,
+                f"Session summary: {summary}",
+                category="conversation",
+            )
+        except Exception as exc:
+            logger.warning(f"[summary_worker] ChromaDB store failed: {exc}")
+
     logger.info(f"[summary_worker] Completed for session {session_id}")
