@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/stock_summary.dart';
 import '../models/indicator.dart';
 import '../models/valuation.dart';
+import '../services/backend_service.dart';
 import 'firebase_provider.dart';
 import 'auth_provider.dart';
 
@@ -43,8 +44,6 @@ final valuationStreamProvider =
 });
 
 /// Stream provider for user's watchlist (list of symbols)
-/// Usage: ref.watch(watchlistProvider)
-/// Returns: Stream of List of String (stock symbols)
 final watchlistProvider = StreamProvider<List<String>>((ref) {
   final db = ref.watch(firebaseProvider);
   final userId = ref.watch(userIdProvider);
@@ -64,9 +63,6 @@ final watchlistProvider = StreamProvider<List<String>>((ref) {
 });
 
 /// Combined watchlist data provider
-/// Fetches market data for all symbols in the user's watchlist
-/// Usage: ref.watch(watchlistDataProvider)
-/// Returns: Stream of List of StockSummary
 final watchlistDataProvider = StreamProvider<List<StockSummary>>((ref) {
   final watchlistAsync = ref.watch(watchlistProvider);
 
@@ -78,7 +74,6 @@ final watchlistDataProvider = StreamProvider<List<StockSummary>>((ref) {
 
       final db = ref.watch(firebaseProvider);
 
-      // Create a stream that combines all market data for watchlist symbols
       return db
           .collection('market_data')
           .where(FieldPath.documentId, whereIn: symbols)
@@ -111,7 +106,6 @@ class MarketDataComplete {
 }
 
 /// Combined provider for complete market data (market data + indicators + valuation)
-/// Usage: ref.watch(completeMarketDataProvider('AAPL'))
 final completeMarketDataProvider =
     StreamProvider.family<MarketDataComplete, String>((ref, symbol) {
   final marketDataStream = ref.watch(marketDataStreamProvider(symbol));
@@ -126,3 +120,29 @@ final completeMarketDataProvider =
     );
   });
 });
+
+// ── Phase 5: Real-data providers (indices, heatmap, calendar, screener) ──────
+
+final _backendSvc = BackendService();
+
+/// Live major indices — refreshes on invalidate
+/// category: 'all' | 'stock' | 'crypto'
+final indicesProvider = FutureProvider.family<List<Map<String, dynamic>>, String>(
+  (ref, category) => _backendSvc.getIndices(category: category),
+);
+
+/// Sector heatmap — 11 SPDR ETFs by daily %
+final sectorHeatmapProvider = FutureProvider<List<Map<String, dynamic>>>(
+  (ref) => _backendSvc.getSectorHeatmap(),
+);
+
+/// Upcoming high-impact economic events (next 14 days)
+final economicCalendarProvider = FutureProvider<List<Map<String, dynamic>>>(
+  (ref) => _backendSvc.getEconomicCalendar(daysAhead: 14),
+);
+
+/// Top movers screener — biggest absolute daily % changes
+/// assetType: 'all' | 'stock' | 'crypto'
+final topMoversProvider = FutureProvider.family<List<Map<String, dynamic>>, String>(
+  (ref, assetType) => _backendSvc.getTopMovers(assetType: assetType, limit: 20),
+);

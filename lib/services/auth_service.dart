@@ -38,7 +38,23 @@ class AuthService {
       // Save FCM token (non-fatal, platform-guarded inside getToken)
       _saveFcmToken(credential.user!.uid);
 
+      // Send verification email — user must verify before accessing the app
+      try {
+        await credential.user?.sendEmailVerification();
+      } catch (_) {
+        // Non-fatal — account created even if verification email fails
+      }
+
       return credential;
+    } on FirebaseAuthException catch (e) {
+      throw _handleAuthException(e);
+    }
+  }
+
+  /// Re-send verification email to the current user.
+  Future<void> resendVerificationEmail() async {
+    try {
+      await _auth.currentUser?.sendEmailVerification();
     } on FirebaseAuthException catch (e) {
       throw _handleAuthException(e);
     }

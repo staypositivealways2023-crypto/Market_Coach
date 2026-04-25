@@ -73,7 +73,7 @@ class JarvisService {
           e.toString().contains('SocketException') ||
           e.toString().contains('Failed host lookup')) {
         throw Exception(
-          'Jarvis is offline.\n\nStart it with:\n  cd C:\\Users\\sandi\\jarvis\n  python api/run.py',
+          'Voice coach is offline. Please ensure the local server is running and try again.',
         );
       }
       rethrow;

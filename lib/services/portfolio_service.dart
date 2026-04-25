@@ -37,4 +37,25 @@ class PortfolioService {
     if (!doc.exists) return null;
     return Holding.fromMap(doc.data() as Map<String, dynamic>);
   }
+
+  /// Sell [sharesToSell] shares of [symbol].
+  /// - If sharesToSell >= current shares → remove the position.
+  /// - Otherwise → update the position with reduced shares count.
+  /// [currentPrice] is used only for optional realised P&L logging.
+  Future<void> sell(String symbol, double sharesToSell) async {
+    final existing = await getHolding(symbol);
+    if (existing == null) return;
+    final remaining = existing.shares - sharesToSell;
+    if (remaining <= 0) {
+      await remove(symbol);
+    } else {
+      await upsert(Holding(
+        symbol: existing.symbol,
+        name: existing.name,
+        shares: remaining,
+        avgCost: existing.avgCost,
+        addedAt: existing.addedAt,
+      ));
+    }
+  }
 }

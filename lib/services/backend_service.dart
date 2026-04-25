@@ -78,8 +78,9 @@ class BackendService {
     return results;
   }
 
-  /// Fetch prices directly from Finnhub (stocks) and Binance REST (crypto).
-  /// Used as fallback when the backend is down or missing API keys.
+  /// Fetch prices directly from Binance REST (crypto, no key required).
+  /// Used as fallback when the backend is down. Stock symbols are skipped —
+  /// no client-side stock key is available; they remain empty until backend recovers.
   static bool _isCryptoSymbol(String s) {
     const cryptoBases = {
       'BTC', 'ETH', 'SOL', 'BNB', 'ADA', 'XRP', 'DOGE',
@@ -95,9 +96,9 @@ class BackendService {
       List<String> symbols) async {
     final prices = <String, Map<String, dynamic>>{};
     final crypto = symbols.where(_isCryptoSymbol).toList();
-    final stocks = symbols.where((s) => !_isCryptoSymbol(s)).toList();
+    // Stock symbols are not fetched client-side — no key available.
+    // They will remain absent from the map until the backend recovers.
 
-    // Crypto via Binance public REST (no auth needed)
     for (final sym in crypto) {
       try {
         final base = sym.split('-').first.split('/').first.toUpperCase();
@@ -110,29 +111,6 @@ class BackendService {
           final price = double.tryParse(data['price'] as String? ?? '');
           if (price != null && price > 0) {
             prices[sym.toUpperCase()] = {'symbol': sym.toUpperCase(), 'price': price};
-          }
-        }
-      } catch (_) {}
-    }
-
-    // Stocks via Finnhub (free tier, 60 req/min)
-    for (final sym in stocks) {
-      try {
-        final resp = await http
-            .get(Uri.parse(
-                'https://finnhub.io/api/v1/quote?symbol=${sym.toUpperCase()}'
-                '&token=${APIConfig.finnhubKey}'))
-            .timeout(const Duration(seconds: 8));
-        if (resp.statusCode == 200) {
-          final data = jsonDecode(resp.body) as Map<String, dynamic>;
-          final price = (data['c'] as num?)?.toDouble();
-          if (price != null && price > 0) {
-            prices[sym.toUpperCase()] = {
-              'symbol': sym.toUpperCase(),
-              'price': price,
-              'change': (data['d'] as num?)?.toDouble() ?? 0.0,
-              'change_percent': (data['dp'] as num?)?.toDouble() ?? 0.0,
-            };
           }
         }
       } catch (_) {}
@@ -353,6 +331,77 @@ class BackendService {
       if (kDebugMode) debugPrint('[BackendService] getTradeDebrief error: $e');
     }
     return null;
+  }
+
+  // ── Phase 5: Real Data Endpoints ─────────────────────────────────────────
+
+  /// GET /api/market/indices?category=all|stock|crypto
+  Future<List<Map<String, dynamic>>> getIndices({String category = 'all'}) async {
+    try {
+      final resp = await http
+          .get(Uri.parse('$_base/api/market/indices?category=$category'))
+          .timeout(_timeout);
+      if (resp.statusCode == 200) {
+        final list = jsonDecode(resp.body) as List<dynamic>;
+        return list.cast<Map<String, dynamic>>();
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('[BackendService] getIndices error: $e');
+    }
+    return [];
+  }
+
+  /// GET /api/market/heatmap — sector performance
+  Future<List<Map<String, dynamic>>> getSectorHeatmap() async {
+    try {
+      final resp = await http
+          .get(Uri.parse('$_base/api/market/heatmap'))
+          .timeout(_timeout);
+      if (resp.statusCode == 200) {
+        final list = jsonDecode(resp.body) as List<dynamic>;
+        return list.cast<Map<String, dynamic>>();
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('[BackendService] getSectorHeatmap error: $e');
+    }
+    return [];
+  }
+
+  /// GET /api/market/economic-calendar
+  Future<List<Map<String, dynamic>>> getEconomicCalendar({int daysAhead = 14}) async {
+    try {
+      final resp = await http
+          .get(Uri.parse('$_base/api/market/economic-calendar?days_ahead=$daysAhead'))
+          .timeout(_timeout);
+      if (resp.statusCode == 200) {
+        final body = jsonDecode(resp.body) as Map<String, dynamic>;
+        final list = body['events'] as List<dynamic>;
+        return list.cast<Map<String, dynamic>>();
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('[BackendService] getEconomicCalendar error: $e');
+    }
+    return [];
+  }
+
+  /// GET /api/market/screener — top movers
+  Future<List<Map<String, dynamic>>> getTopMovers({
+    String assetType = 'all',
+    int limit = 20,
+  }) async {
+    try {
+      final resp = await http
+          .get(Uri.parse('$_base/api/market/screener?asset_type=$assetType&limit=$limit'))
+          .timeout(_timeout);
+      if (resp.statusCode == 200) {
+        final body = jsonDecode(resp.body) as Map<String, dynamic>;
+        final list = body['results'] as List<dynamic>;
+        return list.cast<Map<String, dynamic>>();
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('[BackendService] getTopMovers error: $e');
+    }
+    return [];
   }
 
   // ── Portfolio Analysis (Phase 7) ──────────────────────────────────────────

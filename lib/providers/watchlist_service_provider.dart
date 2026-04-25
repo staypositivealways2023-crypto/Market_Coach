@@ -15,3 +15,10 @@ final isInWatchlistProvider = StreamProvider.family<bool, String>((ref, symbol) 
   final service = ref.watch(watchlistServiceProvider);
   return service.watchSymbol(symbol);
 });
+
+/// Stream provider for the full set of watchlisted symbols.
+/// Used by HomeScreen to reactively update its quote subscriptions.
+final watchlistSymbolsProvider = StreamProvider<Set<String>>((ref) {
+  final service = ref.watch(watchlistServiceProvider);
+  return service.watchAllSymbols();
+});

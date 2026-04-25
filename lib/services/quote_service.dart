@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer' as dev;
 import 'dart:math';
 
 import 'package:http/http.dart' as http;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '../config/api_config.dart';
 import '../models/quote.dart';
 
 abstract class QuoteService {
@@ -29,7 +31,6 @@ class MockQuoteService implements QuoteService {
         if (base != null) {
           final priceFluctuation = (_random.nextDouble() - 0.5) * 2.0;
           final changeFluctuation = (_random.nextDouble() - 0.5) * 0.5;
-
           quotes[symbol] = Quote(
             symbol: symbol,
             price: base.price + priceFluctuation,
@@ -50,6 +51,10 @@ class MockQuoteService implements QuoteService {
 class YahooQuoteService implements QuoteService {
   static const _baseUrl = 'https://query1.finance.yahoo.com/v7/finance/quote';
   static const _pollInterval = Duration(seconds: 30);
+  static const _symbolOverrides = {
+    'BRK.B': 'BRK-B',
+    'BF.B': 'BF-B',
+  };
 
   StreamController<Map<String, Quote>>? _controller;
   Timer? _timer;
@@ -57,10 +62,10 @@ class YahooQuoteService implements QuoteService {
 
   @override
   Stream<Map<String, Quote>> streamQuotes(Set<String> symbols) {
-    _symbols = symbols;
+    _symbols = symbols.map(_normalizeSymbol).toSet();
     _controller = StreamController<Map<String, Quote>>.broadcast(
       onListen: () {
-        _fetchAndEmit(); // immediate first fetch
+        _fetchAndEmit();
         _timer = Timer.periodic(_pollInterval, (_) => _fetchAndEmit());
       },
       onCancel: () {
@@ -74,9 +79,21 @@ class YahooQuoteService implements QuoteService {
   Future<void> _fetchAndEmit() async {
     if (_symbols.isEmpty) return;
     try {
-      final symbolList = _symbols.join(',');
-      final uri = Uri.parse('$_baseUrl?symbols=$symbolList&fields=regularMarketPrice,regularMarketChangePercent');
-      final response = await http.get(uri, headers: {'User-Agent': 'Mozilla/5.0'}).timeout(const Duration(seconds: 10));
+      final requestedSymbols = _symbols.toList()..sort();
+      final yahooSymbols = requestedSymbols.map(_toYahooSymbol).toSet().toList()
+        ..sort();
+      dev.log(
+        '[YahooQuote] requested=${requestedSymbols.join(',')} '
+        'mapped=${yahooSymbols.join(',')}',
+        name: 'Quotes',
+      );
+
+      final symbolList = yahooSymbols.join(',');
+      final uri = Uri.parse(
+          '$_baseUrl?symbols=$symbolList&fields=regularMarketPrice,regularMarketChangePercent');
+      final response = await http
+          .get(uri, headers: {'User-Agent': 'Mozilla/5.0'})
+          .timeout(const Duration(seconds: 10));
       if (response.statusCode != 200) return;
 
       final body = jsonDecode(response.body);
@@ -85,17 +102,41 @@ class YahooQuoteService implements QuoteService {
 
       final quotes = <String, Quote>{};
       for (final r in results) {
-        final symbol = r['symbol'] as String? ?? '';
+        final yahooSymbol = _normalizeSymbol(r['symbol'] as String? ?? '');
         final price = (r['regularMarketPrice'] as num?)?.toDouble() ?? 0.0;
-        final change = (r['regularMarketChangePercent'] as num?)?.toDouble() ?? 0.0;
-        if (symbol.isNotEmpty && price > 0) {
-          quotes[symbol] = Quote(symbol: symbol, price: price, changePercent: change);
+        final change =
+            (r['regularMarketChangePercent'] as num?)?.toDouble() ?? 0.0;
+        final appSymbol = _fromYahooSymbol(yahooSymbol);
+        if (appSymbol.isNotEmpty && price > 0) {
+          quotes[appSymbol] =
+              Quote(symbol: appSymbol, price: price, changePercent: change);
         }
       }
-      if (quotes.isNotEmpty) _controller?.add(quotes);
+      if (quotes.isNotEmpty) {
+        dev.log(
+          '[YahooQuote] payload=${quotes.entries.map((e) => '${e.key}:${e.value.price.toStringAsFixed(2)}').join(', ')}',
+          name: 'Quotes',
+        );
+        _controller?.add(quotes);
+      }
     } catch (_) {
       // Network errors are non-fatal; next poll will retry
     }
+  }
+
+  String _normalizeSymbol(String symbol) => symbol.trim().toUpperCase();
+
+  String _toYahooSymbol(String symbol) {
+    final normalized = _normalizeSymbol(symbol);
+    return _symbolOverrides[normalized] ?? normalized;
+  }
+
+  String _fromYahooSymbol(String symbol) {
+    final normalized = _normalizeSymbol(symbol);
+    for (final entry in _symbolOverrides.entries) {
+      if (entry.value == normalized) return entry.key;
+    }
+    return normalized;
   }
 
   @override
@@ -137,7 +178,6 @@ class BinanceQuoteService implements QuoteService {
 
   void _connect() {
     try {
-      // Filter only crypto symbols that can be mapped to Binance pairs
       final binanceSymbols = _activeSymbols
           .where((s) => _symbolMapping.containsKey(s))
           .map((s) => _symbolMapping[s]!.toLowerCase())
@@ -145,7 +185,6 @@ class BinanceQuoteService implements QuoteService {
 
       if (binanceSymbols.isEmpty) return;
 
-      // Build combined stream URL
       final streams = binanceSymbols.map((s) => '$s@ticker').join('/');
       final uri = Uri.parse('$_baseUrl?streams=$streams');
 
@@ -172,16 +211,14 @@ class BinanceQuoteService implements QuoteService {
   void _handleMessage(dynamic message) {
     final data = jsonDecode(message as String);
 
-    // Binance combined stream format: {"stream":"btcusdt@ticker","data":{...}}
     if (data is Map && data['data'] != null) {
       final ticker = data['data'];
       final binanceSymbol = (ticker['s'] as String).toUpperCase();
 
-      // Reverse map: BTCUSDT -> BTC
       final displaySymbol = _symbolMapping.entries
           .firstWhere(
             (e) => e.value == binanceSymbol,
-            orElse: () => MapEntry('', ''),
+            orElse: () => const MapEntry('', ''),
           )
           .key;
 
@@ -196,7 +233,6 @@ class BinanceQuoteService implements QuoteService {
         changePercent: changePercent,
       );
 
-      // Update cache and emit full map of all quotes
       _quoteCache[displaySymbol] = quote;
       _controller?.add(Map.from(_quoteCache));
     }
@@ -205,7 +241,6 @@ class BinanceQuoteService implements QuoteService {
   void _scheduleReconnect() {
     _reconnectTimer?.cancel();
 
-    // Exponential backoff: 1s, 2s, 4s, 8s, 16s, max 30s
     final delaySeconds = min(pow(2, _reconnectAttempts).toInt(), 30);
     _reconnectAttempts++;
 
@@ -225,6 +260,97 @@ class BinanceQuoteService implements QuoteService {
   void dispose() {
     _reconnectTimer?.cancel();
     _disconnect();
+    _controller?.close();
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BackendQuoteService — primary data source for all market quotes.
+//
+// Routes ALL symbols (stocks + crypto) through the Python backend's batch
+// endpoint.  The backend fans out to the best available provider:
+//   Crypto  → Binance REST (free, reliable)
+//   Stocks  → Polygon → Finnhub → Alpha Vantage → yfinance
+//
+// No Firebase auth required — /api/market/quotes is a public endpoint.
+// Response: [{"symbol":"AAPL","price":175.43,"change_percent":1.24}, ...]
+// ─────────────────────────────────────────────────────────────────────────────
+class BackendQuoteService implements QuoteService {
+  static const _pollInterval = Duration(seconds: 30);
+
+  StreamController<Map<String, Quote>>? _controller;
+  Timer? _timer;
+  Set<String> _symbols = {};
+
+  @override
+  Stream<Map<String, Quote>> streamQuotes(Set<String> symbols) {
+    _symbols = Set.unmodifiable(symbols);
+    _timer?.cancel();
+    _controller?.close();
+    _controller = StreamController<Map<String, Quote>>.broadcast(
+      onListen: () {
+        _fetchAndEmit(); // immediate first fetch
+        _timer = Timer.periodic(_pollInterval, (_) => _fetchAndEmit());
+      },
+      onCancel: () {
+        _timer?.cancel();
+        _timer = null;
+      },
+    );
+    return _controller!.stream;
+  }
+
+  Future<void> _fetchAndEmit() async {
+    if (_symbols.isEmpty) return;
+    try {
+      final symbolList = _symbols.join(',');
+      final uri = Uri.parse(
+        '${APIConfig.backendBaseUrl}/api/market/quotes?symbols=$symbolList',
+      );
+      dev.log('[BackendQuote] fetching: $symbolList', name: 'Quotes');
+
+      final response =
+          await http.get(uri).timeout(const Duration(seconds: 15));
+
+      if (response.statusCode != 200) {
+        dev.log('[BackendQuote] HTTP ${response.statusCode}', name: 'Quotes');
+        return;
+      }
+
+      final body = jsonDecode(response.body) as List<dynamic>;
+      final quotes = <String, Quote>{};
+      for (final item in body) {
+        final symbol =
+            ((item['symbol'] as String?) ?? '').trim().toUpperCase();
+        final price = (item['price'] as num?)?.toDouble() ?? 0.0;
+        final changePct =
+            (item['change_percent'] as num?)?.toDouble() ?? 0.0;
+        if (symbol.isNotEmpty && price > 0) {
+          quotes[symbol] =
+              Quote(symbol: symbol, price: price, changePercent: changePct);
+        }
+      }
+
+      if (quotes.isNotEmpty) {
+        dev.log(
+          '[BackendQuote] ${quotes.length} quotes: '
+          '${quotes.entries.map((e) => '${e.key}:\$${e.value.price.toStringAsFixed(2)}').join(', ')}',
+          name: 'Quotes',
+        );
+        _controller?.add(quotes);
+      } else {
+        dev.log('[BackendQuote] empty response for: $symbolList',
+            name: 'Quotes');
+      }
+    } catch (e) {
+      dev.log('[BackendQuote] error: $e', name: 'Quotes');
+      // Non-fatal — next poll will retry
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
     _controller?.close();
   }
 }

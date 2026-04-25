@@ -8,7 +8,8 @@ final subscriptionServiceProvider = Provider<SubscriptionService?>((ref) {
   final user = ref.watch(currentUserProvider);
   if (user == null) return null;
   final db = ref.watch(firebaseProvider);
-  return SubscriptionService(db, user.uid);
+  // Pass email so admin accounts bypass the paywall entirely.
+  return SubscriptionService(db, user.uid, userEmail: user.email);
 });
 
 final subscriptionProvider = StreamProvider<Subscription?>((ref) {

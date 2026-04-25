@@ -6,7 +6,6 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
-import '../config/api_config.dart';
 import '../models/candle.dart';
 
 class BinanceCandleService {
@@ -360,77 +359,3 @@ class YahooFinanceCandleService {
   }
 }
 
-/// Fetches historical daily OHLCV candles from Alpha Vantage.
-/// Requires APIConfig.alphaVantageKey to be set (free tier: 25 req/day).
-class AlphaVantageCandleService {
-  /// Returns up to [days] daily candles, newest last.
-  Future<List<Candle>> fetchDailyCandles(
-    String symbol, {
-    int days = 365,
-  }) async {
-    final key = APIConfig.alphaVantageKey;
-    if (key.isEmpty) return [];
-
-    try {
-      final uri = Uri.parse(
-        '${APIConfig.alphaVantageUrl}'
-        '?function=TIME_SERIES_DAILY'
-        '&symbol=$symbol'
-        '&outputsize=full'
-        '&apikey=$key',
-      );
-
-      if (kDebugMode) debugPrint('[AlphaVantage] Fetching $symbol...');
-
-      final res = await http
-          .get(uri, headers: {'User-Agent': 'MarketCoach/1.0'})
-          .timeout(const Duration(seconds: 15));
-
-      if (res.statusCode != 200) {
-        if (kDebugMode) debugPrint('[AlphaVantage] HTTP ${res.statusCode}');
-        return [];
-      }
-
-      final data = jsonDecode(res.body) as Map<String, dynamic>;
-
-      // API rate-limit or invalid key messages
-      if (data.containsKey('Note') || data.containsKey('Information')) {
-        if (kDebugMode) {
-          debugPrint('[AlphaVantage] ${data['Note'] ?? data['Information']}');
-        }
-        return [];
-      }
-
-      final timeSeries =
-          data['Time Series (Daily)'] as Map<String, dynamic>?;
-      if (timeSeries == null) return [];
-
-      // Sort ascending by date string (ISO format sorts correctly)
-      final entries = timeSeries.entries.toList()
-        ..sort((a, b) => a.key.compareTo(b.key));
-
-      final recent =
-          entries.length > days ? entries.sublist(entries.length - days) : entries;
-
-      final candles = recent.map((e) {
-        final v = e.value as Map<String, dynamic>;
-        return Candle(
-          time: DateTime.parse(e.key),
-          open: double.tryParse(v['1. open'] as String? ?? '') ?? 0,
-          high: double.tryParse(v['2. high'] as String? ?? '') ?? 0,
-          low: double.tryParse(v['3. low'] as String? ?? '') ?? 0,
-          close: double.tryParse(v['4. close'] as String? ?? '') ?? 0,
-          volume: double.tryParse(v['5. volume'] as String? ?? '') ?? 0,
-        );
-      }).toList();
-
-      if (kDebugMode) {
-        debugPrint('[AlphaVantage] $symbol: ${candles.length} candles');
-      }
-      return candles;
-    } catch (e) {
-      if (kDebugMode) debugPrint('[AlphaVantage] error: $e');
-      return [];
-    }
-  }
-}

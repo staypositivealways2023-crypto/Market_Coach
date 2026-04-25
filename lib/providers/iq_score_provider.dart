@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -62,11 +64,10 @@ final iqScoreProvider = FutureProvider<IQScoreData>((ref) async {
   int sessionCount = 0;
   if (raw != null) {
     try {
-      final list = (raw.isNotEmpty &&
-              raw.startsWith('['))
-          ? (raw.length > 2 ? raw.split('},{').length : 0)
-          : 0;
-      sessionCount = list.clamp(0, 20);
+      final decoded = jsonDecode(raw);
+      if (decoded is List) {
+        sessionCount = decoded.length.clamp(0, 20);
+      }
     } catch (_) {
       sessionCount = 0;
     }

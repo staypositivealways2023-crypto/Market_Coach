@@ -1,7 +1,6 @@
-import 'dart:io';
-
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import '../firebase_options.dart';
@@ -11,6 +10,11 @@ import '../firebase_options.dart';
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 }
+
+bool get _isMobile =>
+    !kIsWeb &&
+    (defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS);
 
 class NotificationService {
   static final _localNotifications = FlutterLocalNotificationsPlugin();
@@ -25,7 +29,7 @@ class NotificationService {
   /// Call once from main() after Firebase.initializeApp().
   /// Does NOT request permission — that happens on toggle-on.
   static Future<void> initialize() async {
-    if (!Platform.isAndroid && !Platform.isIOS) return;
+    if (!_isMobile) return;
 
     // Create Android notification channel
     await _localNotifications
@@ -63,9 +67,9 @@ class NotificationService {
     });
   }
 
-  /// Request OS permission. Call this when the user first enables the toggle.
+  /// Request OS permission. Call when the user first enables the toggle.
   static Future<void> requestPermission() async {
-    if (!Platform.isAndroid && !Platform.isIOS) return;
+    if (!_isMobile) return;
     await FirebaseMessaging.instance.requestPermission(
       alert: true,
       badge: true,
@@ -75,7 +79,7 @@ class NotificationService {
 
   /// Returns the FCM device token, or null on unsupported platforms.
   static Future<String?> getToken() async {
-    if (!Platform.isAndroid && !Platform.isIOS) return null;
+    if (!_isMobile) return null;
     return FirebaseMessaging.instance.getToken();
   }
 }

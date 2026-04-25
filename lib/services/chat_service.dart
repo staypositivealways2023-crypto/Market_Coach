@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
@@ -76,10 +75,13 @@ class ChatService {
           }
         }
       }
-    } on SocketException {
-      // Socket closed after [DONE] — normal SSE teardown, not an error
     } catch (e) {
-      yield 'Connection error — please try again.';
+      // SocketException (dart:io) on mobile/desktop = normal SSE teardown after [DONE]
+      // On web, any connection close also lands here — only surface real errors
+      final msg = e.toString();
+      if (!msg.contains('SocketException') && !msg.contains('Connection closed')) {
+        yield 'Connection error — please try again.';
+      }
     } finally {
       client.close();
     }

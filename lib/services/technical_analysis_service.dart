@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import '../models/candle.dart';
 
 class TechnicalAnalysisService {
@@ -108,7 +110,7 @@ class TechnicalAnalysisService {
           final diff = candles[i - j].close - sma[i]!;
           sumSquares += diff * diff;
         }
-        final std = Math.sqrt(sumSquares / period);
+        final std = math.sqrt(sumSquares / period);
 
         upper.add(sma[i]! + (stdDev * std));
         lower.add(sma[i]! - (stdDev * std));
@@ -295,20 +297,41 @@ class TechnicalAnalysisService {
       'histogram': histogram,
     };
   }
-}
 
-// Simple Math helper
-class Math {
-  static double sqrt(double x) {
-    if (x < 0) return 0;
-    double result = x / 2;
-    double prev;
+  /// Volume-Weighted Average Price (VWAP).
+  /// Resets cumulatively from the first candle in the supplied list.
+  /// Returns null where volume is zero.
+  static List<double?> calculateVWAP(List<Candle> candles) {
+    final result = <double?>[];
+    double cumTypicalVol = 0;
+    double cumVol = 0;
 
-    do {
-      prev = result;
-      result = (result + x / result) / 2;
-    } while ((result - prev).abs() > 0.00001);
+    for (final c in candles) {
+      if (c.volume <= 0) {
+        result.add(null);
+        continue;
+      }
+      final typical = (c.high + c.low + c.close) / 3.0;
+      cumTypicalVol += typical * c.volume;
+      cumVol += c.volume;
+      result.add(cumVol > 0 ? cumTypicalVol / cumVol : null);
+    }
+    return result;
+  }
 
+  /// 20-period Simple Moving Average on volume (for volume sub-pane).
+  static List<double?> calculateVolumeSMA(List<Candle> candles,
+      {int period = 20}) {
+    final result = <double?>[];
+    for (int i = 0; i < candles.length; i++) {
+      if (i < period - 1) {
+        result.add(null);
+      } else {
+        final slice = candles.sublist(i - period + 1, i + 1);
+        final avg = slice.fold(0.0, (s, c) => s + c.volume) / period;
+        result.add(avg);
+      }
+    }
     return result;
   }
 }
