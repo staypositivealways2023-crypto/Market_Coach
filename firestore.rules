@@ -52,10 +52,26 @@ service cloud.firestore {
       }
     }
 
-    // User-specific data (profiles, watchlist, progress, bookmarks)
+    // ── User-specific data (profiles, watchlist, progress, bookmarks) ──────────
+    //
+    // SECURITY: subscription_tier and is_pro_user are server-controlled fields.
+    // Clients must NOT be able to write these fields directly — doing so would
+    // allow free-tier users to self-upgrade without payment. These fields must
+    // only be written by the Python backend using a service-account credential.
+    //
+    // The rule below allows writes only when the incoming data does NOT touch
+    // the protected billing fields. If you need to add more server-only fields,
+    // extend the hasOnly() allowlist below.
+    function isNonBillingWrite() {
+      return !request.resource.data.diff(resource.data).affectedKeys()
+              .hasAny(['subscription_tier', 'is_pro_user', 'pro_expires_at']);
+    }
+
     match /users/{userId} {
-      // Users can read/write their own profile
-      allow read, write: if isOwner(userId);
+      // Users can read their own profile
+      allow read: if isOwner(userId);
+      // Users can update their own profile, but cannot touch billing fields
+      allow write: if isOwner(userId) && isNonBillingWrite();
 
       match /watchlist/{symbol} {
         allow read, write: if isOwner(userId);

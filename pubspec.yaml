@@ -7,7 +7,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # The following defines the version and build number for your application.
 # A version number is three numbers separated by dots, like 1.2.43
 # followed by an optional build number separated by a +.
-# Both the version and the builder number may be overridden in flutter
+# Both the version and the builder number may be overridden by flutter
 # build by specifying --build-name and --build-number, respectively.
 # In Android, build-name is used as versionName while build-number used as versionCode.
 # Read more about Android versioning at https://developer.android.com/studio/publish/versioning
@@ -49,6 +49,8 @@ dependencies:
   flutter_tts: ^4.2.0
   record: ^6.2.0
   flutter_pcm_sound: ^3.3.3
+  purchases_flutter: ^8.7.5       # RevenueCat IAP — Phase 4
+  url_launcher: ^6.2.0            # Phase 5 — open news articles in browser
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
@@ -81,13 +83,10 @@ flutter:
 
   # To add assets to your application, add an assets section, like this:
   assets:
-    - assests/logo.jpg
-    - assests/background.jpg
-    - assests/aapl.png
-    - assests/nvidia.png
-    - assests/looklike.png
-    - assests/view.jpeg
-    - assests/chatbackground.png
+    - assets/logo.jpg
+    - assets/background.jpg
+    - assets/view.jpeg
+    - assets/chatbackground.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

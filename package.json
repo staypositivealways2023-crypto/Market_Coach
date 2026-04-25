@@ -6,6 +6,7 @@
     "import-lessons": "node scripts/import_lessons.js"
   },
   "dependencies": {
+    "firebase": "^12.12.0",
     "firebase-admin": "^12.0.0"
   }
 }

@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../providers/auth_provider.dart';
+import '../providers/onboarding_provider.dart';
 import '../screens/auth/login_screen.dart';
 import '../screens/onboarding/onboarding_screen.dart';
+import '../theme/app_tokens.dart';
 import 'root_shell.dart';
 
 class MarketCoachApp extends ConsumerWidget {
@@ -20,107 +21,119 @@ class MarketCoachApp extends ConsumerWidget {
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF06B6D4), // Vibrant Cyan
-          primary: const Color(0xFF06B6D4), // Cyan
-          secondary: const Color(0xFF8B5CF6), // Purple
-          tertiary: const Color(0xFF10B981), // Green
+          seedColor: AppColors.accent,
+          primary: AppColors.accent,
+          secondary: AppColors.accentBright,
+          tertiary: AppColors.bullish,
           brightness: Brightness.dark,
-          surface: const Color(0xFF080E18),
-          background: const Color(0xFF03060C),
+          surface: AppColors.card,
+          background: AppColors.bg,
         ),
-        scaffoldBackgroundColor: const Color(0xFF03060C),
+        scaffoldBackgroundColor: AppColors.bg,
         appBarTheme: const AppBarTheme(
           backgroundColor: Colors.transparent,
           surfaceTintColor: Colors.transparent,
           elevation: 0,
-        ),
-        navigationBarTheme: NavigationBarThemeData(
-          backgroundColor: const Color(0xFF060C14).withOpacity(0.95),
-          indicatorColor: const Color(0xFF06B6D4).withOpacity(0.2),
-          labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-          iconTheme: WidgetStateProperty.resolveWith(
-            (states) => IconThemeData(
-              color: states.contains(WidgetState.selected)
-                  ? const Color(0xFF06B6D4)
-                  : Colors.white54,
-              size: 24,
-            ),
-          ),
-          labelTextStyle: WidgetStateProperty.resolveWith(
-            (states) => TextStyle(
-              color: states.contains(WidgetState.selected)
-                  ? const Color(0xFF06B6D4)
-                  : Colors.white54,
-              fontWeight: states.contains(WidgetState.selected)
-                  ? FontWeight.w700
-                  : FontWeight.w500,
-              fontSize: 12,
-            ),
-          ),
+          iconTheme: IconThemeData(color: AppColors.textPrimary),
         ),
         cardTheme: CardThemeData(
-          color: const Color(0xFF0D1824).withOpacity(0.8),
+          color: AppColors.card,
           surfaceTintColor: Colors.transparent,
           elevation: 0,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(AppRadius.card),
           ),
         ),
+        dividerTheme: const DividerThemeData(color: AppColors.divider, thickness: 0.6),
         textTheme: const TextTheme(
-          displayLarge: TextStyle(
-            fontSize: 32,
-            fontWeight: FontWeight.w800,
-            color: Colors.white,
-            letterSpacing: -1,
-          ),
-          displayMedium: TextStyle(
-            fontSize: 28,
-            fontWeight: FontWeight.w700,
-            color: Colors.white,
-            letterSpacing: -0.5,
-          ),
-          headlineMedium: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.w700,
-            color: Colors.white,
-          ),
-          titleLarge: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-            color: Colors.white,
-          ),
-          titleMedium: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: Colors.white,
-          ),
-          bodyLarge: TextStyle(fontSize: 16, color: Colors.white),
-          bodyMedium: TextStyle(fontSize: 14, color: Colors.white70),
+          displayLarge: AppText.display,
+          displayMedium: AppText.h1,
+          headlineMedium: AppText.h2,
+          titleLarge: AppText.h3,
+          titleMedium: AppText.bodyStrong,
+          bodyLarge: AppText.bodyStrong,
+          bodyMedium: AppText.body,
+          labelLarge: AppText.caption,
+          labelSmall: AppText.micro,
         ),
       ),
       home: authState.when(
         loading: () => const Scaffold(
-          backgroundColor: Color(0xFF03060C),
+          backgroundColor: AppColors.bg,
           body: Center(child: CircularProgressIndicator()),
         ),
-        error: (_, __) => const LoginScreen(),
+        error: (error, stackTrace) {
+          // Log error for debugging
+          debugPrint('Auth error: $error');
+          debugPrint('Stack trace: $stackTrace');
+          return Scaffold(
+            backgroundColor: AppColors.bg,
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error_outline, color: AppColors.bearish, size: 64),
+                  const SizedBox(height: 16),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 24),
+                    child: Text(
+                      'Authentication Error',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: AppColors.textPrimary, fontSize: 18),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: Text(
+                      error.toString(),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: AppColors.textSecondary, fontSize: 14),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton(
+                    onPressed: () {
+                      // Retry by navigating to login
+                      Navigator.of(_buildContext).pushAndRemoveUntil(
+                        MaterialPageRoute(builder: (_) => const LoginScreen()),
+                        (route) => false,
+                      );
+                    },
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
         data: (user) {
+          // No user — show login screen
           if (user == null) return const LoginScreen();
-          return FutureBuilder<bool>(
-            future: SharedPreferences.getInstance()
-                .then((p) => p.getBool('disclaimer_accepted_v1') ?? false),
-            builder: (context, snap) {
-              if (!snap.hasData) {
-                return const Scaffold(
-                  backgroundColor: Color(0xFF03060C),
-                  body: Center(child: CircularProgressIndicator()),
-                );
-              }
-              return snap.data! ? const RootShell() : const OnboardingScreen();
+
+          // Signed in (any user: email, anonymous) — check onboarding
+          final onboardingState = ref.watch(onboardingCompleteProvider);
+
+          return onboardingState.when(
+            loading: () => const Scaffold(
+              backgroundColor: AppColors.bg,
+              body: Center(child: CircularProgressIndicator()),
+            ),
+            error: (error, stackTrace) {
+              debugPrint('Onboarding error: $error');
+              // If onboarding check fails, show the main app (fail open)
+              return const RootShell();
+            },
+            data: (isComplete) {
+              return isComplete ? const RootShell() : const OnboardingScreen();
             },
           );
         },
       ),
     );
   }
+
+  // Helper to get context from MaterialApp navigator
+  static BuildContext get _buildContext => navigatorKey.currentContext!;
+  static final navigatorKey = GlobalKey<NavigatorState>();
 }

@@ -1,6 +1,1 @@
-{
-  "firestore": {
-    "rules": "firestore.rules",
-    "indexes": "firestore.indexes.json"
-  }
-}
+{"firestore":{"rules":"firestore.rules","indexes":"firestore.indexes.json"},"flutter":{"platforms":{"android":{"default":{"projectId":"marketcoach-db8f4","appId":"1:341771521038:android:614d1f35f2918b92a0405f","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"marketcoach-db8f4","configurations":{"android":"1:341771521038:android:614d1f35f2918b92a0405f","ios":"1:341771521038:ios:cd0151b7b952f1c9a0405f","macos":"1:341771521038:ios:cd0151b7b952f1c9a0405f","web":"1:341771521038:web:0c6e74523a93610ba0405f","windows":"1:341771521038:web:9cd3b475f85ac603a0405f"}}}}}}
