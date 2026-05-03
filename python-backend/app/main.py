@@ -15,6 +15,10 @@ from app.routers import chat as chat_router
 from app.routers import voice as voice_router
 from app.routers import voice_ws as voice_ws_router
 from app.routers import jarvis_chat as jarvis_chat_router
+from app.routers import analyst as analyst_router
+from app.routers import vision as vision_router
+from app.routers import orderbook as orderbook_router
+from app.routers import market_stream as market_stream_router
 from app.config import settings
 from app.utils.logger import setup_logger
 from app.utils.rate_limit import limiter
@@ -29,7 +33,7 @@ async def lifespan(app: FastAPI):
     logger.info("Starting MarketCoach Backend API...")
     logger.info(f"Environment: {settings.ENVIRONMENT}")
     logger.info(f"Firebase Project: {settings.FIREBASE_PROJECT_ID}")
-    # ── Validate and initialize Firebase auth paths ──────────────────────────
+    # Validate and initialize Firebase auth paths
     try:
         from app.services.voice_auth_service import validate_auth_config
         auth_ok = validate_auth_config()
@@ -67,21 +71,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
-app.include_router(internal.router, prefix="/internal", tags=["Internal"])
-app.include_router(market.router, prefix="/api/market", tags=["Market Data"])
-app.include_router(indicators.router, prefix="/api/indicators", tags=["Technical Indicators"])
-app.include_router(analysis.router, prefix="/api", tags=["AI Analysis"])
-app.include_router(macro.router, prefix="/api/macro", tags=["Macro Data"])
-app.include_router(news.router, prefix="/api/news", tags=["News"])
-app.include_router(earnings.router, prefix="/api/earnings", tags=["Earnings"])
-app.include_router(fundamentals.router, prefix="/api/fundamentals", tags=["Fundamentals"])
-app.include_router(analyse_router.router, prefix="/api", tags=["Signal Engine"])
-app.include_router(portfolio.router, prefix="/api/portfolio", tags=["Portfolio"])
-app.include_router(chat_router.router, prefix="/api", tags=["Chat"])
-app.include_router(voice_router.router, prefix="/api/voice", tags=["Voice Coach"])
-app.include_router(voice_ws_router.router, prefix="/api/voice", tags=["Voice WebSocket Proxy"])
-app.include_router(jarvis_chat_router.router, prefix="/api/jarvis", tags=["Jarvis Local AI"])
+# ── Routers ───────────────────────────────────────────────────────────────────
+app.include_router(internal.router,              prefix="/internal",       tags=["Internal"])
+app.include_router(market.router,                prefix="/api/market",     tags=["Market Data"])
+app.include_router(indicators.router,            prefix="/api/indicators", tags=["Technical Indicators"])
+app.include_router(analysis.router,              prefix="/api",            tags=["AI Analysis"])
+app.include_router(macro.router,                 prefix="/api/macro",      tags=["Macro Data"])
+app.include_router(news.router,                  prefix="/api/news",       tags=["News"])
+app.include_router(earnings.router,              prefix="/api/earnings",   tags=["Earnings"])
+app.include_router(fundamentals.router,          prefix="/api/fundamentals", tags=["Fundamentals"])
+app.include_router(analyse_router.router,        prefix="/api",            tags=["Signal Engine"])
+app.include_router(portfolio.router,             prefix="/api/portfolio",  tags=["Portfolio"])
+app.include_router(chat_router.router,           prefix="/api",            tags=["Chat"])
+app.include_router(voice_router.router,          prefix="/api/voice",      tags=["Voice Coach"])
+app.include_router(voice_ws_router.router,       prefix="/api/voice",      tags=["Voice WebSocket Proxy"])
+app.include_router(jarvis_chat_router.router,    prefix="/api/jarvis",     tags=["Jarvis Local AI"])
+app.include_router(analyst_router.router,        prefix="/api/analyst",    tags=["Analyst Cycle"])
+app.include_router(vision_router.router,         prefix="/api/analyst",    tags=["Chart Vision"])
+# Phase 5 — Real-Time Data
+app.include_router(orderbook_router.router,      prefix="/api/market",     tags=["Order Book & Options"])
+app.include_router(market_stream_router.router,  prefix="/api/market",     tags=["Market Stream"])
 
 
 @app.get("/")
@@ -91,7 +100,7 @@ async def root():
         "service": "MarketCoach Backend API",
         "version": "0.1.0",
         "status": "operational",
-        "docs": "/api/docs"
+        "docs": "/api/docs",
     }
 
 
@@ -101,20 +110,20 @@ async def health_check():
     return {
         "status": "healthy",
         "environment": settings.ENVIRONMENT,
-        "firebase_configured": bool(settings.FIREBASE_PROJECT_ID)
+        "firebase_configured": bool(settings.FIREBASE_PROJECT_ID),
     }
 
 
 @app.exception_handler(Exception)
-async def global_exception_handler(request, exc):
+async def global_exception_handler(request: Request, exc: Exception):
     """Global exception handler"""
     logger.error(f"Unhandled exception: {exc}", exc_info=True)
     return JSONResponse(
         status_code=500,
         content={
             "error": "Internal server error",
-            "detail": str(exc) if settings.DEBUG else "An unexpected error occurred"
-        }
+            "detail": str(exc) if settings.DEBUG else "An unexpected error occurred",
+        },
     )
 
 
@@ -125,5 +134,5 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=8000,
         reload=settings.DEBUG,
-        log_level="info"
+        log_level="info",
     )

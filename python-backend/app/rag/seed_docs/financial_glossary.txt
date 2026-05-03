@@ -1,0 +1,225 @@
+FINANCIAL ANALYSIS GLOSSARY — KEY TERMS FOR EQUITY VALUATION
+
+This document defines core financial metrics used in fundamental analysis, DCF modelling, and equity valuation. MarketCoach uses these definitions when interpreting company financials and constructing investment theses.
+
+─────────────────────────────────────────────────────────────────────────────
+VALUATION MULTIPLES
+─────────────────────────────────────────────────────────────────────────────
+
+PRICE-TO-EARNINGS RATIO (P/E)
+Definition: Market price per share ÷ Earnings per share (EPS).
+Interpretation:
+  — A high P/E (>30×) signals market expectation of high future growth, or premium quality business.
+  — A low P/E (<15×) may indicate value opportunity or declining growth prospects.
+  — P/E must be compared within the same industry — tech companies (25-40×) vs banks (10-15×).
+  — Trailing P/E uses last 12 months actual earnings; Forward P/E uses next 12 months consensus estimates.
+  — Cyclical businesses (steel, semiconductors) may show misleading P/E at earnings peaks or troughs.
+Typical ranges by sector: Technology 25-40×, Consumer Staples 20-25×, Energy 10-15×, Utilities 12-18×, Banks 10-14×.
+
+PRICE-TO-BOOK RATIO (P/B)
+Definition: Market price per share ÷ Book value per share (shareholders' equity / shares outstanding).
+Interpretation:
+  — P/B < 1.0 means market values the company below its accounting net assets — often signals distress or value trap.
+  — P/B > 5× is common for asset-light businesses (software, pharma) with high intangible value not captured on balance sheet.
+  — Most useful for financial sector stocks (banks, insurance).
+  — Warren Buffett historically used P/B < 1.2× as a buy signal.
+
+EV/EBITDA (Enterprise Value to EBITDA)
+Definition: Enterprise Value ÷ EBITDA (Earnings Before Interest, Taxes, Depreciation, Amortisation).
+  Enterprise Value = Market Cap + Total Debt − Cash and Cash Equivalents.
+  EBITDA = Operating Income + D&A.
+Interpretation:
+  — Capital structure-neutral metric (accounts for debt). Preferred for comparing leveraged companies.
+  — EV/EBITDA < 10× generally considered inexpensive; > 20× signals premium growth expectation.
+  — Widely used in M&A: private equity typically targets companies at 8-12× EBITDA.
+  — Limitation: does not account for differences in capital intensity (high CapEx companies appear cheaper than they are).
+Typical ranges: Software/SaaS 20-40×, Consumer brands 12-20×, Industrials 8-12×, Telecoms 6-9×.
+
+PRICE-TO-SALES RATIO (P/S)
+Definition: Market capitalisation ÷ Annual revenue.
+Interpretation:
+  — Useful for pre-earnings or high-growth companies where P/E is not meaningful.
+  — Technology companies: 5-15× is common; >20× signals extreme growth expectations.
+  — P/S > 20× requires sustained 30%+ annual revenue growth to be justified.
+  — During speculative bubbles, P/S can reach 30-50× before mean reverting dramatically.
+
+PEG RATIO
+Definition: P/E ratio ÷ Earnings growth rate (5-year expected CAGR).
+Interpretation:
+  — PEG < 1.0: potentially undervalued relative to growth (Peter Lynch's rule of thumb).
+  — PEG 1.0-2.0: fairly valued.
+  — PEG > 2.0: expensive relative to growth.
+  — Limitation: highly sensitive to growth rate assumptions; small changes in expected growth drastically alter PEG.
+
+─────────────────────────────────────────────────────────────────────────────
+DISCOUNTED CASH FLOW (DCF) ANALYSIS
+─────────────────────────────────────────────────────────────────────────────
+
+DCF FAIR VALUE
+Definition: The intrinsic value of a stock calculated by discounting projected future free cash flows to present value.
+
+Formula:
+  Fair Value = Σ [FCF_t / (1 + WACC)^t] + Terminal Value / (1 + WACC)^n
+
+Where:
+  FCF_t = Free Cash Flow in year t (typically projected 5-10 years)
+  WACC = Weighted Average Cost of Capital (discount rate)
+  Terminal Value = FCF_n × (1 + g) / (WACC − g), where g = long-term growth rate
+
+WACC COMPONENTS:
+  — Cost of Equity (CAPM): Risk-Free Rate + Beta × Equity Risk Premium
+    Example: 4.5% + 1.2 × 5.5% = 11.1% cost of equity
+  — Cost of Debt: Effective interest rate × (1 − Tax Rate) (after-tax, since interest is tax-deductible)
+  — WACC = (Equity / Total Capital) × Cost of Equity + (Debt / Total Capital) × Cost of Debt
+
+MARGIN OF SAFETY
+Definition: (DCF Fair Value − Current Market Price) / DCF Fair Value × 100.
+Interpretation:
+  — Positive margin of safety: stock trades below intrinsic value.
+  — Negative margin of safety: stock trades above intrinsic value (overvalued by DCF).
+  — Benjamin Graham recommended requiring at least 33% margin of safety before buying.
+  — Value investors typically require 30-50% margin of safety to account for DCF model uncertainty.
+
+FREE CASH FLOW (FCF)
+Definition: Operating Cash Flow − Capital Expenditure (CapEx).
+Significance:
+  — FCF is "real" cash available to shareholders after maintaining and growing the business.
+  — FCF > Net Income: positive sign — earnings quality is high (non-cash charges are real).
+  — FCF < Net Income: negative sign — aggressive accruals, heavy CapEx, or working capital build.
+  — FCF Yield = FCF / Market Cap. FCF Yield > 5% is generally considered attractive.
+
+─────────────────────────────────────────────────────────────────────────────
+PROFITABILITY & EFFICIENCY METRICS
+─────────────────────────────────────────────────────────────────────────────
+
+GROSS MARGIN
+Definition: (Revenue − Cost of Goods Sold) / Revenue × 100.
+Interpretation:
+  — Software/SaaS: 70-85% gross margin is typical.
+  — Consumer electronics: 30-45%.
+  — Automotive: 15-25%.
+  — Commodity businesses: 5-15%.
+  — Expanding gross margin over time is a bullish signal (pricing power, operating leverage).
+
+OPERATING MARGIN (EBIT Margin)
+Definition: Operating Income / Revenue × 100.
+  Operating Income = Gross Profit − Operating Expenses (SG&A, R&D).
+Interpretation:
+  — Operating margin shows core business profitability before financing costs and taxes.
+  — Best-in-class: Apple 30%, Microsoft 45%, Nvidia 55%.
+  — Companies with improving operating margins on rising revenue demonstrate operating leverage.
+
+NET PROFIT MARGIN
+Definition: Net Income / Revenue × 100.
+Interpretation:
+  — Influenced by interest expense, tax rate, and non-operating items.
+  — Less reliable for cross-company comparison than operating margin.
+
+RETURN ON EQUITY (ROE)
+Definition: Net Income / Average Shareholders' Equity × 100.
+Interpretation:
+  — ROE > 20% is considered excellent and indicates a strong competitive moat.
+  — Warren Buffett looks for ROE > 15% sustained over 10+ years.
+  — Caveat: High ROE can be artificially inflated by high financial leverage (debt).
+  — Use DuPont decomposition: ROE = Net Margin × Asset Turnover × Equity Multiplier.
+
+RETURN ON INVESTED CAPITAL (ROIC)
+Definition: NOPAT (Net Operating Profit After Tax) / Invested Capital × 100.
+  Invested Capital = Total Debt + Shareholders' Equity − Cash.
+Interpretation:
+  — ROIC > WACC creates shareholder value (the company earns more than its cost of capital).
+  — ROIC < WACC destroys value — a warning signal even if earnings are growing.
+  — Sustained ROIC > 20% is a hallmark of wide-moat businesses (Apple: ~58%, Microsoft: ~35%).
+
+─────────────────────────────────────────────────────────────────────────────
+DEBT & LIQUIDITY METRICS
+─────────────────────────────────────────────────────────────────────────────
+
+DEBT-TO-EQUITY RATIO (D/E)
+Definition: Total Debt / Shareholders' Equity.
+Interpretation:
+  — D/E < 0.5: conservative, low financial risk.
+  — D/E 0.5-2.0: moderate — typical for industrial and consumer companies.
+  — D/E > 3.0: highly leveraged — common in telecoms, utilities, REITs, and private equity-backed companies.
+  — Negative equity (buybacks exceeding retained earnings) can produce meaningless or negative D/E (e.g. Apple, McDonald's).
+
+NET DEBT
+Definition: Total Debt (short-term + long-term) − Cash and Cash Equivalents.
+Interpretation:
+  — Negative net debt = "net cash" position — company has more cash than debt.
+  — Net debt/EBITDA < 2× is generally considered safe. > 4× signals financial stress.
+
+INTEREST COVERAGE RATIO
+Definition: EBIT / Interest Expense.
+Interpretation:
+  — > 5×: comfortable coverage.
+  — 2-3×: adequate but leaves limited buffer.
+  — < 1.5×: danger zone — earnings may not cover interest obligations under stress.
+
+CURRENT RATIO
+Definition: Current Assets / Current Liabilities.
+Interpretation:
+  — > 2.0: strong short-term liquidity.
+  — 1.0-2.0: adequate.
+  — < 1.0: potential short-term liquidity risk.
+
+─────────────────────────────────────────────────────────────────────────────
+GROWTH METRICS
+─────────────────────────────────────────────────────────────────────────────
+
+REVENUE GROWTH (CAGR)
+Definition: (Ending Revenue / Beginning Revenue)^(1/n) − 1, where n = number of years.
+Interpretation:
+  — Hyper-growth (>40% CAGR): Rare, typically early-stage SaaS or AI companies.
+  — High growth (20-40%): Premium valuation justified.
+  — Moderate growth (10-20%): Market-average to above-average, standard P/E premium.
+  — Low/no growth (<5%): Value stock territory unless exceptional capital return story.
+
+EPS GROWTH
+Definition: Year-over-year change in earnings per share.
+Significance:
+  — EPS growth driven by buybacks (share count reduction) is "lower quality" than organic earnings growth.
+  — Sustainable EPS growth requires revenue growth or margin expansion, not just buybacks.
+
+─────────────────────────────────────────────────────────────────────────────
+KEY FINANCIAL RATIOS — QUICK REFERENCE TABLE
+─────────────────────────────────────────────────────────────────────────────
+
+Metric          | Excellent    | Good         | Fair         | Concern
+P/E (growth)    | 15-25×       | 25-35×       | 35-50×       | >50× or <10×
+P/B             | <1.5×        | 1.5-3×       | 3-6×         | >8×
+EV/EBITDA       | <10×         | 10-16×       | 16-25×       | >30×
+Gross Margin    | >60%         | 40-60%       | 20-40%       | <15%
+Operating Margin| >30%         | 15-30%       | 5-15%        | <5%
+ROE             | >25%         | 15-25%       | 10-15%       | <10%
+ROIC            | >20%         | 12-20%       | 8-12%        | <WACC
+D/E Ratio       | <0.3         | 0.3-1.0      | 1.0-2.5      | >3.0
+FCF Yield       | >8%          | 4-8%         | 2-4%         | <2%
+Revenue Growth  | >25%         | 15-25%       | 5-15%        | <5%
+
+─────────────────────────────────────────────────────────────────────────────
+SECTOR-SPECIFIC CONTEXT
+─────────────────────────────────────────────────────────────────────────────
+
+TECHNOLOGY / SaaS
+Key metrics: ARR (Annual Recurring Revenue), NRR (Net Revenue Retention), LTV/CAC ratio, Rule of 40 (Revenue Growth % + FCF Margin % > 40%).
+Best-in-class NRR: >120% (customers expand usage over time, driving organic growth).
+Rule of 40 benchmark: >40 indicates healthy balance of growth and profitability.
+
+SEMICONDUCTORS
+Key metrics: Book-to-bill ratio (orders vs billings — >1.0 indicates growing demand), gross margin (45-65% for fabless design houses), CapEx intensity.
+Cyclical warning signs: inventory build-up, book-to-bill < 0.9, customer order cancellations.
+
+FINANCIAL SERVICES / BANKS
+Key metrics: Net Interest Margin (NIM), Return on Assets (ROA), Return on Equity (ROE), Tier 1 Capital Ratio (regulatory capital buffer), Non-Performing Loan (NPL) ratio.
+Healthy bank benchmarks: NIM >3%, ROE >12%, Tier 1 >10%, NPL <1%.
+
+CONSUMER / RETAIL
+Key metrics: Same-store sales growth (SSS), gross margin, inventory turnover, store count growth.
+Red flags: declining SSS with store count growth (growth masking declining unit economics).
+
+ENERGY
+Key metrics: Break-even oil price, reserve replacement ratio, cash flow per barrel, EV/2P (enterprise value per proved and probable reserves).
+─────────────────────────────────────────────────────────────────────────────
+END OF GLOSSARY
+─────────────────────────────────────────────────────────────────────────────

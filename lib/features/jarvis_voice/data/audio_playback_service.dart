@@ -23,6 +23,9 @@ class AudioPlaybackService {
   bool _playing = false;
   bool _started = false;
 
+  /// True once [start] has completed successfully.
+  bool get isStarted => _started;
+
   /// Initialise the PCM sound engine. Call once before [feed].
   Future<void> start() async {
     if (kIsWeb) {
@@ -35,9 +38,10 @@ class AudioPlaybackService {
         sampleRate: _sampleRate,
         channelCount: _channels,
       );
-      // Request more samples when buffer drops below ~100ms of audio
-      // 24000 Hz * 0.1s = 2400 frames
-      FlutterPcmSound.setFeedThreshold(2400);
+      // Request more samples when buffer drops below ~200ms of audio
+      // 24000 Hz * 0.2s = 4800 frames — extra look-ahead to prevent jitter
+      // on slower devices or high-latency connections.
+      FlutterPcmSound.setFeedThreshold(4800);
       FlutterPcmSound.setFeedCallback(_onFeedSamples);
       _started = true;
       dev.log('[AudioPlayback] started', name: 'AudioPlayback');
@@ -100,11 +104,21 @@ class AudioPlaybackService {
 
   /// Stop playback and release the audio engine.
   Future<void> stop() async {
+    dev.log(
+      '[${DateTime.now().toIso8601String()}] [AudioPlayback] stop() called '
+      '— _started=$_started stacktrace follows:',
+      name: 'AudioPlayback',
+    );
+    // Uncomment next line temporarily to capture who called stop() prematurely:
+    // dev.log(StackTrace.current.toString(), name: 'AudioPlayback');
     flush();
     try {
       await FlutterPcmSound.release();
-    } catch (_) {}
+    } catch (e) {
+      dev.log('[AudioPlayback] FlutterPcmSound.release() error (expected on 2nd call): $e',
+          name: 'AudioPlayback');
+    }
     _started = false;
-    dev.log('[AudioPlayback] stopped', name: 'AudioPlayback');
+    dev.log('[${DateTime.now().toIso8601String()}] [AudioPlayback] stopped', name: 'AudioPlayback');
   }
 }

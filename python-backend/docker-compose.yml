@@ -15,16 +15,30 @@ services:
       - ./scripts:/app/scripts
       # Mount Firebase credentials
       - ./serviceAccountKey.json:/app/serviceAccountKey.json:ro
+      # Tests (live mount for pytest inside container)
+      - ./tests:/app/tests
       # ChromaDB persistent storage
       - chroma_data:/app/chroma_data
+      # Audio cache for Cartesia TTS output
+      - audio_cache:/app/audio_cache
     environment:
       - ENVIRONMENT=development
       - DEBUG=true
       - OLLAMA_BASE_URL=http://ollama:11434
       - CHROMA_PERSIST_PATH=/app/chroma_data
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=marketcoach
+      - POSTGRES_USER=mcuser
+      - REDIS_URL=redis://redis:6379/0
     depends_on:
-      - ollama
-    command: "8000"
+      ollama:
+        condition: service_started   # Ollama image has no curl; use service_started
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -33,9 +47,12 @@ services:
       retries: 3
       start_period: 10s
 
-  # ── Phase 10: Ollama local LLM ───────────────────────────────────────────────
-  # Runs mistral:7b for CrewAI data agents (free, no API cost).
-  # Pull models after first start: docker exec market-coach-ollama ollama pull mistral
+  # ── Ollama local LLM ─────────────────────────────────────────────────────────
+  # Models: mistral (CrewAI), deepseek-r1:14b (reasoning), nomic-embed-text (RAG)
+  # Pull after first start:
+  #   docker exec market-coach-ollama ollama pull mistral
+  #   docker exec market-coach-ollama ollama pull deepseek-r1:14b
+  #   docker exec market-coach-ollama ollama pull nomic-embed-text
   ollama:
     image: ollama/ollama:latest
     container_name: market-coach-ollama
@@ -44,24 +61,72 @@ services:
     ports:
       - "11434:11434"
     restart: unless-stopped
-    # Uncomment if you have a GPU:
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - capabilities: [gpu]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:11434/api/tags > /dev/null 2>&1"]
       interval: 30s
       timeout: 5s
       retries: 5
       start_period: 30s
+
+  # ── Redis ─────────────────────────────────────────────────────────────────────
+  # Powers voice session state (VoiceSessionRepo) and usage counters.
+  # Without Redis, all voice endpoints return 500 on startup.
+  redis:
+    image: redis:7-alpine
+    container_name: market-coach-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  # ── PostgreSQL + pgvector ─────────────────────────────────────────────────────
+  # Powers LlamaIndex RAG document store (SEC filings, earnings transcripts).
+  # pgvector extension enables fast vector similarity search.
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: market-coach-postgres
+    environment:
+      POSTGRES_DB: marketcoach
+      POSTGRES_USER: mcuser
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mcuser -d marketcoach"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
 volumes:
   ollama_data:
     name: market-coach-ollama-models
   chroma_data:
     name: market-coach-chroma
+  pg_data:
+    name: market-coach-pgvector
+  audio_cache:
+    name: market-coach-audio
+  redis_data:
+    name: market-coach-redis
 
 networks:
   default:

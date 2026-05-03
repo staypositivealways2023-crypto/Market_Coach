@@ -137,7 +137,10 @@ Full detail in `docs/ai-upgrade.md`.
 
 | Feature | Status |
 |---|---|
-| CrewAI 4-agent swarm | ✅ Done |
+| CrewAI 6-agent swarm (Market/Sentiment/Fundamentals/Technical/Risk/Coach) | ✅ Done |
+| LangGraph 5-node pipeline (intent→tool_router→reasoning→verification→synthesis) | ✅ Done |
+| FundamentalsAgent (DCF, WACC, margin of safety, earnings quality) | ✅ Done |
+| RiskAgent (ATR stop/TP, 2%-rule position sizing) | ✅ Done |
 | ChromaDB per-user memory | ✅ Done |
 | Ollama / Mistral 7B | ✅ Done |
 | Scenario Card (Bull/Base/Bear) | ✅ Done |
@@ -145,35 +148,42 @@ Full detail in `docs/ai-upgrade.md`.
 | Email verification gate | ✅ Done |
 | RevenueCat purchase flow | ✅ Done |
 | Market data endpoints (yfinance) | ✅ Done |
-| Jarvis Voice (mobile) | ⚠️ Partial — Chrome broken |
-| Voice Chrome fix (WS proxy) | 🔴 Critical |
-| Stock detail overhaul (MooMoo UI) | 🔴 Critical |
-| Crypto detail overhaul (MooMoo UI) | 🔴 Critical |
-| Voice persistent overlay bar | 🟠 High |
-| TradingView Lightweight Charts | 🟠 High |
-| FinBERT wired to CrewAI | 🟡 Medium |
-| Reddit PRAW sentiment | 🟡 Medium |
-| Subscription tier gating (full) | 🟡 Partial |
+| Jarvis Voice — voice_ws.py proxy + VoiceOverlayBar + FloatingVoiceButton wired | ✅ Done |
+| Voice persistent overlay bar in RootShell | ✅ Done |
+| Chart Vision — backend (vision.py + vision_analysis_service.py) + Flutter (vision_repository.dart + image picker in JarvisChatScreen) | ✅ Done |
+| Backend endpoints: orderbook, moneyflow, marketposition, options | ✅ Done |
+| FinBERT wired to CrewAI (per-article scoring + VADER fallback) | ✅ Done |
+| PostgreSQL + pgvector RAG (SEC filings) — embedder, ingestor, retriever | ✅ Done |
+| Voice workers: session_summary, memory_extraction, behavior_analysis | ✅ Done |
+| FRED macro service | ✅ Done |
+| Redis — in docker-compose, session_repo + usage_counter_repo wired | ✅ Done |
+| Coach screen — Chat + Voice unified (TabBar with JarvisChatScreen + VoiceCoachScreen) | ✅ Done |
+| Stock detail overhaul (MooMoo UI) | 🔴 Not started — directory empty |
+| Crypto detail overhaul (MooMoo UI) | 🔴 Not started — no screen exists |
+| TradingView Lightweight Charts | 🔴 Not started — Syncfusion only |
+| Strategy overlay | 🔴 Not started |
+| Phase 9: Probabilistic engine (Monte Carlo, Bayesian, MacroAgent, Black Swan) | 🔴 Not started — no service files |
+| Reddit PRAW sentiment | 🔴 Not started — no files |
+| Dynamic quizzes via Ollama | 🔴 Not started |
+| Subscription tier gating (full) | 🟡 Partial — service + RevenueCat wired, gating in 5 screens only |
 | PersonaPlex voice (desktop) | ⏳ Future |
 
 ## Remaining Work — Priority Order
 
-Full specs in `docs/remaining-work.md`.
+*Updated 2026-05-02 — verified against actual codebase. Items 1–5 from previous list are DONE.*
 
 | # | Item | Effort | Depends |
 |---|---|---|---|
-| 1 | Voice Chrome fix (WS proxy) | 6h | — |
-| 2 | Backend endpoints: orderbook, moneyflow, marketposition | 1d | — |
-| 3 | Stock detail overhaul (A1–A6) | 3d | #2 |
-| 4 | Crypto detail overhaul (B1–B4) | 2d | #2 |
-| 5 | Voice overlay bar (Phase C) | 1d | #1 |
-| 6 | TradingView chart widget | 1wk | — |
-| 7 | MooMoo data panels | 1wk | #2, #6 |
-| 8 | Strategy overlay | 5d | #6 |
-| 9 | FinBERT → CrewAI SentimentAgent | 1d | — |
-| 10 | Reddit PRAW sentiment | 1d | — |
-| 11 | Dynamic quizzes via Ollama | 2d | Ollama running |
-| 12 | Full subscription tier gating | 2d | RevenueCat wired |
+| 1 | Stock detail overhaul (A1–A6, MooMoo UI) | 3d | — (backend ✅) |
+| 2 | Crypto detail overhaul (B1–B4, MooMoo UI) | 2d | — (backend ✅) |
+| 3 | TradingView chart widget (replace Syncfusion) | 1wk | — |
+| 4 | MooMoo data panels (orderbook/moneyflow UI) | 1wk | #1, #3 |
+| 5 | Strategy overlay | 5d | #3 |
+| 6 | Phase 9: Probabilistic engine (Monte Carlo, Bayesian, MacroAgent, Black Swan) | 1wk | — |
+| 7 | Full subscription tier gating | 2d | RevenueCat ✅ |
+| 8 | Reddit PRAW sentiment | 1d | — |
+| 9 | Dynamic quizzes via Ollama | 2d | Ollama ✅ |
+| 10 | PersonaPlex voice (desktop) | Future | — |
 
 ## Docker Services
 

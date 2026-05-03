@@ -7,12 +7,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/subscription.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/iq_score_provider.dart';
+import '../../providers/memory_provider.dart';
 import '../../providers/subscription_provider.dart';
 import '../../services/auth_service.dart';
 import '../../services/notification_service.dart';
 import '../../widgets/glass_card.dart';
 import '../auth/login_screen.dart';
 import '../auth/signup_screen.dart';
+import 'memory_timeline_screen.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -36,7 +38,7 @@ class ProfileScreen extends ConsumerWidget {
                   context, ref, user, profile, isGuest, iqAsync, subscriptionAsync),
               loading: () =>
                   const Center(child: CircularProgressIndicator()),
-              error: (_, __) => _buildIdentityScreen(
+              error: (_, _) => _buildIdentityScreen(
                   context, ref, user, null, isGuest, iqAsync, subscriptionAsync),
             );
           },
@@ -139,12 +141,12 @@ class ProfileScreen extends ConsumerWidget {
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  const Color(0xFF12A28C).withOpacity(0.15),
-                  const Color(0xFF8B5CF6).withOpacity(0.10),
+                  const Color(0xFF12A28C).withValues(alpha: 0.15),
+                  const Color(0xFF8B5CF6).withValues(alpha: 0.10),
                 ],
               ),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFF12A28C).withOpacity(0.3)),
+              border: Border.all(color: const Color(0xFF12A28C).withValues(alpha: 0.3)),
             ),
             child: Row(children: [
               const Icon(Icons.auto_awesome, color: Color(0xFF12A28C), size: 18),
@@ -178,7 +180,7 @@ class ProfileScreen extends ConsumerWidget {
                 height: 180,
                 width: 180,
                 child: Center(child: CircularProgressIndicator())),
-            error: (_, __) => const SizedBox.shrink(),
+            error: (_, _) => const SizedBox.shrink(),
             data: (iq) => _IQRing(score: iq.total),
           ),
         ),
@@ -188,7 +190,7 @@ class ProfileScreen extends ConsumerWidget {
         // ── 3 stat chips ──────────────────────────────────────────────────
         iqAsync.when(
           loading: () => const SizedBox(height: 72),
-          error: (_, __) => const SizedBox.shrink(),
+          error: (_, _) => const SizedBox.shrink(),
           data: (iq) => Row(children: [
             Expanded(
                 child: _StatChip(
@@ -253,6 +255,11 @@ class ProfileScreen extends ConsumerWidget {
             const SizedBox.shrink(),
 
         const SizedBox(height: 24),
+
+        // ── Analyst Memory (Phase 4) ───────────────────────────────────────
+        if (!isGuest) _AnalystMemoryTile(ref: ref),
+
+        const SizedBox(height: 12),
 
         // ── Sign out ──────────────────────────────────────────────────────
         if (!isGuest)
@@ -334,6 +341,62 @@ class ProfileScreen extends ConsumerWidget {
   }
 }
 
+// ── Analyst Memory tile (Phase 4) ─────────────────────────────────────────────
+
+class _AnalystMemoryTile extends ConsumerWidget {
+  final WidgetRef ref;
+  const _AnalystMemoryTile({required this.ref});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Show the count of memories as a subtle badge
+    final timelineAsync = ref.watch(memoryTimelineProvider(null));
+    final count = timelineAsync.valueOrNull?.length ?? 0;
+    final theme = Theme.of(context);
+
+    return GlassCard(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const MemoryTimelineScreen()),
+      ),
+      child: Row(children: [
+        Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: const Color(0xFF12A28C).withValues(alpha: 0.14),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: const Icon(Icons.psychology_outlined,
+              color: Color(0xFF12A28C), size: 22),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Analyst Memory',
+                style: theme.textTheme.titleSmall
+                    ?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                count > 0
+                    ? 'Dean knows $count thing${count == 1 ? '' : 's'} about you'
+                    : 'What Dean knows about you',
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: Colors.white54),
+              ),
+            ],
+          ),
+        ),
+        const Icon(Icons.chevron_right, color: Colors.white24),
+      ]),
+    );
+  }
+}
+
 // ── IQ Ring ───────────────────────────────────────────────────────────────────
 
 class _IQRing extends StatefulWidget {
@@ -386,7 +449,7 @@ class _IQRingState extends State<_IQRing> with SingleTickerProviderStateMixin {
     final color = _color(widget.score);
     return AnimatedBuilder(
       animation: _ctrl,
-      builder: (_, __) {
+      builder: (_, _) {
         final score = _counter.value;
         return SizedBox(
           width: 180,
@@ -402,7 +465,7 @@ class _IQRingState extends State<_IQRing> with SingleTickerProviderStateMixin {
                   painter: _RingPainter(
                     progress: _progress.value,
                     color: _color(score),
-                    trackColor: Colors.white.withOpacity(0.07),
+                    trackColor: Colors.white.withValues(alpha: 0.07),
                     strokeWidth: 14,
                   ),
                 ),
@@ -425,7 +488,7 @@ class _IQRingState extends State<_IQRing> with SingleTickerProviderStateMixin {
                   Text(
                     'Investor IQ',
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.45),
+                      color: Colors.white.withValues(alpha: 0.45),
                       fontSize: 11,
                       fontWeight: FontWeight.w500,
                       letterSpacing: 0.5,
@@ -436,7 +499,7 @@ class _IQRingState extends State<_IQRing> with SingleTickerProviderStateMixin {
                     padding: const EdgeInsets.symmetric(
                         horizontal: 10, vertical: 3),
                     decoration: BoxDecoration(
-                      color: color.withOpacity(0.15),
+                      color: color.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
@@ -602,9 +665,9 @@ class _TierBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.15),
+        color: color.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: color.withOpacity(0.4)),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
       ),
       child: Text(
         label,
@@ -708,7 +771,11 @@ class _SettingsSheetState extends ConsumerState<_SettingsSheet> {
               onChanged: _notificationsEnabled == null
                   ? null
                   : _toggleNotifications,
-              activeColor: theme.colorScheme.primary,
+              thumbColor: WidgetStateProperty.resolveWith<Color?>(
+                (states) => states.contains(WidgetState.selected)
+                    ? theme.colorScheme.primary
+                    : null,
+              ),
             ),
           ListTile(
             leading:

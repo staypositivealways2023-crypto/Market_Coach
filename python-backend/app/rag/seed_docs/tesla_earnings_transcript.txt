@@ -1,0 +1,101 @@
+TESLA INC. — Q3 2024 EARNINGS CALL TRANSCRIPT (EXCERPT)
+October 23, 2024
+
+PARTICIPANTS
+Elon Musk — Chief Executive Officer
+Vaibhav Taneja — Chief Financial Officer
+Martin Viecha — VP Investor Relations
+
+PREPARED REMARKS
+
+Martin Viecha: Good afternoon, and thank you for joining Tesla's third quarter 2024 earnings call. I'm joined today by Elon Musk, our CEO, and Vaibhav Taneja, our CFO.
+
+Q3 2024 FINANCIAL RESULTS SUMMARY
+
+Total revenue: $25.2 billion (+8% year-over-year).
+  — Automotive revenue: $20.0 billion (+2% YoY) — impacted by lower average selling price (ASP).
+  — Energy Generation & Storage: $2.4 billion (+52% YoY) — fastest growing segment.
+  — Services & Other: $2.8 billion (+29% YoY).
+
+Gross margin: 19.8% (vs 17.9% in Q2 2024, vs 17.9% in Q3 2023).
+  — Automotive gross margin (ex-regulatory credits): 17.1% — recovery from 14.6% trough in Q2 2023.
+  — Improvement driven by: cost reduction ($2,000/vehicle reduction in COGS), Model 3 Highland ramp, and Cybertruck moving toward profitability.
+
+Net income (GAAP): $2.2 billion (+17% YoY).
+Net income (non-GAAP): $2.5 billion.
+Earnings per diluted share: $0.66 (GAAP), $0.72 (non-GAAP).
+
+Free cash flow: $2.7 billion (Q3 2024). Cash and equivalents: $33.6 billion.
+Capital expenditure: $3.5 billion (FY2024 CapEx guidance raised to $11B).
+
+VEHICLE DELIVERIES
+
+Q3 2024 deliveries: 462,890 vehicles (+6.4% YoY) — a new quarterly record.
+  — Model 3/Y: 439,975 units (95.1% of deliveries).
+  — Other models (S, X, Cybertruck): 22,915 units.
+
+Cybertruck update: Achieving positive gross margin in Q3 2024 — ahead of schedule. Cumulative deliveries surpassed 35,000 units. Production rate: approximately 1,300 Cybertrucks per week as of October 2024.
+
+FY2024 delivery guidance: Management guided for "slight growth" vs FY2023 (1.81 million units), implying approximately 1.82–1.85 million for FY2024.
+
+ENERGY SEGMENT — BREAKOUT PERFORMANCE
+
+Megapack deployments: 6.9 GWh in Q3 2024 — record quarterly deployment.
+Powerwall deployments: Record high in Q3 2024.
+Energy gross margin: 30.5% — now exceeding automotive gross margin.
+The Lathrop Megafactory (California) and Shanghai Megafactory are ramping production of Megapack units, targeting 40 GWh annual capacity.
+
+ELON MUSK — CEO REMARKS (KEY EXCERPTS)
+
+On Robotaxi and Autonomy:
+"We expect to begin limited Robotaxi operations in Austin, Texas in June 2025. Full Self-Driving (FSD) Version 12 has shown dramatic improvement in miles driven between interventions. We believe autonomy represents Tesla's largest value driver — a profitable robotaxi network could generate $5-10 of earnings per share annually at scale."
+
+On Tesla Bot (Optimus):
+"We expect to produce several thousand Optimus units in 2025, primarily for internal factory use. By 2026, we intend to sell Optimus to external customers. We believe Optimus could ultimately be worth more than Tesla's automotive business. Target cost: under $20,000 per unit at scale."
+
+On pricing and demand:
+"We are seeing strong demand for Model Y following its refresh. Interest rate sensitivity remains the key headwind for EV adoption in the United States. Every 100 basis points of interest rate reduction meaningfully improves EV affordability."
+
+On next-generation vehicle:
+"We remain on track to begin production of the next-generation vehicle — our 'Model 2' or affordable EV — in the first half of 2025 at our Texas Gigafactory and Mexico Gigafactory. Target price: under $30,000. We expect this vehicle to double Tesla's addressable market."
+
+VAIBHAV TANEJA — CFO REMARKS
+
+"Our focus remains on reducing cost per vehicle. We have reduced our cost of goods sold per vehicle from $42,000 in Q4 2022 to $35,100 in Q3 2024 — a 16% reduction. Our target is to reach $30,000 COGS per vehicle, which would enable meaningful margins even at lower ASPs."
+
+"Regarding our AI infrastructure: we now operate approximately 29,000 H100 GPUs for FSD training. We expect to deploy 85,000 H100s by year-end 2024. This compute investment is essential for achieving Level 4 autonomy."
+
+"Balance sheet: $33.6 billion in cash provides ample runway for Model 2 ramp, Optimus production, and Megafactory expansions without needing to raise external capital."
+
+Q&A SESSION — KEY QUESTIONS
+
+Q (Bank of America): On robotaxi competitive landscape — how does Tesla differentiate from Waymo?
+Musk: "Waymo uses expensive lidar arrays (approximately $100,000 per vehicle). Tesla's vision-only approach means our hardware cost per vehicle is approximately $2,000. At scale, this is an insurmountable cost advantage. Additionally, Tesla has over 6 million vehicles generating real-world driving data — Waymo has approximately 700 vehicles. The data advantage is extraordinary."
+
+Q (Morgan Stanley): On margins — can Tesla reach 25% gross margin by 2026?
+Taneja: "We believe 25%+ gross margin is achievable as Model 2 scales, Cybertruck matures, and the Energy segment continues growing. We don't provide specific multi-year margin guidance, but cost reduction remains our primary lever."
+
+Q (Goldman Sachs): On FSD regulatory approval — timeline?
+Musk: "We expect NHTSA approval for Level 3 or Level 4 autonomy in limited geofenced areas in 2025. Full approval for nationwide ungeofenced FSD is a more complex regulatory process. California remains our primary focus given its large EV market."
+
+VALUATION CONTEXT (Analyst Commentary)
+
+Tesla's FY2024 estimated EPS: $2.50–$2.70 (GAAP). At $250/share (pre-split adjusted), the stock trades at approximately 92× TTM earnings — one of the highest P/E ratios in the S&P 500.
+
+This elevated multiple reflects market expectation of:
+1. Robotaxi/FSD monetisation (potentially adding $5-10 EPS at scale)
+2. Optimus robot revenue ($10B+ annually by 2030, per some analyst estimates)
+3. Energy segment continuing 40-50% annual revenue growth
+4. Model 2 driving 30-40% volume growth from 2025
+
+Bear case: Delayed robotaxi approval, continued margin pressure, and EV demand softness could compress the multiple to 30-40× on core automotive earnings, implying 60-70% downside from current levels.
+
+Bull case: FSD commercialisation and Optimus ramp justify $400-600/share under DCF models with aggressive autonomous revenue assumptions.
+
+RISKS
+
+1. FSD regulatory risk — NHTSA may require additional safety validation before allowing commercial robotaxi operations.
+2. Competition — BYD, Volkswagen, and GM/Cruise present growing competitive threats globally.
+3. Elon Musk distraction — significant time allocation to X (Twitter), SpaceX, xAI creates key-person risk.
+4. Interest rate sensitivity — EV demand remains correlated with interest rates due to high monthly payment impact.
+5. China operations — BYD has surpassed Tesla as the #1 EV seller in China. Tesla's Shanghai factory accounts for approximately 50% of global production.

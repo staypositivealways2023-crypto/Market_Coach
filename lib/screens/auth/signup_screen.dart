@@ -98,7 +98,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
       body: Container(
         decoration: const BoxDecoration(
           image: DecorationImage(
-            image: AssetImage('assests/background.jpg'),
+            image: AssetImage('assets/background.jpg'),
             fit: BoxFit.cover,
           ),
         ),
@@ -117,7 +117,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(20),
                       child: Image.asset(
-                        'assests/logo.jpg',
+                        'assets/logo.png',
                         width: 120,
                         height: 120,
                         fit: BoxFit.cover,
@@ -158,14 +158,14 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                     decoration: InputDecoration(
                       labelText: 'Display Name',
                       labelStyle: TextStyle(
-                        color: Colors.white.withOpacity(0.7),
+                        color: Colors.white.withValues(alpha: 0.7),
                       ),
                       prefixIcon: Icon(
                         Icons.person_outline,
                         color: colorScheme.primary,
                       ),
                       filled: true,
-                      fillColor: Colors.white.withOpacity(0.05),
+                      fillColor: Colors.white.withValues(alpha: 0.05),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: BorderSide.none,
@@ -173,7 +173,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: BorderSide(
-                          color: Colors.white.withOpacity(0.1),
+                          color: Colors.white.withValues(alpha: 0.1),
                         ),
                       ),
                       focusedBorder: OutlineInputBorder(
@@ -202,14 +202,14 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                     decoration: InputDecoration(
                       labelText: 'Email',
                       labelStyle: TextStyle(
-                        color: Colors.white.withOpacity(0.7),
+                        color: Colors.white.withValues(alpha: 0.7),
                       ),
                       prefixIcon: Icon(
                         Icons.email_outlined,
                         color: colorScheme.primary,
                       ),
                       filled: true,
-                      fillColor: Colors.white.withOpacity(0.05),
+                      fillColor: Colors.white.withValues(alpha: 0.05),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: BorderSide.none,
@@ -217,7 +217,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: BorderSide(
-                          color: Colors.white.withOpacity(0.1),
+                          color: Colors.white.withValues(alpha: 0.1),
                         ),
                       ),
                       focusedBorder: OutlineInputBorder(
@@ -248,7 +248,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                     decoration: InputDecoration(
                       labelText: 'Password',
                       labelStyle: TextStyle(
-                        color: Colors.white.withOpacity(0.7),
+                        color: Colors.white.withValues(alpha: 0.7),
                       ),
                       prefixIcon: Icon(
                         Icons.lock_outline,
@@ -259,14 +259,14 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                           _obscurePassword
                               ? Icons.visibility_outlined
                               : Icons.visibility_off_outlined,
-                          color: Colors.white.withOpacity(0.5),
+                          color: Colors.white.withValues(alpha: 0.5),
                         ),
                         onPressed: () => setState(
                           () => _obscurePassword = !_obscurePassword,
                         ),
                       ),
                       filled: true,
-                      fillColor: Colors.white.withOpacity(0.05),
+                      fillColor: Colors.white.withValues(alpha: 0.05),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: BorderSide.none,
@@ -274,7 +274,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: BorderSide(
-                          color: Colors.white.withOpacity(0.1),
+                          color: Colors.white.withValues(alpha: 0.1),
                         ),
                       ),
                       focusedBorder: OutlineInputBorder(
@@ -303,7 +303,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                     decoration: InputDecoration(
                       labelText: 'Confirm Password',
                       labelStyle: TextStyle(
-                        color: Colors.white.withOpacity(0.7),
+                        color: Colors.white.withValues(alpha: 0.7),
                       ),
                       prefixIcon: Icon(
                         Icons.lock_outline,
@@ -314,7 +314,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                           _obscureConfirmPassword
                               ? Icons.visibility_outlined
                               : Icons.visibility_off_outlined,
-                          color: Colors.white.withOpacity(0.5),
+                          color: Colors.white.withValues(alpha: 0.5),
                         ),
                         onPressed: () => setState(
                           () => _obscureConfirmPassword =
@@ -322,7 +322,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                         ),
                       ),
                       filled: true,
-                      fillColor: Colors.white.withOpacity(0.05),
+                      fillColor: Colors.white.withValues(alpha: 0.05),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: BorderSide.none,
@@ -330,7 +330,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: BorderSide(
-                          color: Colors.white.withOpacity(0.1),
+                          color: Colors.white.withValues(alpha: 0.1),
                         ),
                       ),
                       focusedBorder: OutlineInputBorder(

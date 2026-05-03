@@ -80,6 +80,11 @@ class TechnicalIndicators(BaseModel):
     ema_12: Optional[float] = None
     ema_26: Optional[float] = None
 
+    # Volatility / volume (Phase 3 additions)
+    atr: Optional[float] = None          # Average True Range (14-period)
+    obv: Optional[float] = None          # On-Balance Volume
+    vwap: Optional[float] = None         # Volume Weighted Average Price (14-period window)
+
     # Price vs MA signals
     price: Optional[float] = None
     above_sma_20: Optional[bool] = None

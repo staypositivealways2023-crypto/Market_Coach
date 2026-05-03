@@ -55,8 +55,9 @@ class SubscriptionService {
           offerings.current?.availablePackages.firstOrNull;
       if (package == null) throw Exception('No offering available');
 
-      final customerInfo = await Purchases.purchasePackage(package);
-      final isActive = customerInfo.entitlements.active
+      // ignore: deprecated_member_use  — TODO: migrate to Purchases.purchase(package: package) when RC SDK is verified
+      final result = await Purchases.purchasePackage(package);
+      final isActive = result.customerInfo.entitlements.active
           .containsKey(APIConfig.revenueCatEntitlement);
 
       if (isActive) {

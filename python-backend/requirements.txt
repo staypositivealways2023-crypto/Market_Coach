@@ -20,6 +20,7 @@ redis>=5.0.0
 ta==0.11.0
 pandas==2.2.3
 numpy==2.2.1
+scipy>=1.11.0
 
 # Firebase/Firestore
 google-cloud-firestore==2.20.0
@@ -40,6 +41,32 @@ ollama>=0.3.0
 
 # Phase 11 — ChromaDB per-user memory
 chromadb>=0.5.0
+
+# ── Analyst Cycle Upgrade ─────────────────────────────────────────────────────
+
+# LangGraph stateful agent orchestration
+langgraph>=0.2.0
+langchain-community>=0.2.0
+langchain-ollama>=0.1.0
+
+# LlamaIndex RAG stack
+llama-index>=0.10.0
+llama-index-vector-stores-postgres>=0.1.0
+llama-index-embeddings-ollama>=0.1.0
+llama-index-readers-file>=0.1.0
+
+# PostgreSQL + pgvector
+psycopg2-binary>=2.9.0
+pgvector>=0.2.0
+
+# Cartesia TTS
+cartesia>=1.0.0
+
+# Deepgram STT (Chrome voice proxy fix)
+deepgram-sdk>=3.0.0
+
+# Reddit sentiment (Phase 9 — FinBERT/PRAW)
+praw>=7.7.0
 
 # Utilities
 python-dotenv==1.0.1

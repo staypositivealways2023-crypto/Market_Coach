@@ -1,0 +1,97 @@
+APPLE INC. — ANNUAL REPORT (10-K) EXCERPT
+Fiscal Year Ended September 30, 2024
+
+BUSINESS OVERVIEW
+
+Apple Inc. designs, manufactures, and markets smartphones, personal computers, tablets, wearables, and accessories, and sells a variety of related services. The Company's fiscal year is the 52- or 53-week period that ends on the last Saturday of September.
+
+FINANCIAL HIGHLIGHTS — FISCAL 2024
+
+Net sales: $391.0 billion (FY2024) vs $383.3 billion (FY2023), a 2.0% year-over-year increase.
+Net income: $93.7 billion (FY2024) vs $97.0 billion (FY2023).
+Earnings per diluted share (EPS): $6.11 (FY2024) vs $6.13 (FY2023).
+Gross margin: 46.2% (FY2024) vs 44.1% (FY2023) — highest in over a decade.
+Operating income: $123.2 billion (FY2024).
+Free cash flow: $108.8 billion (FY2024).
+Cash and marketable securities: $153.0 billion (FY2024).
+Total debt: $97.3 billion (FY2024).
+
+REVENUE BREAKDOWN BY SEGMENT — FY2024
+
+Products:
+  iPhone:        $201.2 billion   (51.5% of total revenue)
+  Mac:            $29.9 billion   (7.6% of total revenue)
+  iPad:           $26.7 billion   (6.8% of total revenue)
+  Wearables, Home & Accessories: $37.0 billion (9.5%)
+
+Services:
+  Services:       $96.2 billion   (24.6% of total revenue)
+  — App Store, Apple Music, iCloud, Apple TV+, Apple Pay, licensing
+  — Services gross margin: 74.0% (vs 70.8% FY2023)
+  — Services represents Apple's fastest-growing and highest-margin segment
+
+GEOGRAPHIC REVENUE — FY2024
+
+Americas:        $167.0 billion  (42.7%)
+Europe:           $94.3 billion  (24.1%)
+Greater China:    $66.9 billion  (17.1%)
+Japan:            $25.1 billion   (6.4%)
+Rest of Asia Pacific: $37.7 billion (9.6%)
+
+Greater China revenue declined 2.3% year-over-year due to competitive pressure from Huawei and macroeconomic headwinds.
+
+CAPITAL ALLOCATION — FY2024
+
+Share repurchases: $95.0 billion (Apple repurchased approximately 485 million shares).
+Dividends paid: $15.2 billion ($0.25/share per quarter, raised 4.3% in May 2024).
+Total capital returned to shareholders: $110.2 billion in FY2024.
+
+Apple has returned over $700 billion to shareholders through buybacks and dividends since initiating its capital return program in 2012.
+
+BALANCE SHEET STRENGTH
+
+Apple maintains a net cash position (cash minus total debt) of approximately $55.7 billion, providing flexibility for continued capital returns and strategic acquisitions.
+
+Inventory turns: 52× per year — reflecting tight supply chain management and low inventory days.
+Return on Equity (ROE): 147% — exceptionally high, driven by aggressive share buybacks reducing equity base.
+Return on Assets (ROA): 27.9%.
+Return on Invested Capital (ROIC): 58%.
+
+VALUATION METRICS (as of Q4 2024 filing)
+
+Price-to-Earnings (P/E) ratio: approximately 29× trailing twelve months (TTM) earnings.
+Price-to-Sales (P/S) ratio: approximately 8.5× TTM revenue.
+EV/EBITDA: approximately 24×.
+PEG ratio (P/E ÷ 5-year EPS growth rate): approximately 2.8×.
+
+RISKS AND CHALLENGES
+
+1. iPhone Concentration Risk: iPhone accounts for over 51% of revenue. Any slowdown in smartphone upgrade cycles, loss of carrier subsidies, or competitive pressure (particularly from Huawei and Samsung in China) could materially impact revenue.
+
+2. Greater China Exposure: China represents 17% of revenue. US-China trade tensions, data localisation requirements, and nationalist consumer sentiment toward domestic brands (Huawei) represent ongoing risks.
+
+3. Regulatory Risk — App Store: The European Union's Digital Markets Act (DMA) now requires Apple to allow third-party app stores on iOS in EU member states, threatening App Store commission revenue (~$30B+ annually). Similar regulations may be adopted in the US and other jurisdictions.
+
+4. Services Growth Dependence: Apple's valuation premium is substantially attributed to Services growth. Any deceleration in App Store revenue, iCloud subscriptions, or Apple Pay transaction volumes would likely compress the P/E multiple.
+
+5. AI Integration: Apple's on-device AI initiative "Apple Intelligence" (announced WWDC 2024) requires iPhone 15 Pro or later hardware, potentially driving an upgrade supercycle in FY2025. However, Apple has disclosed limited monetisation details.
+
+MANAGEMENT DISCUSSION — REVENUE GROWTH DRIVERS
+
+CEO Tim Cook highlighted Services as the primary long-term growth driver: "Services revenue achieved a new all-time record in every geographic segment in Q4 2024. With 1 billion paid subscriptions across our services portfolio, we are well-positioned to continue growing this high-margin revenue stream."
+
+Apple's installed base of active devices exceeded 2.2 billion globally as of September 2024, providing a large addressable market for services monetisation.
+
+RESEARCH & DEVELOPMENT
+
+R&D spending: $31.4 billion (FY2024) vs $29.9 billion (FY2023).
+R&D as % of revenue: 8.0%.
+Primary focus areas: Apple Intelligence (generative AI), Vision Pro spatial computing platform, silicon design (M4 chip), and health sensors (Apple Watch Series 10).
+
+SUPPLY CHAIN & MANUFACTURING
+
+Apple has diversified manufacturing away from China toward India (iPhone 15/16 production) and Vietnam (AirPods, Apple Watch). The company aims to source 25% of iPhone production from India by 2025 to reduce geopolitical concentration risk.
+
+CONCLUSION — INVESTMENT CONSIDERATIONS
+
+Apple is a world-class capital allocator with durable competitive moats: the iOS ecosystem, App Store network effects, supply chain excellence, and premium brand positioning. The Services segment, growing at 14% annually and carrying 74% gross margins, is the primary valuation driver. Key risks are Greater China exposure, App Store regulatory headwinds, and iPhone replacement cycle elongation. The stock trades at a premium multiple relative to the S&P 500, requiring sustained double-digit Services growth to justify current valuation.

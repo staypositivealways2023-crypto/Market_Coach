@@ -16,6 +16,7 @@ class MarketCoachApp extends ConsumerWidget {
     final authState = ref.watch(authStateProvider);
 
     return MaterialApp(
+      navigatorKey: navigatorKey,
       title: 'MarketCoach',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
@@ -27,7 +28,6 @@ class MarketCoachApp extends ConsumerWidget {
           tertiary: AppColors.bullish,
           brightness: Brightness.dark,
           surface: AppColors.card,
-          background: AppColors.bg,
         ),
         scaffoldBackgroundColor: AppColors.bg,
         appBarTheme: const AppBarTheme(

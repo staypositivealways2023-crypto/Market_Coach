@@ -4,6 +4,7 @@
 library;
 
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/enhanced_ai_analysis.dart';
 
@@ -21,9 +22,9 @@ class AnalysisCacheService {
       final jsonString = jsonEncode(jsonData);
 
       await prefs.setString(key, jsonString);
-      print('✅ Analysis cached for ${analysis.symbol}');
+      debugPrint('✅ Analysis cached for ${analysis.symbol}');
     } catch (e) {
-      print('⚠️ Failed to cache analysis: $e');
+      debugPrint('⚠️ Failed to cache analysis: $e');
       // Don't throw - caching is optional
     }
   }
@@ -36,7 +37,7 @@ class AnalysisCacheService {
 
       final jsonString = prefs.getString(key);
       if (jsonString == null) {
-        print('ℹ️ No cached analysis for $symbol');
+        debugPrint('ℹ️ No cached analysis for $symbol');
         return null;
       }
 
@@ -46,15 +47,15 @@ class AnalysisCacheService {
       // Check if cache is expired
       final age = DateTime.now().difference(analysis.timestamp);
       if (age.inHours >= _cacheExpirationHours) {
-        print('⏰ Cached analysis for $symbol expired (${age.inHours}h old)');
+        debugPrint('⏰ Cached analysis for $symbol expired (${age.inHours}h old)');
         await clearCache(symbol); // Clean up expired cache
         return null;
       }
 
-      print('✅ Using cached analysis for $symbol (${analysis.timeAgo})');
+      debugPrint('✅ Using cached analysis for $symbol (${analysis.timeAgo})');
       return analysis.copyWith(isCached: true);
     } catch (e) {
-      print('⚠️ Failed to load cached analysis: $e');
+      debugPrint('⚠️ Failed to load cached analysis: $e');
       return null;
     }
   }
@@ -65,9 +66,9 @@ class AnalysisCacheService {
       final prefs = await SharedPreferences.getInstance();
       final key = _getCacheKey(symbol);
       await prefs.remove(key);
-      print('🗑️ Cleared cache for $symbol');
+      debugPrint('🗑️ Cleared cache for $symbol');
     } catch (e) {
-      print('⚠️ Failed to clear cache: $e');
+      debugPrint('⚠️ Failed to clear cache: $e');
     }
   }
 
@@ -83,9 +84,9 @@ class AnalysisCacheService {
         }
       }
 
-      print('🗑️ Cleared all analysis cache');
+      debugPrint('🗑️ Cleared all analysis cache');
     } catch (e) {
-      print('⚠️ Failed to clear all cache: $e');
+      debugPrint('⚠️ Failed to clear all cache: $e');
     }
   }
 

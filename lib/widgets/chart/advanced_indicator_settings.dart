@@ -175,56 +175,37 @@ class AdvancedIndicatorSettings extends StatelessWidget {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Moving Averages'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: const Text('None'),
-              leading: Radio<MAType>(
-                value: MAType.none,
-                groupValue: movingAverageType,
-                onChanged: (value) {
-                  onMATypeChanged(value!);
-                  Navigator.pop(context);
-                },
+        content: RadioGroup<MAType>(
+          groupValue: movingAverageType,
+          onChanged: (value) {
+            if (value != null) {
+              onMATypeChanged(value);
+              Navigator.pop(context);
+            }
+          },
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: const [
+              ListTile(
+                title: Text('None'),
+                leading: Radio<MAType>(value: MAType.none),
               ),
-            ),
-            ListTile(
-              title: const Text('SMA (20, 50, 200)'),
-              subtitle: const Text('Simple Moving Average'),
-              leading: Radio<MAType>(
-                value: MAType.sma,
-                groupValue: movingAverageType,
-                onChanged: (value) {
-                  onMATypeChanged(value!);
-                  Navigator.pop(context);
-                },
+              ListTile(
+                title: Text('SMA (20, 50, 200)'),
+                subtitle: Text('Simple Moving Average'),
+                leading: Radio<MAType>(value: MAType.sma),
               ),
-            ),
-            ListTile(
-              title: const Text('EMA (12, 26, 50)'),
-              subtitle: const Text('Exponential Moving Average'),
-              leading: Radio<MAType>(
-                value: MAType.ema,
-                groupValue: movingAverageType,
-                onChanged: (value) {
-                  onMATypeChanged(value!);
-                  Navigator.pop(context);
-                },
+              ListTile(
+                title: Text('EMA (12, 26, 50)'),
+                subtitle: Text('Exponential Moving Average'),
+                leading: Radio<MAType>(value: MAType.ema),
               ),
-            ),
-            ListTile(
-              title: const Text('Both SMA + EMA'),
-              leading: Radio<MAType>(
-                value: MAType.both,
-                groupValue: movingAverageType,
-                onChanged: (value) {
-                  onMATypeChanged(value!);
-                  Navigator.pop(context);
-                },
+              ListTile(
+                title: Text('Both SMA + EMA'),
+                leading: Radio<MAType>(value: MAType.both),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -235,57 +216,38 @@ class AdvancedIndicatorSettings extends StatelessWidget {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Support/Resistance'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: const Text('None'),
-              leading: Radio<SRType>(
-                value: SRType.none,
-                groupValue: supportResistanceType,
-                onChanged: (value) {
-                  onSRTypeChanged(value!);
-                  Navigator.pop(context);
-                },
+        content: RadioGroup<SRType>(
+          groupValue: supportResistanceType,
+          onChanged: (value) {
+            if (value != null) {
+              onSRTypeChanged(value);
+              Navigator.pop(context);
+            }
+          },
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: const [
+              ListTile(
+                title: Text('None'),
+                leading: Radio<SRType>(value: SRType.none),
               ),
-            ),
-            ListTile(
-              title: const Text('Simple S/R'),
-              subtitle: const Text('Recent high/low'),
-              leading: Radio<SRType>(
-                value: SRType.simple,
-                groupValue: supportResistanceType,
-                onChanged: (value) {
-                  onSRTypeChanged(value!);
-                  Navigator.pop(context);
-                },
+              ListTile(
+                title: Text('Simple S/R'),
+                subtitle: Text('Recent high/low'),
+                leading: Radio<SRType>(value: SRType.simple),
               ),
-            ),
-            ListTile(
-              title: const Text('Pivot Points'),
-              subtitle: const Text('P, R1, R2, S1, S2'),
-              leading: Radio<SRType>(
-                value: SRType.pivot,
-                groupValue: supportResistanceType,
-                onChanged: (value) {
-                  onSRTypeChanged(value!);
-                  Navigator.pop(context);
-                },
+              ListTile(
+                title: Text('Pivot Points'),
+                subtitle: Text('P, R1, R2, S1, S2'),
+                leading: Radio<SRType>(value: SRType.pivot),
               ),
-            ),
-            ListTile(
-              title: const Text('Fibonacci'),
-              subtitle: const Text('Retracement levels'),
-              leading: Radio<SRType>(
-                value: SRType.fibonacci,
-                groupValue: supportResistanceType,
-                onChanged: (value) {
-                  onSRTypeChanged(value!);
-                  Navigator.pop(context);
-                },
+              ListTile(
+                title: Text('Fibonacci'),
+                subtitle: Text('Retracement levels'),
+                leading: Radio<SRType>(value: SRType.fibonacci),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -296,45 +258,33 @@ class AdvancedIndicatorSettings extends StatelessWidget {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Oscillator Chart'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: const Text('None'),
-              leading: Radio<SubChartType>(
-                value: SubChartType.none,
-                groupValue: subChartType,
-                onChanged: (value) {
-                  onSubChartChanged(value!);
-                  Navigator.pop(context);
-                },
+        content: RadioGroup<SubChartType>(
+          groupValue: subChartType,
+          onChanged: (value) {
+            if (value != null) {
+              onSubChartChanged(value);
+              Navigator.pop(context);
+            }
+          },
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: const [
+              ListTile(
+                title: Text('None'),
+                leading: Radio<SubChartType>(value: SubChartType.none),
               ),
-            ),
-            ListTile(
-              title: const Text('RSI'),
-              subtitle: const Text('Relative Strength Index'),
-              leading: Radio<SubChartType>(
-                value: SubChartType.rsi,
-                groupValue: subChartType,
-                onChanged: (value) {
-                  onSubChartChanged(value!);
-                  Navigator.pop(context);
-                },
+              ListTile(
+                title: Text('RSI'),
+                subtitle: Text('Relative Strength Index'),
+                leading: Radio<SubChartType>(value: SubChartType.rsi),
               ),
-            ),
-            ListTile(
-              title: const Text('MACD'),
-              subtitle: const Text('Moving Average Convergence Divergence'),
-              leading: Radio<SubChartType>(
-                value: SubChartType.macd,
-                groupValue: subChartType,
-                onChanged: (value) {
-                  onSubChartChanged(value!);
-                  Navigator.pop(context);
-                },
+              ListTile(
+                title: Text('MACD'),
+                subtitle: Text('Moving Average Convergence Divergence'),
+                leading: Radio<SubChartType>(value: SubChartType.macd),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

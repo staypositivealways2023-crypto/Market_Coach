@@ -1,5 +1,5 @@
 """
-ChromaDB Per-User Memory — Phase 11
+ChromaDB Per-User Memory — Phase 11 + Phase 4 (Deep Memory System)
 
 Stores and retrieves semantic memories for each user so the CoachAgent
 can personalise its output across sessions.
@@ -7,14 +7,19 @@ can personalise its output across sessions.
 Collections:
   user_memory_{uid}   — per-user memory chunks
     documents : natural-language memory snippets
-    metadata  : { timestamp, category, symbol }
+    metadata  : { timestamp, category, symbol, uid }
 
-Categories:
+Categories (original 5):
   preference    — user's stated risk tolerance, goals, style
   portfolio     — symbols watched / traded
   learning      — lesson completions, quiz scores
   conversation  — session summaries (saved after voice/chat sessions)
   event         — notable trading events (paper trade opened, analysis run)
+
+Categories (Phase 4 additions):
+  trade_history      — symbols analysed + crew output summaries
+  risk_profile       — position sizing habits, stop-loss adherence patterns
+  watchlist_patterns — symbols repeatedly returned to / watched closely
 """
 
 import logging
@@ -166,6 +171,131 @@ class ChromaMemoryService:
         except Exception as e:
             logger.error(f"[chroma] summarise error for {uid}: {e}")
             return "Memory summary unavailable."
+
+    def recall_with_metadata(
+        self,
+        uid: str,
+        query: str,
+        n: int = 10,
+        category: Optional[str] = None,
+    ) -> list[dict]:
+        """
+        Semantic search — returns n most relevant entries as dicts:
+          { id, text, category, timestamp, symbol, distance }
+        Falls back to [] if chromadb is unavailable.
+        """
+        col = self._collection(uid)
+        if col is None:
+            return []
+
+        try:
+            where = {"uid": uid}
+            if category:
+                where["category"] = category  # type: ignore[assignment]
+
+            count = col.count()
+            if count == 0:
+                return []
+
+            results = col.query(
+                query_texts=[query],
+                n_results=min(n, count),
+                where=where if len(where) > 1 else None,
+                include=["documents", "metadatas", "distances"],
+            )
+            ids       = results.get("ids",       [[]])[0]
+            docs      = results.get("documents", [[]])[0]
+            metas     = results.get("metadatas", [[]])[0]
+            distances = results.get("distances", [[]])[0]
+
+            entries = []
+            for doc_id, doc, meta, dist in zip(ids, docs, metas, distances):
+                if not doc:
+                    continue
+                m = meta or {}
+                entries.append({
+                    "id":        doc_id,
+                    "text":      doc,
+                    "category":  m.get("category", "event"),
+                    "timestamp": int(m.get("timestamp", 0)),
+                    "symbol":    m.get("symbol"),
+                    "distance":  round(float(dist), 4),
+                })
+            return entries
+        except Exception as e:
+            logger.error(f"[chroma] recall_with_metadata error for {uid}: {e}")
+            return []
+
+    def delete_entry(self, uid: str, doc_id: str) -> bool:
+        """
+        Delete a single memory entry by its ChromaDB document ID.
+        Returns True on success.
+        """
+        col = self._collection(uid)
+        if col is None:
+            return False
+        try:
+            col.delete(ids=[doc_id])
+            logger.info(f"[chroma] deleted entry {doc_id} for {uid}")
+            return True
+        except Exception as e:
+            logger.error(f"[chroma] delete_entry error for {uid}: {e}")
+            return False
+
+    def get_timeline(
+        self,
+        uid: str,
+        limit: int = 100,
+        category: Optional[str] = None,
+    ) -> list[dict]:
+        """
+        Return all (or category-filtered) memory entries sorted by timestamp
+        descending. Used by the Flutter memory timeline screen.
+
+        Returns list of dicts:
+          { id, text, category, timestamp, symbol }
+        """
+        col = self._collection(uid)
+        if col is None:
+            return []
+
+        try:
+            count = col.count()
+            if count == 0:
+                return []
+
+            where = {"uid": uid}
+            if category:
+                where["category"] = category  # type: ignore[assignment]
+
+            results = col.get(
+                limit=min(limit, count),
+                where=where if len(where) > 1 else None,
+                include=["documents", "metadatas"],
+            )
+            ids   = results.get("ids",       [])
+            docs  = results.get("documents", [])
+            metas = results.get("metadatas", [])
+
+            entries = []
+            for doc_id, doc, meta in zip(ids, docs, metas):
+                if not doc:
+                    continue
+                m = meta or {}
+                entries.append({
+                    "id":        doc_id,
+                    "text":      doc,
+                    "category":  m.get("category", "event"),
+                    "timestamp": int(m.get("timestamp", 0)),
+                    "symbol":    m.get("symbol"),
+                })
+
+            # Sort newest-first in Python (ChromaDB has no server-side ORDER BY)
+            entries.sort(key=lambda x: x["timestamp"], reverse=True)
+            return entries
+        except Exception as e:
+            logger.error(f"[chroma] get_timeline error for {uid}: {e}")
+            return []
 
     def delete_user(self, uid: str) -> bool:
         """GDPR: delete all memories for a user."""

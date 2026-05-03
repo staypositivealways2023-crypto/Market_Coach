@@ -55,7 +55,7 @@ class AudioCaptureService {
     final alreadyGranted = await _recorder!.hasPermission();
     dev.log('[AudioCapture] hasPermission=$alreadyGranted', name: 'AudioCapture');
 
-    dev.log('[AudioCapture] calling startStream (PCM16 24kHz mono)…', name: 'AudioCapture');
+    dev.log('[${DateTime.now().toIso8601String()}] [AudioCapture] calling startStream (PCM16 24kHz mono)…', name: 'AudioCapture');
     final stream = await _recorder!.startStream(
       const RecordConfig(
         encoder: AudioEncoder.pcm16bits,
@@ -66,14 +66,14 @@ class AudioCaptureService {
         noiseSuppress: true,
       ),
     );
-    dev.log('[AudioCapture] startStream succeeded — recorder is live', name: 'AudioCapture');
+    dev.log('[${DateTime.now().toIso8601String()}] [AudioCapture] startStream succeeded — mic is LIVE', name: 'AudioCapture');
 
-    var _chunkCount = 0;
+    var chunkCount = 0;
     _sub = stream.listen(
       (bytes) {
-        _chunkCount++;
-        if (_chunkCount <= 3 || _chunkCount % 50 == 0) {
-          dev.log('[AudioCapture] chunk #$_chunkCount — ${bytes.length} bytes', name: 'AudioCapture');
+        chunkCount++;
+        if (chunkCount <= 3 || chunkCount % 50 == 0) {
+          dev.log('[AudioCapture] chunk #$chunkCount — ${bytes.length} bytes', name: 'AudioCapture');
         }
         _chunkController.add(bytes);
       },
@@ -82,7 +82,7 @@ class AudioCaptureService {
         _chunkController.addError(e);
       },
       onDone: () {
-        dev.log('[AudioCapture] stream done (total chunks: $_chunkCount)', name: 'AudioCapture');
+        dev.log('[AudioCapture] stream done (total chunks: $chunkCount)', name: 'AudioCapture');
         _sub = null;
       },
     );

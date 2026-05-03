@@ -2,10 +2,16 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/jarvis_chat_repository.dart';
+import '../data/vision_repository.dart';
+import '../../jarvis_voice/data/jarvis_realtime_service.dart';
+import '../../jarvis_voice/presentation/providers/voice_session_provider.dart';
 
 // ── Message model ─────────────────────────────────────────────────────────────
 
 enum MessageRole { user, assistant, system }
+
+/// Distinguishes plain text messages from chart-analysis cards.
+enum MessageType { text, chartAnalysis }
 
 class ChatMessage {
   final String id;
@@ -13,6 +19,13 @@ class ChatMessage {
   final String content;
   final DateTime timestamp;
   final bool isError;
+  final MessageType type;
+
+  /// Non-null when [type] == [MessageType.chartAnalysis].
+  final ChartAnalysis? chartAnalysis;
+
+  /// Thumbnail bytes shown in the user bubble when an image was uploaded.
+  final String? imageB64Preview; // base64, used only for display
 
   const ChatMessage({
     required this.id,
@@ -20,6 +33,9 @@ class ChatMessage {
     required this.content,
     required this.timestamp,
     this.isError = false,
+    this.type = MessageType.text,
+    this.chartAnalysis,
+    this.imageB64Preview,
   });
 
   ChatMessage copyWith({String? content, bool? isError}) => ChatMessage(
@@ -28,6 +44,9 @@ class ChatMessage {
         content: content ?? this.content,
         timestamp: timestamp,
         isError: isError ?? this.isError,
+        type: type,
+        chartAnalysis: chartAnalysis,
+        imageB64Preview: imageB64Preview,
       );
 }
 
@@ -68,12 +87,17 @@ class JarvisChatState {
 // ── Notifier ──────────────────────────────────────────────────────────────────
 
 class JarvisChatNotifier extends StateNotifier<JarvisChatState> {
-  JarvisChatNotifier(this._repo, this._user) : super(const JarvisChatState()) {
+  JarvisChatNotifier(this._repo, this._visionRepo, this._realtime, this._user)
+      : super(const JarvisChatState()) {
     _addWelcome();
     checkStatus();
   }
 
   final JarvisChatRepository _repo;
+  final VisionRepository _visionRepo;
+  /// Nullable — only set when a voice session is active. Used to inject
+  /// chart narration so Jarvis speaks the analysis aloud after image upload.
+  final JarvisRealtimeService? _realtime;
   final User _user;
 
   int _msgCounter = 0;
@@ -132,6 +156,79 @@ class JarvisChatNotifier extends StateNotifier<JarvisChatState> {
         errorBanner: 'Something went wrong. Try again.',
       );
       _addErrorBubble('Error: $e');
+    }
+  }
+
+  /// Pick a chart image from the gallery and run vision analysis.
+  ///
+  /// Workflow:
+  ///   1. Open the image picker (user selects chart screenshot)
+  ///   2. Add a user bubble showing the image thumbnail
+  ///   3. Show typing indicator while backend processes
+  ///   4. Replace typing indicator with a rich ChartAnalysis card bubble
+  Future<void> analyseChartImage({String? symbol, String? question}) async {
+    if (state.isTyping) return;
+
+    // 1. Pick image
+    final picked = await _visionRepo.pickImage();
+    if (picked == null) return; // user cancelled
+
+    // 2. User bubble with thumbnail preview (first 40 KB of b64 is enough for display)
+    final previewB64 = picked.b64.length > 54000
+        ? picked.b64.substring(0, 54000) // ~40 KB decoded
+        : picked.b64;
+
+    final userMsg = ChatMessage(
+      id: _nextId(),
+      role: MessageRole.user,
+      content: question?.isNotEmpty == true
+          ? '📊 Chart uploaded: "$question"'
+          : '📊 Chart uploaded — please analyse this.',
+      timestamp: DateTime.now(),
+      imageB64Preview: previewB64,
+    );
+
+    state = state.copyWith(
+      messages: [...state.messages, userMsg],
+      isTyping: true,
+      clearError: true,
+    );
+
+    // 3. Run vision analysis
+    try {
+      final analysis = await _visionRepo.analyseChart(
+        _user,
+        imageB64: picked.b64,
+        mediaType: picked.mediaType,
+        symbol: symbol,
+        question: question,
+      );
+
+      // 4. Analysis card bubble
+      final analysisMsg = ChatMessage(
+        id: _nextId(),
+        role: MessageRole.assistant,
+        content: analysis.summary,
+        timestamp: DateTime.now(),
+        type: MessageType.chartAnalysis,
+        chartAnalysis: analysis,
+      );
+
+      state = state.copyWith(
+        messages: [...state.messages, analysisMsg],
+        isTyping: false,
+      );
+
+      // Narrate via Jarvis if a voice session is currently active
+      if (analysis.narration.isNotEmpty) {
+        _realtime?.injectNarration(analysis.narration);
+      }
+    } on VisionException catch (e) {
+      state = state.copyWith(isTyping: false);
+      _addErrorBubble('Chart analysis failed: ${e.message}');
+    } catch (e) {
+      state = state.copyWith(isTyping: false);
+      _addErrorBubble('Unexpected error during chart analysis: $e');
     }
   }
 
@@ -203,9 +300,11 @@ class JarvisChatNotifier extends StateNotifier<JarvisChatState> {
 final jarvisChatProvider =
     StateNotifierProvider<JarvisChatNotifier, JarvisChatState>((ref) {
   final repo = ref.watch(jarvisChatRepositoryProvider);
-  // Use current user; anonymous Firebase users are also valid.
-  // Falls back to a dummy sentinel so the notifier never hard-crashes.
+  final visionRepo = ref.watch(visionRepositoryProvider);
+  // Watch the realtime service so narration is injected when a voice session
+  // is active. The autoDispose provider stays alive while this notifier lives.
+  final realtime = ref.watch(jarvisRealtimeServiceProvider);
   final user = FirebaseAuth.instance.currentUser ??
       (throw Exception('JarvisChatProvider: no authenticated user'));
-  return JarvisChatNotifier(repo, user);
+  return JarvisChatNotifier(repo, visionRepo, realtime, user);
 });

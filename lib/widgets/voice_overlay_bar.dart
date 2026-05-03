@@ -65,17 +65,17 @@ class VoiceOverlayBar extends ConsumerWidget {
         margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
         padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
         decoration: BoxDecoration(
-          color: const Color(0xFF0D1117).withOpacity(0.92),
+          color: const Color(0xFF0D1117).withValues(alpha: 0.92),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: isConnected
-                ? const Color(0xFF12A28C).withOpacity(0.4)
-                : Colors.white.withOpacity(0.08),
+                ? const Color(0xFF12A28C).withValues(alpha: 0.4)
+                : Colors.white.withValues(alpha: 0.08),
             width: 1,
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.35),
+              color: Colors.black.withValues(alpha: 0.35),
               blurRadius: 12,
               offset: const Offset(0, 4),
             ),
@@ -115,8 +115,8 @@ class VoiceOverlayBar extends ConsumerWidget {
                 height: 36,
                 decoration: BoxDecoration(
                   color: isConnected
-                      ? micColor.withOpacity(0.15)
-                      : Colors.white.withOpacity(0.05),
+                      ? micColor.withValues(alpha: 0.15)
+                      : Colors.white.withValues(alpha: 0.05),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
@@ -197,7 +197,7 @@ class _PulseDotState extends State<_PulseDot>
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
-              color: widget.color.withOpacity(0.5),
+              color: widget.color.withValues(alpha: 0.5),
               blurRadius: 6,
               spreadRadius: 1,
             ),

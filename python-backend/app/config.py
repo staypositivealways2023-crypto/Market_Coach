@@ -74,6 +74,42 @@ class Settings(BaseSettings):
     RISK_FREE_RATE: float = 0.045  # 4.5% (10-year Treasury)
     MARKET_RISK_PREMIUM: float = 0.08  # 8% historical average
 
+    # ── Analyst Cycle Upgrade ─────────────────────────────────────────────────
+
+    # PostgreSQL + pgvector
+    POSTGRES_HOST: str = "postgres"
+    POSTGRES_PORT: int = 5432
+    POSTGRES_DB: str = "marketcoach"
+    POSTGRES_USER: str = "mcuser"
+    POSTGRES_PASSWORD: str = ""
+
+    @property
+    def POSTGRES_DSN(self) -> str:
+        return (
+            f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
+            f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        )
+
+    # Cartesia TTS
+    # API key: https://play.cartesia.ai → Settings → API Keys
+    CARTESIA_API_KEY: str = ""
+    # Voice: Dean persona — sonic-3 model (Cartesia-Version: 2026-03-01)
+    CARTESIA_VOICE_ID: str = "a167e0f3-df7e-4d52-a9c3-f949145efdab"
+
+    # Deepgram STT
+    DEEPGRAM_API_KEY: str = ""
+
+    # Ollama
+    OLLAMA_BASE_URL: str = "http://ollama:11434"
+
+    # Analyst Graph models & limits
+    ANALYST_DEEPSEEK_MODEL: str = "deepseek-r1:14b"
+    ANALYST_INTENT_MODEL: str = "mistral"
+    ANALYST_EMBED_MODEL: str = "nomic-embed-text"
+    ANALYST_MAX_REASONING_TOKENS: int = 1500
+    ANALYST_VERIFICATION_THRESHOLD: float = 0.75
+    ANALYST_MAX_RETRIES: int = 2
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

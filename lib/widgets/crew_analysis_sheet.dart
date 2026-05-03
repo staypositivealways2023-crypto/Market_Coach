@@ -28,8 +28,7 @@ class _AgentState {
     required this.name,
     required this.description,
     required this.icon,
-    this.status = _AgentStatus.waiting,
-  });
+  }) : status = _AgentStatus.waiting;
 }
 
 // ── Public entry point ────────────────────────────────────────────────────────
@@ -386,9 +385,9 @@ class _CrewAnalysisSheetState extends State<_CrewAnalysisSheet> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: const Color(0xFFCF3B2E).withOpacity(0.1),
+                color: const Color(0xFFCF3B2E).withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0xFFCF3B2E).withOpacity(0.3)),
+                border: Border.all(color: const Color(0xFFCF3B2E).withValues(alpha: 0.3)),
               ),
               child: Row(
                 children: [
@@ -420,9 +419,9 @@ class _CrewAnalysisSheetState extends State<_CrewAnalysisSheet> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: const Color(0xFFFFB020).withOpacity(0.1),
+                color: const Color(0xFFFFB020).withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0xFFFFB020).withOpacity(0.3)),
+                border: Border.all(color: const Color(0xFFFFB020).withValues(alpha: 0.3)),
               ),
               child: Row(
                 children: [
@@ -463,7 +462,7 @@ class _CrewAnalysisSheetState extends State<_CrewAnalysisSheet> {
 
 class _AgentRow extends StatelessWidget {
   final _AgentState agent;
-  const _AgentRow({super.key, required this.agent});
+  const _AgentRow({required this.agent});
 
   @override
   Widget build(BuildContext context) {
@@ -477,7 +476,7 @@ class _AgentRow extends StatelessWidget {
         iconBg    = Colors.white10;
         statusIcon = Icon(agent.icon, size: 18, color: Colors.white38);
       case _AgentStatus.running:
-        iconBg    = const Color(0xFF12A28C).withOpacity(0.15);
+        iconBg    = const Color(0xFF12A28C).withValues(alpha: 0.15);
         statusIcon = SizedBox(
           width: 18,
           height: 18,
@@ -487,11 +486,11 @@ class _AgentRow extends StatelessWidget {
           ),
         );
       case _AgentStatus.done:
-        iconBg    = const Color(0xFF0C9E6A).withOpacity(0.15);
+        iconBg    = const Color(0xFF0C9E6A).withValues(alpha: 0.15);
         statusIcon = const Icon(Icons.check_rounded,
             size: 18, color: Color(0xFF0C9E6A));
       case _AgentStatus.error:
-        iconBg    = const Color(0xFFCF3B2E).withOpacity(0.15);
+        iconBg    = const Color(0xFFCF3B2E).withValues(alpha: 0.15);
         statusIcon = const Icon(Icons.close_rounded,
             size: 18, color: Color(0xFFCF3B2E));
     }

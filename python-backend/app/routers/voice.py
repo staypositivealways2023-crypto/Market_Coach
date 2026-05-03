@@ -8,16 +8,18 @@ Route summary:
   GET  /api/voice/session/{id}/context  Reconnect: fetch live SessionState
   POST /api/voice/tools/invoke       Execute a tool during a live session
   POST /api/voice/events/batch       Log behavior events from Flutter
-  GET  /api/voice/memory/context     Read profile + coaching memories
-  POST /api/voice/memory/upsert      Upsert a profile memory entry
-  GET  /api/voice/usage/status       Current usage vs tier limits
+  GET  /api/voice/memory/context          Read profile + coaching memories
+  POST /api/voice/memory/upsert           Upsert a profile memory entry
+  GET  /api/voice/memory/timeline         ChromaDB timeline (Phase 4)
+  DELETE /api/voice/memory/chroma/{id}    Delete a single ChromaDB entry (Phase 4)
+  GET  /api/voice/usage/status            Current usage vs tier limits
 """
 
 from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Optional
 
 import firebase_admin
 import firebase_admin.firestore
@@ -26,6 +28,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from app.models.memory import (
     BatchEventsRequest,
     MemoryContextResponse,
+    MemoryTimelineResponse,
     MemoryUpsertRequest,
     ProfileMemoryEntry,
     CoachingMemoryEntry,
@@ -122,6 +125,26 @@ async def create_session(
     return bootstrap
 
 
+@router.post("/session/force-end")
+async def force_end_session(
+    uid: str = Depends(get_verified_uid),
+    session_repo: VoiceSessionRepo = Depends(get_session_repo),
+):
+    """Force-release the active session lock for this user.
+
+    Called by Flutter when it receives a 409 conflict — meaning a previous
+    session crashed or was orphaned without calling /session/end.  This
+    endpoint only releases the Redis lock; it does NOT run background workers
+    or meter usage (the orphaned session already failed, so no billable time).
+    """
+    try:
+        await session_repo.release_lock(uid)
+        logger.info(f"[voice] force-end: lock released for uid={uid[:8]}…")
+    except Exception as exc:
+        logger.warning(f"[voice] force-end: lock release failed for uid={uid[:8]}: {exc}")
+    return {"success": True}
+
+
 @router.post("/session/end")
 async def end_session(
     request: VoiceSessionEndRequest,
@@ -135,13 +158,19 @@ async def end_session(
     """End a voice session: update Firestore, meter usage, trigger background workers."""
     session_id = request.session_id
 
-    # Update Firestore session doc
+    # Update Firestore session doc — include transcript turns for history injection
     try:
         from google.cloud.firestore import SERVER_TIMESTAMP
+        # Strip tool-call entries before persisting (they're noise for history replay)
+        clean_turns = [
+            t for t in request.transcript_turns
+            if not t.get("tool_calls") and t.get("text", "").strip()
+        ]
         db.collection("voice_sessions").document(session_id).set(
             {
                 "ended_at": SERVER_TIMESTAMP,
                 "voice_seconds": int(request.voice_seconds),
+                "transcript_turns": clean_turns,
             },
             merge=True,
         )
@@ -475,3 +504,62 @@ async def delete_memory(uid: str = Depends(get_verified_uid)):
     except Exception as e:
         logger.error(f"[memory] delete error for {uid}: {e}")
         return {"deleted": False, "error": str(e)}
+
+
+# ── Phase 4: Deep Memory System ───────────────────────────────────────────────
+
+@router.get("/memory/timeline", response_model=MemoryTimelineResponse)
+async def get_memory_timeline(
+    category: Optional[str] = None,
+    limit: int = 100,
+    uid: str = Depends(get_verified_uid),
+):
+    """
+    Return the user's ChromaDB memory entries as a chronological timeline,
+    newest first.  Used by the Flutter MemoryTimelineScreen.
+
+    Query params:
+      category — filter to one category (optional)
+      limit    — max entries to return (default 100, max 200)
+    """
+    from app.services.chroma_memory_service import ChromaMemoryService
+    from app.models.memory import MemoryTimelineEntry
+
+    limit = min(limit, 200)
+    try:
+        svc = ChromaMemoryService()
+        entries = svc.get_timeline(uid, limit=limit, category=category or None)
+        timeline = [
+            MemoryTimelineEntry(
+                id=e["id"],
+                text=e["text"],
+                category=e["category"],
+                timestamp=e["timestamp"],
+                symbol=e.get("symbol"),
+            )
+            for e in entries
+        ]
+        return MemoryTimelineResponse(entries=timeline, total=len(timeline))
+    except Exception as e:
+        logger.error(f"[memory] timeline error for {uid}: {e}")
+        return MemoryTimelineResponse(entries=[], total=0)
+
+
+@router.delete("/memory/chroma/{doc_id}")
+async def delete_chroma_entry(
+    doc_id: str,
+    uid: str = Depends(get_verified_uid),
+):
+    """
+    Delete a single ChromaDB memory entry by document ID.
+    The doc_id comes from MemoryTimelineEntry.id in the timeline response.
+    Users can only delete their own entries (uid is verified from token).
+    """
+    try:
+        from app.services.chroma_memory_service import ChromaMemoryService
+        svc = ChromaMemoryService()
+        success = svc.delete_entry(uid, doc_id)
+        return {"deleted": success, "doc_id": doc_id}
+    except Exception as e:
+        logger.error(f"[memory] delete_entry error for {uid}/{doc_id}: {e}")
+        raise HTTPException(status_code=500, detail="Memory delete failed.")

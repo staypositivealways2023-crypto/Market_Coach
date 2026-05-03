@@ -40,12 +40,12 @@ class _GlassCardState extends State<GlassCard> {
         borderRadius: effectiveBorderRadius,
         border: Border.all(
           // Subtle border: 6% white instead of blue-tinted 12%
-          color: Colors.white.withOpacity(0.06),
+          color: Colors.white.withValues(alpha: 0.06),
           width: 1.0,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.35),
+            color: Colors.black.withValues(alpha: 0.35),
             blurRadius: 10,
             offset: const Offset(0, 4),
             spreadRadius: 0,
@@ -94,7 +94,7 @@ class AiTextBlock extends StatelessWidget {
         border: const Border(
           left: BorderSide(color: Color(0xFF06B6D4), width: 2),
         ),
-        color: const Color(0xFF06B6D4).withOpacity(0.04),
+        color: const Color(0xFF06B6D4).withValues(alpha: 0.04),
         borderRadius: const BorderRadius.only(
           topRight: Radius.circular(6),
           bottomRight: Radius.circular(6),

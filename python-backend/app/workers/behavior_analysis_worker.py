@@ -128,7 +128,7 @@ async def run(
     if fundamental_calls >= 2:
         detected.add("fundamental_focused")
 
-    if any(e.get("screen", "").startswith("lesson") for e in events):
+    if any((e.get("screen") or "").startswith("lesson") for e in events):
         detected.add("lesson_engaged")
 
     if not detected:

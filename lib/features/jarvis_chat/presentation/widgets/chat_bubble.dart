@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../../../theme/app_tokens.dart';
 import '../../providers/jarvis_chat_provider.dart';
+import 'chart_analysis_bubble.dart';
 
 /// A single chat message bubble.
 ///
@@ -18,6 +19,32 @@ class ChatBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Chart-analysis cards span the full width (no 48 px offset needed)
+    if (message.type == MessageType.chartAnalysis && message.chartAnalysis != null) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                _avatar(),
+                const SizedBox(width: AppSpacing.sm),
+                Text('AI Chart Analysis',
+                    style: AppText.micro
+                        .copyWith(color: AppColors.accent, fontWeight: FontWeight.w600)),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.xs),
+            ChartAnalysisBubble(
+              analysis: message.chartAnalysis!,
+              imageB64Preview: message.imageB64Preview,
+            ),
+          ],
+        ),
+      );
+    }
+
     return Padding(
       padding: EdgeInsets.only(
         left: _isUser ? 48 : 0,
@@ -51,7 +78,7 @@ class ChatBubble extends StatelessWidget {
         ),
         boxShadow: [
           BoxShadow(
-            color: AppColors.accent.withOpacity(0.4),
+            color: AppColors.accent.withValues(alpha: 0.4),
             blurRadius: 6,
             spreadRadius: 1,
           ),
@@ -63,15 +90,15 @@ class ChatBubble extends StatelessWidget {
 
   Widget _bubble(BuildContext context) {
     final Color bg = _isUser
-        ? AppColors.accent.withOpacity(0.18)
+        ? AppColors.accent.withValues(alpha: 0.18)
         : message.isError
-            ? AppColors.bearish.withOpacity(0.12)
+            ? AppColors.bearish.withValues(alpha: 0.12)
             : AppColors.card;
 
     final Color border = _isUser
-        ? AppColors.accent.withOpacity(0.35)
+        ? AppColors.accent.withValues(alpha: 0.35)
         : message.isError
-            ? AppColors.bearish.withOpacity(0.25)
+            ? AppColors.bearish.withValues(alpha: 0.25)
             : AppColors.border;
 
     return GestureDetector(
@@ -195,7 +222,7 @@ class _TypingIndicatorState extends State<TypingIndicator>
             ),
             child: AnimatedBuilder(
               animation: _anim,
-              builder: (_, __) => Row(
+              builder: (_, _) => Row(
                 mainAxisSize: MainAxisSize.min,
                 children: List.generate(3, (i) {
                   final delay = i * 0.33;

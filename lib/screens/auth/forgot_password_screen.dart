@@ -60,7 +60,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
       body: Container(
         decoration: const BoxDecoration(
           image: DecorationImage(
-            image: AssetImage('assests/background.jpg'),
+            image: AssetImage('assets/background.jpg'),
             fit: BoxFit.cover,
           ),
         ),
@@ -89,7 +89,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(20),
               child: Image.asset(
-                'assests/logo.jpg',
+                'assets/logo.png',
                 width: 120,
                 height: 120,
                 fit: BoxFit.cover,
@@ -125,20 +125,20 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
             style: const TextStyle(color: Colors.white),
             decoration: InputDecoration(
               labelText: 'Email',
-              labelStyle: TextStyle(color: Colors.white.withOpacity(0.7)),
+              labelStyle: TextStyle(color: Colors.white.withValues(alpha: 0.7)),
               prefixIcon: Icon(
                 Icons.email_outlined,
                 color: colorScheme.primary,
               ),
               filled: true,
-              fillColor: Colors.white.withOpacity(0.05),
+              fillColor: Colors.white.withValues(alpha: 0.05),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide.none,
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.white.withOpacity(0.1)),
+                borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -211,7 +211,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
           width: 100,
           height: 100,
           decoration: BoxDecoration(
-            color: Colors.green.withOpacity(0.2),
+            color: Colors.green.withValues(alpha: 0.2),
             shape: BoxShape.circle,
           ),
           child: const Icon(

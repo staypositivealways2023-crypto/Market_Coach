@@ -2,15 +2,19 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-/// Simple animated waveform bar visualisation shown when assistant is speaking.
+/// Animated waveform bar visualisation shown when assistant is speaking.
+/// [amplitude] (0.0–1.0) scales bar heights in real-time to the audio volume.
 class VoiceWaveform extends StatefulWidget {
   final bool active;
   final Color color;
+  /// Normalised RMS amplitude from the audio delta stream (0.0–1.0).
+  final double amplitude;
 
   const VoiceWaveform({
     super.key,
     required this.active,
     this.color = const Color(0xFF12A28C),
+    this.amplitude = 0.0,
   });
 
   @override
@@ -49,6 +53,7 @@ class _VoiceWaveformState extends State<VoiceWaveform>
             painter: _WaveformPainter(
               progress: _controller.value,
               color: widget.color,
+              amplitude: widget.amplitude,
             ),
           );
         },
@@ -60,8 +65,14 @@ class _VoiceWaveformState extends State<VoiceWaveform>
 class _WaveformPainter extends CustomPainter {
   final double progress;
   final Color color;
+  /// 0.0–1.0 amplitude to scale bar heights reactively.
+  final double amplitude;
 
-  _WaveformPainter({required this.progress, required this.color});
+  _WaveformPainter({
+    required this.progress,
+    required this.color,
+    this.amplitude = 0.0,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -72,10 +83,12 @@ class _WaveformPainter extends CustomPainter {
 
     const barCount = 16;
     final spacing = size.width / barCount;
+    // Blend between a min height (idle wave shape) and full amplitude
+    final drive = 0.35 + amplitude * 0.65;
 
     for (int i = 0; i < barCount; i++) {
       final phase = (i / barCount) + progress;
-      final height = (math.sin(phase * math.pi * 2) * 0.4 + 0.6) * size.height;
+      final height = (math.sin(phase * math.pi * 2) * 0.4 + 0.6) * size.height * drive;
       final x = spacing * i + spacing / 2;
       final y = (size.height - height) / 2;
       canvas.drawLine(Offset(x, y), Offset(x, y + height), paint);
@@ -83,5 +96,6 @@ class _WaveformPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_WaveformPainter old) => old.progress != progress;
+  bool shouldRepaint(_WaveformPainter old) =>
+      old.progress != progress || old.amplitude != amplitude;
 }

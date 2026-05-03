@@ -123,20 +123,20 @@ class ClaudeAnalysisService {
 
   Recommendation _parseRecommendation(String str) {
     switch (str.toUpperCase().trim()) {
-      case 'STRONG_BUY':  return Recommendation.STRONG_BUY;
-      case 'BUY':         return Recommendation.BUY;
-      case 'SELL':        return Recommendation.SELL;
-      case 'STRONG_SELL': return Recommendation.STRONG_SELL;
-      default:            return Recommendation.HOLD;
+      case 'STRONG_BUY':  return Recommendation.strongBuy;
+      case 'BUY':         return Recommendation.buy;
+      case 'SELL':        return Recommendation.sell;
+      case 'STRONG_SELL': return Recommendation.strongSell;
+      default:            return Recommendation.hold;
     }
   }
 
   RiskLevel _parseRiskLevel(String str) {
     switch (str.toUpperCase().trim()) {
-      case 'LOW':       return RiskLevel.LOW;
-      case 'HIGH':      return RiskLevel.HIGH;
-      case 'VERY_HIGH': return RiskLevel.VERY_HIGH;
-      default:          return RiskLevel.MEDIUM;
+      case 'LOW':       return RiskLevel.low;
+      case 'HIGH':      return RiskLevel.high;
+      case 'VERY_HIGH': return RiskLevel.veryHigh;
+      default:          return RiskLevel.medium;
     }
   }
 

@@ -136,7 +136,7 @@ class _TapOnChartWidgetState extends State<TapOnChartWidget>
                 clipBehavior: Clip.hardEdge,
                 child: AnimatedBuilder(
                   animation: engine,
-                  builder: (_, __) => CustomPaint(
+                  builder: (_, _) => CustomPaint(
                     size: const Size(double.infinity, 200),
                     painter: DemoCandlePainter(
                       candles: step.candles,

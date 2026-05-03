@@ -28,7 +28,7 @@ class IQScoreCard extends ConsumerWidget {
           child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
         ),
       ),
-      error: (_, __) => const SizedBox.shrink(),
+      error: (_, _) => const SizedBox.shrink(),
       data: (data) => GlassCard(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -131,7 +131,7 @@ class _AnimatedScoreState extends State<_AnimatedScore>
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: _anim,
-      builder: (_, __) {
+      builder: (_, _) {
         final score = _anim.value.round();
         final color = _scoreColor(score);
         return Text(

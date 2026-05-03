@@ -90,7 +90,7 @@ class NewsScreen extends ConsumerWidget {
                             ],
                           ),
                           loading: () => const SizedBox.shrink(),
-                          error: (_, __) => const SizedBox.shrink(),
+                          error: (_, _) => const SizedBox.shrink(),
                         ),
                       ],
                     ),
@@ -216,7 +216,7 @@ class NewsScreen extends ConsumerWidget {
                                                 vertical: 4),
                                         decoration: ShapeDecoration(
                                           color: sentimentColor
-                                              .withOpacity(0.12),
+                                              .withValues(alpha: 0.12),
                                           shape: const StadiumBorder(),
                                         ),
                                         child: Text(

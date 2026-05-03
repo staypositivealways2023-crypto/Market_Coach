@@ -113,32 +113,32 @@ class EnhancedAIAnalysis {
   static Recommendation _parseRecommendation(String str) {
     switch (str.toUpperCase()) {
       case 'STRONG_BUY':
-        return Recommendation.STRONG_BUY;
+        return Recommendation.strongBuy;
       case 'BUY':
-        return Recommendation.BUY;
+        return Recommendation.buy;
       case 'HOLD':
-        return Recommendation.HOLD;
+        return Recommendation.hold;
       case 'SELL':
-        return Recommendation.SELL;
+        return Recommendation.sell;
       case 'STRONG_SELL':
-        return Recommendation.STRONG_SELL;
+        return Recommendation.strongSell;
       default:
-        return Recommendation.HOLD;
+        return Recommendation.hold;
     }
   }
 
   static RiskLevel _parseRiskLevel(String str) {
     switch (str.toUpperCase()) {
       case 'LOW':
-        return RiskLevel.LOW;
+        return RiskLevel.low;
       case 'MEDIUM':
-        return RiskLevel.MEDIUM;
+        return RiskLevel.medium;
       case 'HIGH':
-        return RiskLevel.HIGH;
+        return RiskLevel.high;
       case 'VERY_HIGH':
-        return RiskLevel.VERY_HIGH;
+        return RiskLevel.veryHigh;
       default:
-        return RiskLevel.MEDIUM;
+        return RiskLevel.medium;
     }
   }
 
@@ -159,35 +159,35 @@ class EnhancedAIAnalysis {
 }
 
 /// Trading recommendation
-enum Recommendation { STRONG_BUY, BUY, HOLD, SELL, STRONG_SELL }
+enum Recommendation { strongBuy, buy, hold, sell, strongSell }
 
 extension RecommendationExtension on Recommendation {
   String get displayName {
     switch (this) {
-      case Recommendation.STRONG_BUY:
+      case Recommendation.strongBuy:
         return 'Bullish signal (high confidence)';
-      case Recommendation.BUY:
+      case Recommendation.buy:
         return 'Bullish signal';
-      case Recommendation.HOLD:
+      case Recommendation.hold:
         return 'Neutral';
-      case Recommendation.SELL:
+      case Recommendation.sell:
         return 'Bearish signal';
-      case Recommendation.STRONG_SELL:
+      case Recommendation.strongSell:
         return 'Bearish signal (high confidence)';
     }
   }
 
   String get colorHex {
     switch (this) {
-      case Recommendation.STRONG_BUY:
+      case Recommendation.strongBuy:
         return '#00C853';
-      case Recommendation.BUY:
+      case Recommendation.buy:
         return '#4CAF50';
-      case Recommendation.HOLD:
+      case Recommendation.hold:
         return '#FFC107';
-      case Recommendation.SELL:
+      case Recommendation.sell:
         return '#FF5722';
-      case Recommendation.STRONG_SELL:
+      case Recommendation.strongSell:
         return '#D32F2F';
     }
   }
@@ -231,31 +231,31 @@ class PriceTarget {
 }
 
 /// Risk level assessment
-enum RiskLevel { LOW, MEDIUM, HIGH, VERY_HIGH }
+enum RiskLevel { low, medium, high, veryHigh }
 
 extension RiskLevelExtension on RiskLevel {
   String get displayName {
     switch (this) {
-      case RiskLevel.LOW:
+      case RiskLevel.low:
         return 'Low Risk';
-      case RiskLevel.MEDIUM:
+      case RiskLevel.medium:
         return 'Medium Risk';
-      case RiskLevel.HIGH:
+      case RiskLevel.high:
         return 'High Risk';
-      case RiskLevel.VERY_HIGH:
+      case RiskLevel.veryHigh:
         return 'Very High Risk';
     }
   }
 
   String get colorHex {
     switch (this) {
-      case RiskLevel.LOW:
+      case RiskLevel.low:
         return '#4CAF50';
-      case RiskLevel.MEDIUM:
+      case RiskLevel.medium:
         return '#FFC107';
-      case RiskLevel.HIGH:
+      case RiskLevel.high:
         return '#FF5722';
-      case RiskLevel.VERY_HIGH:
+      case RiskLevel.veryHigh:
         return '#D32F2F';
     }
   }

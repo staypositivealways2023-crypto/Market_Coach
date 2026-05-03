@@ -477,7 +477,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     background: Container(
                       margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
                       decoration: BoxDecoration(
-                        color: Colors.red.shade900.withOpacity(0.3),
+                        color: Colors.red.shade900.withValues(alpha: 0.3),
                         borderRadius: BorderRadius.circular(14),
                       ),
                       alignment: Alignment.centerRight,
@@ -555,7 +555,7 @@ class _LiveMarketsStrip extends StatelessWidget {
             accent: colorScheme.primary,
           );
         },
-        separatorBuilder: (_, __) => const SizedBox(width: 12),
+        separatorBuilder: (_, _) => const SizedBox(width: 12),
         itemCount: markets.length,
       ),
     );
@@ -999,13 +999,13 @@ class _WatchlistSkeletonCardState extends State<_WatchlistSkeletonCard>
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: _opacity,
-      builder: (_, __) => Container(
+      builder: (_, _) => Container(
         height: 68,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(_opacity.value * 0.05),
+          color: Colors.white.withValues(alpha: _opacity.value * 0.05),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.white.withOpacity(0.06)),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
         ),
         child: Row(
           children: [
@@ -1014,7 +1014,7 @@ class _WatchlistSkeletonCardState extends State<_WatchlistSkeletonCard>
               width: 48,
               height: 14,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(_opacity.value * 0.4),
+                color: Colors.white.withValues(alpha: _opacity.value * 0.4),
                 borderRadius: BorderRadius.circular(4),
               ),
             ),
@@ -1024,7 +1024,7 @@ class _WatchlistSkeletonCardState extends State<_WatchlistSkeletonCard>
               child: Container(
                 height: 12,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(_opacity.value * 0.2),
+                  color: Colors.white.withValues(alpha: _opacity.value * 0.2),
                   borderRadius: BorderRadius.circular(4),
                 ),
               ),
@@ -1035,7 +1035,7 @@ class _WatchlistSkeletonCardState extends State<_WatchlistSkeletonCard>
               width: 56,
               height: 14,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(_opacity.value * 0.25),
+                color: Colors.white.withValues(alpha: _opacity.value * 0.25),
                 borderRadius: BorderRadius.circular(4),
               ),
             ),

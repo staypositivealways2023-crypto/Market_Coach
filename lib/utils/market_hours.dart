@@ -1,6 +1,5 @@
-/// Market status / session detection.
-/// All logic is client-side — no API call required.
-library market_hours;
+// Market status / session detection.
+// All logic is client-side — no API call required.
 
 enum MarketStatus {
   alwaysOpen,   // crypto

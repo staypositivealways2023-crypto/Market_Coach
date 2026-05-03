@@ -1,3 +1,4 @@
+import 'dart:developer' as dev;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -35,6 +36,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   bool _speechReady = false;
   bool _isListening = false;
   bool _ttsEnabled = true;
+  // True only after TTS engine confirmed available + language set successfully.
+  bool _ttsReady = false;
+  // Non-null when the device has no TTS engine (emulator without Play Services).
+  String? _ttsWarning;
 
   static const _teal = Color(0xFF12A28C);
 
@@ -56,6 +61,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   }
 
   Future<void> _initVoice() async {
+    // ── Speech-to-text ────────────────────────────────────────────────────────
     _speechReady = await _speech.initialize(
       onError: (_) => setState(() => _isListening = false),
       onStatus: (status) {
@@ -64,10 +70,60 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         }
       },
     );
-    await _tts.setLanguage('en-US');
-    await _tts.setSpeechRate(0.5);
-    await _tts.setVolume(1.0);
-    _tts.setCompletionHandler(() {});
+
+    // ── Text-to-speech ────────────────────────────────────────────────────────
+    // Step 1: check engine availability BEFORE calling any TTS API.
+    // On Android emulators without Google Play Services there is no TTS engine,
+    // and every call returns status -1. Without this guard the error is silent.
+    try {
+      final engines = await _tts.getEngines as List?;
+      dev.log('[TTS] engines found: $engines', name: 'TTS');
+
+      if (engines == null || engines.isEmpty) {
+        dev.log('[TTS] No TTS engine available — disabling TTS', name: 'TTS');
+        if (mounted) {
+          setState(() {
+            _ttsWarning = 'Voice playback not available on this device.\n'
+                'Use a real device or install Google Text-to-Speech.';
+          });
+        }
+        return; // skip init — _ttsReady stays false
+      }
+
+      // Step 2: wire error handler before any init call so failures are visible.
+      _tts.setErrorHandler((msg) {
+        dev.log('[TTS] error: $msg', name: 'TTS');
+      });
+
+      // Step 3: setLanguage returns 1 on success, -1 on failure.
+      final langResult = await _tts.setLanguage('en-US');
+      dev.log('[TTS] setLanguage result: $langResult', name: 'TTS');
+
+      if (langResult != 1) {
+        dev.log('[TTS] setLanguage failed (status $langResult) — TTS disabled', name: 'TTS');
+        if (mounted) {
+          setState(() {
+            _ttsWarning = 'TTS language init failed (status $langResult). '
+                'Voice replies will be text-only.';
+          });
+        }
+        return;
+      }
+
+      await _tts.setSpeechRate(0.5);
+      await _tts.setVolume(1.0);
+      _tts.setCompletionHandler(() {});
+      _ttsReady = true;
+      dev.log('[TTS] initialised OK', name: 'TTS');
+    } catch (e) {
+      dev.log('[TTS] init exception: $e', name: 'TTS');
+      if (mounted) {
+        setState(() {
+          _ttsWarning = 'TTS initialisation error. Voice replies disabled.';
+        });
+      }
+    }
+
     if (mounted) setState(() {});
   }
 
@@ -77,7 +133,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       await _speech.stop();
       setState(() => _isListening = false);
     } else {
-      await _tts.stop();
+      if (_ttsReady) await _tts.stop();
       setState(() => _isListening = true);
       await _speech.listen(
         onResult: (result) {
@@ -96,7 +152,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   }
 
   Future<void> _speakResponse(String text) async {
-    if (!_ttsEnabled || text.isEmpty) return;
+    if (!_ttsEnabled || !_ttsReady || text.isEmpty) return;
     // Strip markdown for cleaner speech
     final clean = text
         .replaceAll(RegExp(r'\*\*?|__?|~~|`{1,3}'), '')
@@ -113,7 +169,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     _dotController.dispose();
     _focusNode.dispose();
     _speech.cancel();
-    _tts.stop();
+    if (_ttsReady) _tts.stop();
     super.dispose();
   }
 
@@ -373,11 +429,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
             color: _ttsEnabled ? Colors.white70 : Colors.white30,
             size: 20,
           ),
-          tooltip: _ttsEnabled ? 'Mute voice' : 'Unmute voice',
-          onPressed: () {
-            setState(() => _ttsEnabled = !_ttsEnabled);
-            if (!_ttsEnabled) _tts.stop();
-          },
+          tooltip: _ttsWarning ?? (_ttsEnabled ? 'Mute voice' : 'Unmute voice'),
+          onPressed: _ttsWarning != null
+              ? () => ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(_ttsWarning!),
+                      duration: const Duration(seconds: 4),
+                    ),
+                  )
+              : () {
+                  setState(() => _ttsEnabled = !_ttsEnabled);
+                  if (!_ttsEnabled && _ttsReady) _tts.stop();
+                },
         ),
         // New chat button — only when there are messages
         if (chatState.messages.isNotEmpty && !isStreaming)
@@ -1293,7 +1356,7 @@ class _WorldMapDotPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = const Color(0xFF1A3456).withOpacity(0.55)
+      ..color = const Color(0xFF1A3456).withValues(alpha: 0.55)
       ..style = PaintingStyle.fill;
 
     const dotRadius = 1.6;
@@ -1301,7 +1364,7 @@ class _WorldMapDotPainter extends CustomPainter {
 
     // Draw subtle full grid first (very dim ocean dots)
     final gridPaint = Paint()
-      ..color = const Color(0xFF0B1E33).withOpacity(0.35)
+      ..color = const Color(0xFF0B1E33).withValues(alpha: 0.35)
       ..style = PaintingStyle.fill;
 
     for (double x = spacing / 2; x < size.width; x += spacing) {
@@ -1331,9 +1394,9 @@ class _WorldMapDotPainter extends CustomPainter {
       ..shader = LinearGradient(
         colors: [
           Colors.transparent,
-          const Color(0xFF06B6D4).withOpacity(0.18),
-          const Color(0xFF0891B2).withOpacity(0.30),
-          const Color(0xFF06B6D4).withOpacity(0.18),
+          const Color(0xFF06B6D4).withValues(alpha: 0.18),
+          const Color(0xFF0891B2).withValues(alpha: 0.30),
+          const Color(0xFF06B6D4).withValues(alpha: 0.18),
           Colors.transparent,
         ],
         stops: const [0.0, 0.25, 0.5, 0.75, 1.0],

@@ -4,7 +4,7 @@ import 'dart:developer' as dev;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../../providers/auth_provider.dart';
+import '../../../../providers/auth_provider.dart'; // authStateProvider, currentUserProvider
 import '../../data/audio_capture_service.dart';
 import '../../data/audio_playback_service.dart';
 import '../../data/jarvis_realtime_service.dart';
@@ -18,6 +18,7 @@ enum VoiceConnectionState { idle, connecting, connected, ending, error }
 class VoiceSessionState {
   final VoiceConnectionState connectionState;
   final VoiceMode mode;
+  /// Completed transcript turns shown in the scrollable history above the caption bar.
   final List<TranscriptItem> transcript;
   final String? sessionId;
   final String? errorMessage;
@@ -26,6 +27,13 @@ class VoiceSessionState {
   final String? activeLessonId;
   /// True when the backend rejected the session with 429 (tier limit hit).
   final bool isLimitReached;
+  /// Text currently being streamed for the assistant's in-progress turn.
+  /// Shown live in the caption bar. Committed to [transcript] on turn complete.
+  final String currentAssistantText;
+  /// True while the server VAD detects the user is actively speaking.
+  final bool isUserSpeaking;
+  /// In-progress user transcript (partial while speaking).
+  final String currentUserText;
 
   const VoiceSessionState({
     this.connectionState = VoiceConnectionState.idle,
@@ -37,6 +45,9 @@ class VoiceSessionState {
     this.activeSymbol,
     this.activeLessonId,
     this.isLimitReached = false,
+    this.currentAssistantText = '',
+    this.isUserSpeaking = false,
+    this.currentUserText = '',
   });
 
   VoiceSessionState copyWith({
@@ -50,6 +61,11 @@ class VoiceSessionState {
     String? activeSymbol,
     String? activeLessonId,
     bool? isLimitReached,
+    String? currentAssistantText,
+    bool clearCurrentAssistant = false,
+    bool? isUserSpeaking,
+    String? currentUserText,
+    bool clearCurrentUser = false,
   }) {
     return VoiceSessionState(
       connectionState: connectionState ?? this.connectionState,
@@ -61,6 +77,9 @@ class VoiceSessionState {
       activeSymbol: activeSymbol ?? this.activeSymbol,
       activeLessonId: activeLessonId ?? this.activeLessonId,
       isLimitReached: isLimitReached ?? this.isLimitReached,
+      currentAssistantText: clearCurrentAssistant ? '' : (currentAssistantText ?? this.currentAssistantText),
+      isUserSpeaking: isUserSpeaking ?? this.isUserSpeaking,
+      currentUserText: clearCurrentUser ? '' : (currentUserText ?? this.currentUserText),
     );
   }
 }
@@ -82,6 +101,15 @@ class VoiceSessionNotifier extends StateNotifier<VoiceSessionState> {
   final List<StreamSubscription> _subs = [];
   bool _isDisposed = false;
 
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
+  static String _ts() => DateTime.now().toIso8601String();
+
+  void _vlog(String msg, {String? sid}) {
+    final tag = sid != null ? ' sid=${sid.substring(0, 8)}' : '';
+    dev.log('[${_ts()}]$tag $msg', name: 'Voice');
+  }
+
   // ── Session lifecycle ──────────────────────────────────────────────────────
 
   Future<void> startSession({
@@ -90,11 +118,10 @@ class VoiceSessionNotifier extends StateNotifier<VoiceSessionState> {
     String? activeLessonId,
     String screenContext = '',
   }) async {
-    dev.log(
-      '[VoiceSessionNotifier] Session create requested '
+    _vlog(
+      'startSession() requested '
       'mode=${mode.value} state=${state.connectionState.name} '
       'session=${state.sessionId ?? 'none'}',
-      name: 'Voice',
     );
 
     if (state.connectionState == VoiceConnectionState.connecting ||
@@ -119,7 +146,7 @@ class VoiceSessionNotifier extends StateNotifier<VoiceSessionState> {
 
     try {
       // 1. Bootstrap via backend
-      dev.log('[VoiceSessionNotifier] ① createSession → HTTP POST to backend', name: 'Voice');
+      _vlog('① HTTP POST createSession…');
       final bootstrap = await _repo.createSession(
         _user,
         mode: mode,
@@ -128,7 +155,7 @@ class VoiceSessionNotifier extends StateNotifier<VoiceSessionState> {
         activeLessonId: activeLessonId,
       );
       createdSessionId = bootstrap.sessionId;
-      dev.log('[VoiceSessionNotifier] ① createSession OK — sessionId=${bootstrap.sessionId}', name: 'Voice');
+      _vlog('① createSession OK', sid: bootstrap.sessionId);
 
       if (_isDisposed) {
         await _cleanupOrphanedSession(
@@ -139,26 +166,22 @@ class VoiceSessionNotifier extends StateNotifier<VoiceSessionState> {
       }
 
       // 2. Connect via backend proxy WebSocket (works on all platforms)
-      dev.log('[VoiceSessionNotifier] ② getIdToken + connect WebSocket…', name: 'Voice');
+      _vlog('② getIdToken + connect WebSocket…', sid: bootstrap.sessionId);
       final firebaseToken = await _user.getIdToken() ?? '';
       await _realtime.connect(bootstrap, firebaseToken);
-      dev.log('[VoiceSessionNotifier] ② WebSocket connected OK', name: 'Voice');
+      _vlog('② WebSocket handshake OK', sid: bootstrap.sessionId);
 
       // 3. Wire ALL event streams FIRST — before audio services start.
-      //    Audio capture begins producing chunks immediately on start(); if
-      //    _wireStreams() runs after, those first chunks are never sent to OpenAI.
-      //    Similarly the WS disconnect sentinel (__ws_closed__) must be handled
-      //    before we start playing/recording.
       _wireStreams(bootstrap.sessionId);
-      dev.log('[VoiceSessionNotifier] ③ streams wired', name: 'Voice');
+      _vlog('③ streams wired', sid: bootstrap.sessionId);
 
       // 4. Start audio I/O after streams are live
-      dev.log('[VoiceSessionNotifier] ④ starting AudioPlaybackService…', name: 'Voice');
+      _vlog('④ AudioPlaybackService.start()…', sid: bootstrap.sessionId);
       await _playback.start();
-      dev.log('[VoiceSessionNotifier] ④ AudioPlaybackService started', name: 'Voice');
-      dev.log('[VoiceSessionNotifier] ⑤ starting AudioCaptureService…', name: 'Voice');
+      _vlog('④ AudioPlaybackService started — started=${_playback.isStarted}', sid: bootstrap.sessionId);
+      _vlog('⑤ AudioCaptureService.start()…', sid: bootstrap.sessionId);
       await _capture.start();
-      dev.log('[VoiceSessionNotifier] ⑤ AudioCaptureService started — mic is live', name: 'Voice');
+      _vlog('⑤ AudioCaptureService started — mic is LIVE', sid: bootstrap.sessionId);
 
       _sessionTimer
         ..reset()
@@ -186,13 +209,58 @@ class VoiceSessionNotifier extends StateNotifier<VoiceSessionState> {
         isLimitReached: true,
         errorMessage: e.message,
       );
-    } on VoiceSessionConflictException catch (e) {
-      dev.log('[VoiceSessionNotifier] Existing session found on backend: $e', name: 'Voice');
+    } on VoiceSessionConflictException catch (_) {
+      // ── Orphaned session recovery ──────────────────────────────────────────
+      // The backend has a stale Redis lock from a previous crash (PCM released
+      // before session/end was called). Force-release the lock and retry once.
+      _vlog('⚠ 409 conflict — force-ending orphaned session and retrying…');
       if (_isDisposed) return;
-      state = state.copyWith(
-        connectionState: VoiceConnectionState.error,
-        errorMessage: 'Another session is already active. Please wait a moment and try again.',
-      );
+      try {
+        await _repo.forceEndSession(_user);
+        _vlog('⚠ force-end OK — retrying createSession…');
+        final bootstrap2 = await _repo.createSession(
+          _user,
+          mode: mode,
+          screenContext: screenContext,
+          activeSymbol: activeSymbol,
+          activeLessonId: activeLessonId,
+        );
+        createdSessionId = bootstrap2.sessionId;
+        _vlog('⚠ retry createSession OK', sid: bootstrap2.sessionId);
+
+        if (_isDisposed) {
+          await _cleanupOrphanedSession(createdSessionId, reason: 'disposed_after_retry');
+          return;
+        }
+
+        final firebaseToken2 = await _user.getIdToken() ?? '';
+        await _realtime.connect(bootstrap2, firebaseToken2);
+        _wireStreams(bootstrap2.sessionId);
+        await _playback.start();
+        await _capture.start();
+        _sessionTimer..reset()..start();
+
+        if (!_isDisposed) {
+          state = state.copyWith(
+            connectionState: VoiceConnectionState.connected,
+            sessionId: bootstrap2.sessionId,
+          );
+          _vlog('⚠ recovery complete — session live', sid: bootstrap2.sessionId);
+        }
+      } catch (retryErr) {
+        _vlog('⚠ retry after force-end also failed: $retryErr');
+        if (createdSessionId != null) {
+          await _cleanupOrphanedSession(createdSessionId, reason: 'retry_failed');
+        } else {
+          await _closeLocalSessionResources();
+        }
+        if (!_isDisposed) {
+          state = state.copyWith(
+            connectionState: VoiceConnectionState.error,
+            errorMessage: 'Voice session conflict — please try again.',
+          );
+        }
+      }
     } catch (e) {
       dev.log('[VoiceSessionNotifier] Start failed: $e', name: 'Voice');
       if (createdSessionId != null) {
@@ -237,7 +305,7 @@ class VoiceSessionNotifier extends StateNotifier<VoiceSessionState> {
       );
     }
 
-    state = const VoiceSessionState(); // Reset to idle
+    state = const VoiceSessionState(); // Reset to idle — clears all fields incl. caption text
     _transcriptTurns.clear();
     dev.log(
       '[VoiceSessionNotifier] Session closed ${sessionId ?? '(local only)'}',
@@ -294,44 +362,59 @@ class VoiceSessionNotifier extends StateNotifier<VoiceSessionState> {
       }
     }));
 
-    // Interruption — user started speaking while assistant was talking
+    // User started speaking — interrupt assistant if needed, show ghost text
     _subs.add(_realtime.onUserSpeechStarted.listen((_) {
+      if (_isDisposed) return;
       if (state.isAssistantSpeaking) {
         _playback.flush(); // stop playing current response immediately
         _realtime.cancelResponse();
+        // Commit any in-progress assistant text as a completed turn
+        _commitCurrentAssistantTurn();
       }
+      state = state.copyWith(isUserSpeaking: true, clearCurrentUser: true);
     }));
+
+    // User stopped speaking — VAD silence detected
+    _subs.add(_realtime.onUserSpeechStopped.listen((_) {
+      if (_isDisposed) return;
+      // isUserSpeaking stays true until transcript arrives (avoids flicker)
+    }));
+
+    // Assistant turn fully complete — commit current text to history
+    _subs.add(_realtime.onAssistantTurnDone.listen((_) {
+      if (_isDisposed) return;
+      _commitCurrentAssistantTurn();
+    }));
+  }
+
+  /// Move [currentAssistantText] into the completed [transcript] list.
+  void _commitCurrentAssistantTurn() {
+    final text = state.currentAssistantText.trim();
+    if (text.isEmpty) return;
+    final updated = List<TranscriptItem>.from(state.transcript)
+      ..add(TranscriptItem(role: 'assistant', text: text, createdAt: DateTime.now()));
+    state = state.copyWith(transcript: updated, clearCurrentAssistant: true);
   }
 
   void _onTranscriptDelta(String role, String delta) {
     if (_isDisposed) return;
-    final transcript = List<TranscriptItem>.from(state.transcript);
 
-    // Append to existing item if same role, else start a new item
-    if (transcript.isNotEmpty && transcript.last.role == role && !transcript.last.isToolCall) {
-      final last = transcript.removeLast();
-      transcript.add(
-        TranscriptItem(
-          role: role,
-          text: last.text + delta,
-          createdAt: last.createdAt,
-        ),
-      );
+    if (role == 'assistant') {
+      // Stream assistant text into currentAssistantText (caption bar shows this live)
+      final updated = state.currentAssistantText + delta;
+      state = state.copyWith(currentAssistantText: updated);
     } else {
-      transcript.add(
-        TranscriptItem(
-          role: role,
-          text: delta,
-          createdAt: DateTime.now(),
-        ),
+      // User transcript arrived — turn complete, commit to history
+      final userText = state.currentUserText + delta;
+      final transcript = List<TranscriptItem>.from(state.transcript)
+        ..add(TranscriptItem(role: 'user', text: userText, createdAt: DateTime.now()));
+      _transcriptTurns.add({'role': 'user', 'text': userText, 'tool_calls': []});
+      state = state.copyWith(
+        transcript: transcript,
+        isUserSpeaking: false,
+        clearCurrentUser: true,
       );
-      // Track turn for post-session summary
-      if (transcript.last.text.trim().isNotEmpty) {
-        _transcriptTurns.add({'role': role, 'text': delta, 'tool_calls': []});
-      }
     }
-
-    state = state.copyWith(transcript: transcript);
   }
 
   Future<void> _onToolCallReceived(String sessionId, ToolCallEvent event) async {
@@ -460,13 +543,31 @@ final audioPlaybackServiceProvider = Provider.autoDispose<AudioPlaybackService>(
 
 final voiceSessionProvider =
     StateNotifierProvider.autoDispose<VoiceSessionNotifier, VoiceSessionState>((ref) {
-  final user = ref.watch(currentUserProvider);
+  // ── Auth churn guard ────────────────────────────────────────────────────────
+  // Watch ONLY the UID string via .select(), not the full AsyncValue<User?>.
+  // Without .select(), Firebase token refreshes emit a new User object with the
+  // SAME uid — Riverpod sees the AsyncValue changed → tears down this provider
+  // mid-session. .select() compares with == so identical UIDs skip the rebuild.
+  final uid = ref.watch(
+    authStateProvider.select((v) => v.valueOrNull?.uid),
+  );
+  if (uid == null) throw StateError('VoiceCoach requires authentication');
+
+  // Re-read the User object once for the constructor — always fresh (getIdToken
+  // on the User always fetches the latest token; the object itself doesn't matter).
+  final user = ref.read(currentUserProvider);
   if (user == null) throw StateError('VoiceCoach requires authentication');
+
+  // CRITICAL: use ref.watch (not ref.read) for all autoDispose sub-providers.
+  // ref.read does NOT create a lasting Riverpod subscription, so autoDispose
+  // sub-providers get torn down immediately after this factory returns —
+  // calling FlutterPcmSound.release() and stop() while the session is still
+  // starting. ref.watch keeps them alive for the lifetime of voiceSessionProvider.
   return VoiceSessionNotifier(
     ref.read(jarvisRepositoryProvider),
-    ref.read(jarvisRealtimeServiceProvider),
-    ref.read(audioCaptureServiceProvider),
-    ref.read(audioPlaybackServiceProvider),
+    ref.watch(jarvisRealtimeServiceProvider),
+    ref.watch(audioCaptureServiceProvider),
+    ref.watch(audioPlaybackServiceProvider),
     user,
   );
 });

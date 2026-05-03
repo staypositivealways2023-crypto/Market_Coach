@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 
 /// Service for managing user's watchlist in Firestore
 class WatchlistService {
@@ -31,7 +32,7 @@ class WatchlistService {
           .get();
       return legacyDoc.exists;
     } catch (e) {
-      print('Error checking watchlist: $e');
+      debugPrint('Error checking watchlist: $e');
       return false;
     }
   }
@@ -50,7 +51,7 @@ class WatchlistService {
         'added_at': FieldValue.serverTimestamp(),
       });
     } catch (e) {
-      print('Error adding to watchlist: $e');
+      debugPrint('Error adding to watchlist: $e');
       rethrow;
     }
   }
@@ -74,7 +75,7 @@ class WatchlistService {
             .delete();
       }
     } catch (e) {
-      print('Error removing from watchlist: $e');
+      debugPrint('Error removing from watchlist: $e');
       rethrow;
     }
   }

@@ -57,9 +57,9 @@ class IndicatorDemoPainter extends CustomPainter {
     // ── Price panel ────────────────────────────────────────────────────────
     final List<List<double>> allPriceSeries = [
       priceData,
-      if (line1 != null) line1!,
-      if (line2 != null) line2!,
-      if (line3 != null) line3!,
+      ?line1,
+      ?line2,
+      ?line3,
     ];
     double minP = allPriceSeries.expand((l) => l).reduce((a, b) => a < b ? a : b);
     double maxP = allPriceSeries.expand((l) => l).reduce((a, b) => a > b ? a : b);
@@ -96,7 +96,7 @@ class IndicatorDemoPainter extends CustomPainter {
         for (int i = 0; i < data.length; i++) {
           final x = leftPad + i * step;
           final y = _toY(data[i], minP, priceRange, pTop, pH);
-          if (i == 0) path.moveTo(x, y); else path.lineTo(x, y);
+          if (i == 0) { path.moveTo(x, y); } else { path.lineTo(x, y); }
         }
         canvas.drawPath(path, paint);
       } else {
@@ -119,7 +119,7 @@ class IndicatorDemoPainter extends CustomPainter {
       for (int i = 0; i < len; i++) {
         final x = leftPad + i * step;
         final y = _toY(line1![i], minP, priceRange, pTop, pH);
-        if (i == 0) fillPath.moveTo(x, y); else fillPath.lineTo(x, y);
+        if (i == 0) { fillPath.moveTo(x, y); } else { fillPath.lineTo(x, y); }
       }
       for (int i = len - 1; i >= 0; i--) {
         final x = leftPad + i * step;
@@ -219,7 +219,7 @@ class IndicatorDemoPainter extends CustomPainter {
       for (int i = 0; i < data.length; i++) {
         final x = leftPad + i * step;
         final y = _toY(data[i], minV, range, mTop, mH);
-        if (i == 0) path.moveTo(x, y); else path.lineTo(x, y);
+        if (i == 0) { path.moveTo(x, y); } else { path.lineTo(x, y); }
       }
       canvas.drawPath(path, paint);
     }

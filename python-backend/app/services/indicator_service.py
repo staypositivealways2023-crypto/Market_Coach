@@ -6,7 +6,8 @@ from typing import Optional, List
 import logging
 from ta.momentum import RSIIndicator
 from ta.trend import MACD, SMAIndicator, EMAIndicator
-from ta.volatility import BollingerBands
+from ta.volatility import BollingerBands, AverageTrueRange
+from ta.volume import OnBalanceVolumeIndicator, VolumeWeightedAveragePrice
 
 from app.models.indicator import (
     TechnicalIndicators,
@@ -62,6 +63,11 @@ class TechnicalIndicatorService:
             ema_12 = self._calculate_ema(df, 12)
             ema_26 = self._calculate_ema(df, 26)
 
+            # Volatility + volume (Phase 3)
+            atr = self._calculate_atr(df)
+            obv = self._calculate_obv(df)
+            vwap = self._calculate_vwap(df)
+
             # Get current price (last close if not provided)
             price = current_price if current_price else df['close'].iloc[-1]
 
@@ -80,6 +86,9 @@ class TechnicalIndicatorService:
                 sma_200=sma_200,
                 ema_12=ema_12,
                 ema_26=ema_26,
+                atr=atr,
+                obv=obv,
+                vwap=vwap,
                 price=price,
                 above_sma_20=above_sma_20,
                 above_sma_50=above_sma_50,
@@ -214,4 +223,45 @@ class TechnicalIndicatorService:
             return round(float(ema_indicator.ema_indicator().iloc[-1]), 2)
         except Exception as e:
             logger.error(f"EMA-{period} calculation error: {e}")
+            return None
+
+    def _calculate_atr(self, df: pd.DataFrame, period: int = 14) -> Optional[float]:
+        """Average True Range — measures volatility over the last N bars."""
+        try:
+            if len(df) < period + 1:
+                return None
+            atr = AverageTrueRange(
+                high=df['high'], low=df['low'], close=df['close'], window=period
+            )
+            return round(float(atr.average_true_range().iloc[-1]), 4)
+        except Exception as e:
+            logger.error(f"ATR calculation error: {e}")
+            return None
+
+    def _calculate_obv(self, df: pd.DataFrame) -> Optional[float]:
+        """On-Balance Volume — cumulative volume flow; confirms price trends."""
+        try:
+            obv = OnBalanceVolumeIndicator(close=df['close'], volume=df['volume'])
+            return round(float(obv.on_balance_volume().iloc[-1]), 0)
+        except Exception as e:
+            logger.error(f"OBV calculation error: {e}")
+            return None
+
+    def _calculate_vwap(self, df: pd.DataFrame, window: int = 14) -> Optional[float]:
+        """
+        Volume Weighted Average Price — price level weighted by volume.
+        Uses a rolling window (default 14 bars) so it works on daily candles.
+        Price above VWAP = bullish bias; below = bearish bias.
+        """
+        try:
+            vwap_ind = VolumeWeightedAveragePrice(
+                high=df['high'],
+                low=df['low'],
+                close=df['close'],
+                volume=df['volume'],
+                window=window,
+            )
+            return round(float(vwap_ind.volume_weighted_average_price().iloc[-1]), 2)
+        except Exception as e:
+            logger.error(f"VWAP calculation error: {e}")
             return None

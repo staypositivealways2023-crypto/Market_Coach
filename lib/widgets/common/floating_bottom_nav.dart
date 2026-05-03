@@ -104,7 +104,7 @@ class _NavButton extends StatelessWidget {
                 borderRadius: BorderRadius.circular(2),
                 boxShadow: [
                   BoxShadow(
-                    color: AppColors.accentBright.withOpacity(0.6),
+                    color: AppColors.accentBright.withValues(alpha: 0.6),
                     blurRadius: 6,
                   ),
                 ],

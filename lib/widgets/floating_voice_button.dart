@@ -116,7 +116,7 @@ class _FloatingVoiceButtonState extends ConsumerState<FloatingVoiceButton>
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       border: Border.all(
-                        color: accent.withOpacity(_ring.value),
+                        color: accent.withValues(alpha: _ring.value),
                         width: 2.5,
                       ),
                     ),
@@ -132,19 +132,19 @@ class _FloatingVoiceButtonState extends ConsumerState<FloatingVoiceButton>
                       shape: BoxShape.circle,
                       gradient: RadialGradient(
                         colors: [
-                          accent.withOpacity(0.85),
-                          accent.withOpacity(0.55),
+                          accent.withValues(alpha: 0.85),
+                          accent.withValues(alpha: 0.55),
                         ],
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: accent.withOpacity(isConnected ? 0.55 : 0.3),
+                          color: accent.withValues(alpha: isConnected ? 0.55 : 0.3),
                           blurRadius: isConnected ? 20 : 12,
                           spreadRadius: isConnected ? 4 : 0,
                         ),
                       ],
                       border: Border.all(
-                        color: Colors.white.withOpacity(0.18),
+                        color: Colors.white.withValues(alpha: 0.18),
                         width: 1.2,
                       ),
                     ),

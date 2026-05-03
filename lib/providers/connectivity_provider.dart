@@ -8,8 +8,8 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 final connectivityProvider = StreamProvider<bool>((ref) {
   return Connectivity().onConnectivityChanged.map(
     (result) {
-      // connectivity_plus v5.0.2 returns a single ConnectivityResult, not a list
-      return result != ConnectivityResult.none;
+      // connectivity_plus v6+ returns List<ConnectivityResult>
+      return !result.contains(ConnectivityResult.none);
     },
   );
 });

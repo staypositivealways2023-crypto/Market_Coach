@@ -61,6 +61,24 @@ class JarvisRepository {
     throw Exception('session/create failed ${res.statusCode}: $detail');
   }
 
+  /// Force-release the active session lock for this user.
+  ///
+  /// Called after a 409 VoiceSessionConflictException — the previous session
+  /// crashed without calling endSession(), leaving a stale Redis lock.
+  /// This endpoint only releases the lock; it does NOT run background workers.
+  Future<void> forceEndSession(User user) async {
+    final headers = await _authHeaders(user);
+    dev.log('[JarvisRepo] POST /session/force-end (orphan recovery)', name: 'JarvisRepository');
+    try {
+      await http
+          .post(Uri.parse('$_base/session/force-end'), headers: headers)
+          .timeout(_timeout);
+      dev.log('[JarvisRepo] force-end OK — stale lock cleared', name: 'JarvisRepository');
+    } catch (e) {
+      dev.log('[JarvisRepo] force-end failed (non-fatal): $e', name: 'JarvisRepository');
+    }
+  }
+
   /// Notify backend that the session has ended. Triggers background workers.
   Future<void> endSession(
     User user, {

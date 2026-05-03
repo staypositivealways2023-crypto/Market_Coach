@@ -21,6 +21,7 @@ physical device, and production Railway deployment.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from typing import Optional
 
@@ -38,7 +39,7 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 _OPENAI_REALTIME_URL = "wss://api.openai.com/v1/realtime"
-_DEFAULT_MODEL = "gpt-4o-realtime-preview"
+_DEFAULT_MODEL = "gpt-4o-mini-realtime-preview-2024-12-17"
 
 
 # ── Token verification (query-param version, no HTTP Bearer header) ────────────
@@ -75,6 +76,84 @@ async def _verify_ws_token(token: str) -> Optional[str]:
             logger.warning(f"[voice_ws] google-auth verify failed: {exc}")
 
     return None
+
+
+# ── Conversation history injection ────────────────────────────────────────────
+
+async def _inject_conversation_history(
+    openai_ws: aiohttp.ClientWebSocketResponse,
+    uid: str,
+    max_turns: int = 8,
+) -> None:
+    """Fetch the last N transcript turns from Firestore and inject them into
+    the OpenAI Realtime session as conversation.item.create events.
+
+    This gives Jarvis contextual memory of recent sessions without requiring
+    the user to re-explain their situation every time.
+    """
+    try:
+        if not _try_init_firebase_admin():
+            logger.debug("[voice_ws] Firebase not ready — skipping history injection")
+            return
+
+        import firebase_admin.firestore
+
+        db = firebase_admin.firestore.client()
+        loop = asyncio.get_event_loop()
+
+        def _fetch_turns() -> list[dict]:
+            """Synchronous Firestore read — run in executor to avoid blocking."""
+            try:
+                docs = (
+                    db.collection("voice_sessions")
+                    .where("user_id", "==", uid)
+                    .order_by("started_at", direction="DESCENDING")
+                    .limit(3)
+                    .stream()
+                )
+                all_turns: list[dict] = []
+                for doc in docs:
+                    data = doc.to_dict() or {}
+                    turns = data.get("transcript_turns", [])
+                    # Only keep completed sessions that have transcript data
+                    if turns and data.get("ended_at"):
+                        # Take at most 4 turns per session to stay within context
+                        all_turns.extend(turns[-4:])
+                    if len(all_turns) >= max_turns:
+                        break
+                return all_turns[-max_turns:]
+            except Exception as exc:
+                logger.warning(f"[voice_ws] Firestore history fetch failed: {exc}")
+                return []
+
+        turns = await loop.run_in_executor(None, _fetch_turns)
+
+        if not turns:
+            logger.debug(f"[voice_ws] No history found for uid={uid[:8]}…")
+            return
+
+        logger.info(f"[voice_ws] Injecting {len(turns)} history turns for uid={uid[:8]}…")
+
+        for turn in turns:
+            role = turn.get("role", "user")
+            text = (turn.get("text") or "").strip()
+            if not text:
+                continue
+            # Map to OpenAI Realtime conversation item
+            # User turns use input_text; assistant turns use text
+            content_type = "input_text" if role == "user" else "text"
+            await openai_ws.send_json({
+                "type": "conversation.item.create",
+                "item": {
+                    "type": "message",
+                    "role": role,
+                    "content": [{"type": content_type, "text": text}],
+                },
+            })
+
+    except Exception as exc:
+        # Non-fatal — log and continue without history
+        logger.warning(f"[voice_ws] History injection failed (non-fatal): {exc}")
 
 
 # ── Main WebSocket endpoint ────────────────────────────────────────────────────
@@ -133,6 +212,20 @@ async def realtime_proxy_ws(
                     if isinstance(r, Exception):
                         logger.debug(f"[voice_ws] pipe ended: {r}")
 
+    except aiohttp.WSServerHandshakeError as exc:
+        # OpenAI rejected the WebSocket upgrade (401 = bad key, 403 = tier/billing)
+        logger.error(
+            f"[voice_ws] OpenAI handshake rejected uid={uid} — "
+            f"status={exc.status} message={exc.message!r} headers={dict(exc.headers or {})}"
+        )
+        try:
+            await websocket.send_text(
+                f'{{"type":"error","error":{{"message":"OpenAI rejected connection: '
+                f'HTTP {exc.status} — check API key and billing tier."}}}}'
+            )
+            await websocket.close(code=1011)
+        except Exception:
+            pass
     except aiohttp.ClientConnectorError as exc:
         logger.error(f"[voice_ws] Cannot reach OpenAI for uid={uid}: {exc}")
         try:
@@ -183,15 +276,38 @@ async def _openai_to_flutter(
     websocket: WebSocket,
     uid: str,
 ) -> None:
-    """Forward messages from OpenAI back to the Flutter client."""
+    """Forward messages from OpenAI back to the Flutter client.
+
+    Special handling for session.created: we intercept it to inject conversation
+    history before forwarding, so Jarvis has context of past sessions on startup.
+    """
+    _history_injected = False
     try:
         async for msg in openai_ws:
             if msg.type == aiohttp.WSMsgType.TEXT:
+                # Intercept session.created to inject history
+                if not _history_injected:
+                    try:
+                        payload = json.loads(msg.data)
+                        if payload.get("type") == "session.created":
+                            _history_injected = True
+                            # Inject history BEFORE forwarding session.created to Flutter
+                            # so the client never sees the session in a pre-history state.
+                            await _inject_conversation_history(openai_ws, uid)
+                    except (json.JSONDecodeError, Exception):
+                        pass  # Malformed message — just forward it
+
                 await websocket.send_text(msg.data)
+
             elif msg.type == aiohttp.WSMsgType.BINARY:
                 await websocket.send_bytes(msg.data)
             elif msg.type == aiohttp.WSMsgType.ERROR:
-                logger.warning(f"[voice_ws] OpenAI WS error uid={uid}: {openai_ws.exception()}")
+                # Log the full JSON error body so we can diagnose Tier/Billing issues
+                error_body = msg.data if msg.data else str(openai_ws.exception())
+                logger.warning(
+                    f"[voice_ws] OpenAI WS error uid={uid} — "
+                    f"full_body={error_body!r} exception={openai_ws.exception()}"
+                )
                 break
             elif msg.type == aiohttp.WSMsgType.CLOSED:
                 break

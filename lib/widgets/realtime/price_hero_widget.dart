@@ -92,11 +92,17 @@ class _PriceHeroWidgetState extends State<PriceHeroWidget> {
   String _fmtCompact(double v) {
     final abs = v.abs();
     String formatted;
-    if (abs >= 1e12)      formatted = '${(v / 1e12).toStringAsFixed(2)}T';
-    else if (abs >= 1e9)  formatted = '${(v / 1e9).toStringAsFixed(2)}B';
-    else if (abs >= 1e6)  formatted = '${(v / 1e6).toStringAsFixed(2)}M';
-    else if (abs >= 1e3)  formatted = '${(v / 1e3).toStringAsFixed(1)}K';
-    else                  formatted = v.toStringAsFixed(2);
+    if (abs >= 1e12) {
+      formatted = '${(v / 1e12).toStringAsFixed(2)}T';
+    } else if (abs >= 1e9) {
+      formatted = '${(v / 1e9).toStringAsFixed(2)}B';
+    } else if (abs >= 1e6) {
+      formatted = '${(v / 1e6).toStringAsFixed(2)}M';
+    } else if (abs >= 1e3) {
+      formatted = '${(v / 1e3).toStringAsFixed(1)}K';
+    } else {
+      formatted = v.toStringAsFixed(2);
+    }
     return '\$$formatted';
   }
 
@@ -346,7 +352,7 @@ class _PulseDotState extends State<_PulseDot>
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: _anim,
-      builder: (_, __) => Container(
+      builder: (_, _) => Container(
         width: 6, height: 6,
         decoration: BoxDecoration(
           color: widget.color.withValues(alpha: widget.pulse ? _anim.value : 0.5),

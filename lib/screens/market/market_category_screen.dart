@@ -68,7 +68,7 @@ class MarketCategoryScreen extends ConsumerWidget {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 10, vertical: 4),
                       decoration: ShapeDecoration(
-                        color: colorScheme.primary.withOpacity(0.12),
+                        color: colorScheme.primary.withValues(alpha: 0.12),
                         shape: const StadiumBorder(),
                       ),
                       child: Text(
@@ -112,7 +112,7 @@ class MarketCategoryScreen extends ConsumerWidget {
 
           indicesAsync.when(
             loading: () => const _SectionLoader(),
-            error:   (_, __) => _ErrorRetry(
+            error:   (_, _) => _ErrorRetry(
               label: 'Could not load indices',
               onRetry: () => ref.invalidate(indicesProvider(category)),
             ),
@@ -181,7 +181,7 @@ class MarketCategoryScreen extends ConsumerWidget {
             const SizedBox(height: 12),
             heatmapAsync.when(
               loading: () => const _SectionLoader(),
-              error:   (_, __) => _ErrorRetry(
+              error:   (_, _) => _ErrorRetry(
                 label: 'Could not load heatmap',
                 onRetry: () => ref.invalidate(sectorHeatmapProvider),
               ),
@@ -200,7 +200,7 @@ class MarketCategoryScreen extends ConsumerWidget {
 
           topMoversAsync.when(
             loading: () => const _SectionLoader(),
-            error:   (_, __) => _ErrorRetry(
+            error:   (_, _) => _ErrorRetry(
               label: 'Could not load movers',
               onRetry: () => ref.invalidate(topMoversProvider(category)),
             ),
@@ -281,11 +281,11 @@ class _SectorHeatmap extends StatelessWidget {
 
   Color _heatColor(double? pct) {
     if (pct == null) return Colors.white12;
-    if (pct >= 2.0)  return const Color(0xFF0C9E6A).withOpacity(0.85);
-    if (pct >= 0.5)  return const Color(0xFF0C9E6A).withOpacity(0.45);
+    if (pct >= 2.0)  return const Color(0xFF0C9E6A).withValues(alpha: 0.85);
+    if (pct >= 0.5)  return const Color(0xFF0C9E6A).withValues(alpha: 0.45);
     if (pct >= -0.5) return Colors.white12;
-    if (pct >= -2.0) return const Color(0xFFCF3B2E).withOpacity(0.45);
-    return const Color(0xFFCF3B2E).withOpacity(0.85);
+    if (pct >= -2.0) return const Color(0xFFCF3B2E).withValues(alpha: 0.45);
+    return const Color(0xFFCF3B2E).withValues(alpha: 0.85);
   }
 
   @override
@@ -391,7 +391,7 @@ class _Chip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: ShapeDecoration(
-        color: Colors.white.withOpacity(0.06),
+        color: Colors.white.withValues(alpha: 0.06),
         shape: const StadiumBorder(),
       ),
       child: Text(

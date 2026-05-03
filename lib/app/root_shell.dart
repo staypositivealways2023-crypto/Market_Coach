@@ -8,6 +8,8 @@ import '../screens/portfolio/portfolio_screen.dart';
 import '../screens/profile/profile_screen.dart';
 import '../screens/trade/trade_screen.dart';
 import '../widgets/common/floating_bottom_nav.dart';
+import '../widgets/floating_voice_button.dart';
+import '../widgets/voice_overlay_bar.dart';
 
 /// Root shell with 5-tab bottom navigation + floating voice FAB.
 /// Home | Trade | Coach | Portfolio | Profile
@@ -95,6 +97,10 @@ class _RootShellState extends ConsumerState<RootShell>
     return Scaffold(
       extendBody: true,
       backgroundColor: const Color(0xFF080C12),
+      // Floating voice FAB — bottom-right, above nav bar.
+      // Hidden on the Coach tab (index 2) where the screen has its own mic.
+      floatingActionButton: FloatingVoiceButton(selectedIndex: _selectedIndex),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
@@ -116,10 +122,18 @@ class _RootShellState extends ConsumerState<RootShell>
           ),
         ),
       ),
-      bottomNavigationBar: FloatingBottomNav(
-        items: _navItems,
-        selectedIndex: _selectedIndex,
-        onTap: _onItemTapped,
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Voice overlay bar — shows live session status above the nav.
+          // Self-hides when no session is active or user is a guest.
+          const VoiceOverlayBar(),
+          FloatingBottomNav(
+            items: _navItems,
+            selectedIndex: _selectedIndex,
+            onTap: _onItemTapped,
+          ),
+        ],
       ),
     );
   }

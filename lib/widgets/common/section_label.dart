@@ -26,7 +26,7 @@ class SectionLabel extends StatelessWidget {
           Expanded(
             child: Text(label.toUpperCase(), style: AppText.overline),
           ),
-          if (trailing != null) trailing!,
+          ?trailing,
         ],
       ),
     );

@@ -11,6 +11,9 @@ import '../../jarvis_voice/presentation/providers/voice_session_provider.dart';
 import '../providers/jarvis_chat_provider.dart';
 import 'widgets/chat_bubble.dart';
 
+// ignore: unused_import — used via jarvisChatProvider.notifier.analyseChartImage
+import '../data/vision_repository.dart';
+
 // ── Mode enum ─────────────────────────────────────────────────────────────────
 
 enum _InputMode { text, voice }
@@ -155,7 +158,7 @@ class _JarvisChatScreenState extends ConsumerState<JarvisChatScreen>
     final isGuest = ref.watch(isGuestProvider);
     final voiceState = _voiceState();
 
-    ref.listen<JarvisChatState>(jarvisChatProvider, (_, __) => _scrollToBottom());
+    ref.listen<JarvisChatState>(jarvisChatProvider, (_, _) => _scrollToBottom());
 
     final isVoiceConnecting = voiceState?.connectionState == VoiceConnectionState.connecting;
     final isVoiceConnected = voiceState?.connectionState == VoiceConnectionState.connected;
@@ -202,6 +205,15 @@ class _JarvisChatScreenState extends ConsumerState<JarvisChatScreen>
               isOnline: chatState.isOnline,
               onSend: _send,
               onMicTap: isGuest ? null : _startVoice,
+              onAttachTap: isGuest
+                  ? null
+                  : () => ref
+                      .read(jarvisChatProvider.notifier)
+                      .analyseChartImage(
+                        question: _inputCtrl.text.trim().isNotEmpty
+                            ? _inputCtrl.text.trim()
+                            : null,
+                      ).then((_) => _inputCtrl.clear()),
             )
           else
             _buildVoiceBar(
@@ -281,12 +293,12 @@ class _JarvisChatScreenState extends ConsumerState<JarvisChatScreen>
             ),
             decoration: BoxDecoration(
               color: isUser
-                  ? AppColors.accent.withOpacity(0.15)
+                  ? AppColors.accent.withValues(alpha: 0.15)
                   : AppColors.card,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
                 color: isUser
-                    ? AppColors.accent.withOpacity(0.3)
+                    ? AppColors.accent.withValues(alpha: 0.3)
                     : AppColors.border,
               ),
             ),
@@ -351,14 +363,14 @@ class _JarvisChatScreenState extends ConsumerState<JarvisChatScreen>
             borderRadius: BorderRadius.circular(42),
             border: Border.all(
               color: isSpeaking
-                  ? const Color(0xFF06B6D4).withOpacity(0.6)
+                  ? const Color(0xFF06B6D4).withValues(alpha: 0.6)
                   : const Color(0xFF1A2E4A),
               width: 1.5,
             ),
             boxShadow: [
               BoxShadow(
                 color: const Color(0xFF06B6D4)
-                    .withOpacity(isConnected ? 0.25 : 0.08),
+                    .withValues(alpha: isConnected ? 0.25 : 0.08),
                 blurRadius: 24,
                 spreadRadius: isConnected ? 3 : 1,
               ),
@@ -379,7 +391,7 @@ class _JarvisChatScreenState extends ConsumerState<JarvisChatScreen>
                 child: Center(
                   child: AnimatedBuilder(
                     animation: _waveCtrl,
-                    builder: (_, __) => _AvatarWaveform(
+                    builder: (_, _) => _AvatarWaveform(
                       animValue: _waveCtrl.value,
                       isActive: isConnected,
                       isSpeaking: isSpeaking,
@@ -427,7 +439,7 @@ class _JarvisChatScreenState extends ConsumerState<JarvisChatScreen>
               ),
               boxShadow: [
                 BoxShadow(
-                  color: AppColors.accent.withOpacity(0.4),
+                  color: AppColors.accent.withValues(alpha: 0.4),
                   blurRadius: 8,
                   spreadRadius: 1,
                 ),
@@ -554,6 +566,7 @@ class _TextInputBar extends StatelessWidget {
     required this.isOnline,
     required this.onSend,
     this.onMicTap,
+    this.onAttachTap,
   });
 
   final TextEditingController controller;
@@ -562,6 +575,7 @@ class _TextInputBar extends StatelessWidget {
   final bool isOnline;
   final VoidCallback onSend;
   final VoidCallback? onMicTap;
+  final VoidCallback? onAttachTap;
 
   @override
   Widget build(BuildContext context) {
@@ -601,6 +615,35 @@ class _TextInputBar extends StatelessWidget {
                   Icons.mic_none_rounded,
                   size: 20,
                   color: AppColors.accent,
+                ),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+          ],
+
+          // Chart image attach button
+          if (onAttachTap != null) ...[
+            GestureDetector(
+              onTap: isTyping ? null : onAttachTap,
+              child: Tooltip(
+                message: 'Upload a chart for AI analysis',
+                child: Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AppColors.card,
+                    border: Border.all(
+                      color: isTyping
+                          ? AppColors.border
+                          : AppColors.accent.withValues(alpha: 0.4),
+                    ),
+                  ),
+                  child: Icon(
+                    Icons.add_photo_alternate_outlined,
+                    size: 20,
+                    color: isTyping ? AppColors.textFaint : AppColors.accent,
+                  ),
                 ),
               ),
             ),
@@ -680,7 +723,7 @@ class _SendButton extends StatelessWidget {
               ? null
               : [
                   BoxShadow(
-                    color: AppColors.accent.withOpacity(0.4),
+                    color: AppColors.accent.withValues(alpha: 0.4),
                     blurRadius: 10,
                     spreadRadius: 1,
                   ),
@@ -714,7 +757,7 @@ class _OfflineBanner extends StatelessWidget {
         horizontal: AppSpacing.lg,
         vertical: AppSpacing.sm,
       ),
-      color: AppColors.bearish.withOpacity(0.12),
+      color: AppColors.bearish.withValues(alpha: 0.12),
       child: Row(
         children: [
           const Icon(Icons.wifi_off_rounded, size: 14, color: AppColors.bearish),
@@ -759,7 +802,7 @@ class _VoiceStatusBanner extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(
           horizontal: AppSpacing.lg, vertical: AppSpacing.sm),
-      color: (isError ? AppColors.bearish : AppColors.accent).withOpacity(0.12),
+      color: (isError ? AppColors.bearish : AppColors.accent).withValues(alpha: 0.12),
       child: Row(
         children: [
           Icon(
@@ -816,7 +859,7 @@ class _EmptyState extends StatelessWidget {
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: AppColors.accent.withOpacity(0.4),
+                    color: AppColors.accent.withValues(alpha: 0.4),
                     blurRadius: 20,
                     spreadRadius: 4,
                   ),
@@ -910,8 +953,8 @@ class _VoiceActionButton extends StatelessWidget {
               height: 36,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: color.withOpacity(0.12),
-                border: Border.all(color: color.withOpacity(0.35)),
+                color: color.withValues(alpha: 0.12),
+                border: Border.all(color: color.withValues(alpha: 0.35)),
               ),
               child: Icon(icon, size: 18, color: color),
             ),
@@ -983,7 +1026,7 @@ class _AvatarWaveform extends StatelessWidget {
                   ? [
                       BoxShadow(
                         color: const Color(0xFF06B6D4)
-                            .withOpacity(isSpeaking ? 0.6 : 0.3),
+                            .withValues(alpha: isSpeaking ? 0.6 : 0.3),
                         blurRadius: isSpeaking ? 16 : 8,
                         spreadRadius: isSpeaking ? 3 : 1,
                       ),
@@ -1109,7 +1152,7 @@ class _PulsingOrbState extends State<_PulsingOrb>
           ),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFF06B6D4).withOpacity(0.4),
+              color: const Color(0xFF06B6D4).withValues(alpha: 0.4),
               blurRadius: 20,
               spreadRadius: 4,
             ),

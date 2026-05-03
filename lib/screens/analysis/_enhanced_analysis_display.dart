@@ -107,7 +107,7 @@ class _SentimentScoreCard extends StatelessWidget {
                   child: CircularProgressIndicator(
                     value: analysis.sentimentScore / 100,
                     strokeWidth: 16,
-                    backgroundColor: Colors.white.withOpacity(0.1),
+                    backgroundColor: Colors.white.withValues(alpha: 0.1),
                     valueColor: AlwaysStoppedAnimation<Color>(color),
                   ),
                 ),
@@ -280,7 +280,7 @@ class _RecommendationCard extends StatelessWidget {
                   vertical: 8,
                 ),
                 decoration: BoxDecoration(
-                  color: recColor.withOpacity(0.2),
+                  color: recColor.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(color: recColor, width: 2),
                 ),
@@ -304,7 +304,7 @@ class _RecommendationCard extends StatelessWidget {
                   vertical: 6,
                 ),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.1),
+                  color: Colors.white.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
@@ -314,14 +314,14 @@ class _RecommendationCard extends StatelessWidget {
                       Icon(
                         Icons.cached,
                         size: 14,
-                        color: Colors.white.withOpacity(0.7),
+                        color: Colors.white.withValues(alpha: 0.7),
                       ),
                     if (analysis.isCached) const SizedBox(width: 4),
                     Text(
                       analysis.timeAgo,
                       style: TextStyle(
                         fontSize: 12,
-                        color: Colors.white.withOpacity(0.7),
+                        color: Colors.white.withValues(alpha: 0.7),
                       ),
                     ),
                   ],
@@ -348,7 +348,7 @@ class _RecommendationCard extends StatelessWidget {
             child: Text(
               analysis.summaryText,
               style: theme.textTheme.bodyLarge?.copyWith(
-                color: Colors.white.withOpacity(0.9),
+                color: Colors.white.withValues(alpha: 0.9),
                 height: 1.6,
               ),
             ),
@@ -408,7 +408,7 @@ class _PriceTargetCard extends StatelessWidget {
                     'Current',
                     style: TextStyle(
                       fontSize: 12,
-                      color: Colors.white.withOpacity(0.6),
+                      color: Colors.white.withValues(alpha: 0.6),
                     ),
                   ),
                   Text(
@@ -422,7 +422,7 @@ class _PriceTargetCard extends StatelessWidget {
               ),
 
               const SizedBox(width: 24),
-              Icon(Icons.arrow_forward, color: Colors.white.withOpacity(0.4)),
+              Icon(Icons.arrow_forward, color: Colors.white.withValues(alpha: 0.4)),
               const SizedBox(width: 24),
 
               // Target price
@@ -433,7 +433,7 @@ class _PriceTargetCard extends StatelessWidget {
                     'Target',
                     style: TextStyle(
                       fontSize: 12,
-                      color: Colors.white.withOpacity(0.6),
+                      color: Colors.white.withValues(alpha: 0.6),
                     ),
                   ),
                   Row(
@@ -661,7 +661,7 @@ class _FactorsCard extends StatelessWidget {
                     child: Text(
                       factor,
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        color: Colors.white.withOpacity(0.9),
+                        color: Colors.white.withValues(alpha: 0.9),
                         height: 1.5,
                       ),
                     ),
@@ -713,7 +713,7 @@ class _RiskAssessmentCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
-              color: riskColor.withOpacity(0.2),
+              color: riskColor.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: riskColor),
             ),
@@ -734,7 +734,7 @@ class _RiskAssessmentCard extends StatelessWidget {
           Text(
             analysis.riskExplanation,
             style: theme.textTheme.bodyMedium?.copyWith(
-              color: Colors.white.withOpacity(0.9),
+              color: Colors.white.withValues(alpha: 0.9),
               height: 1.5,
             ),
           ),
@@ -761,14 +761,14 @@ class _DisclaimerCard extends StatelessWidget {
           Icon(
             Icons.info_outline,
             size: 16,
-            color: Colors.white.withOpacity(0.6),
+            color: Colors.white.withValues(alpha: 0.6),
           ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               'AI-generated analysis for educational purposes only. Not financial advice. Always do your own research before making investment decisions.',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: Colors.white.withOpacity(0.6),
+                color: Colors.white.withValues(alpha: 0.6),
                 fontSize: 11,
                 height: 1.4,
               ),

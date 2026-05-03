@@ -20,7 +20,7 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-_REALTIME_MODEL = "gpt-4o-realtime-preview"
+_REALTIME_MODEL = "gpt-4o-mini-realtime-preview-2024-12-17"
 _DEFAULT_VOICE = "alloy"
 
 

@@ -199,7 +199,7 @@ class _DiagramScreen extends StatelessWidget {
                     child: Image.network(
                       imageUrl,
                       fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) => const Center(
+                      errorBuilder: (_, _, _) => const Center(
                         child: Icon(Icons.broken_image, size: 48),
                       ),
                     ),
@@ -211,7 +211,7 @@ class _DiagramScreen extends StatelessWidget {
             Text(
               caption,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
               ),
               textAlign: TextAlign.center,
             ),
@@ -243,7 +243,7 @@ class _QuizSingleScreenState extends State<_QuizSingleScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final content = widget.screen.content ?? {};
+    final content = widget.screen.content;
     final question = content['question'] as String? ?? '';
     final options =
         (content['options'] as List<dynamic>?)
@@ -270,9 +270,9 @@ class _QuizSingleScreenState extends State<_QuizSingleScreen> {
               padding: const EdgeInsets.only(bottom: 12.0),
               child: Material(
                 color: showCorrect
-                    ? Colors.green.withOpacity(0.2)
+                    ? Colors.green.withValues(alpha: 0.2)
                     : showIncorrect
-                    ? Colors.red.withOpacity(0.2)
+                    ? Colors.red.withValues(alpha: 0.2)
                     : isSelected
                     ? Theme.of(context).colorScheme.primaryContainer
                     : Theme.of(context).colorScheme.surfaceContainerHighest,
@@ -317,13 +317,11 @@ class _QuizSingleScreenState extends State<_QuizSingleScreen> {
               width: double.infinity,
               child: FilledButton(
                 onPressed: () {
+                  final isCorrect = _selectedIndex == correctIndex;
                   setState(() => _showAnswer = true);
-                  if (_selectedIndex != null) {
-                    final isCorrect = _selectedIndex == correctIndex;
-                    widget.onAnswered?.call(isCorrect);
-                    // Advance lesson if the answer was correct
-                    if (isCorrect) widget.onPassed?.call();
-                  }
+                  widget.onAnswered?.call(isCorrect);
+                  // Advance lesson if the answer was correct
+                  if (isCorrect) widget.onPassed?.call();
                 },
                 child: const Text('Check Answer'),
               ),
@@ -367,7 +365,7 @@ class _BulletsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final content = screen.content ?? {};
+    final content = screen.content;
     final raw = content['items'] ?? content['points'];
     final items =
         (raw as List<dynamic>?)
@@ -425,7 +423,7 @@ class _TakeawaysScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final content = screen.content ?? {};
+    final content = screen.content;
     final raw = content['items'] ?? content['points'];
     final items =
         (raw as List<dynamic>?)

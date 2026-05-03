@@ -614,7 +614,7 @@ class _TransactionsTab extends StatelessWidget {
         return ListView.separated(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
           itemCount: txList.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 6),
+          separatorBuilder: (_, _) => const SizedBox(height: 6),
           itemBuilder: (_, i) => _TxCard(tx: txList[i]),
         );
       },

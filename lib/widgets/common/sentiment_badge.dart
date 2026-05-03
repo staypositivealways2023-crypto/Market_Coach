@@ -88,7 +88,7 @@ class SentimentBadge extends StatelessWidget {
       decoration: BoxDecoration(
         color: sentiment.bg,
         borderRadius: BorderRadius.circular(AppRadius.chip),
-        border: Border.all(color: sentiment.fg.withOpacity(0.35), width: 0.5),
+        border: Border.all(color: sentiment.fg.withValues(alpha: 0.35), width: 0.5),
       ),
       child: Text(
         sentiment.label,
@@ -114,9 +114,9 @@ class LiveBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.15),
+        color: color.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(AppRadius.chip),
-        border: Border.all(color: color.withOpacity(0.4), width: 0.5),
+        border: Border.all(color: color.withValues(alpha: 0.4), width: 0.5),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -150,9 +150,9 @@ class AlertBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.18),
+        color: color.withValues(alpha: 0.18),
         borderRadius: BorderRadius.circular(AppRadius.tile),
-        border: Border.all(color: color.withOpacity(0.45), width: 0.5),
+        border: Border.all(color: color.withValues(alpha: 0.45), width: 0.5),
       ),
       child: Text(label, style: AppText.micro.copyWith(color: color)),
     );

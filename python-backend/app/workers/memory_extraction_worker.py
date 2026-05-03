@@ -38,9 +38,9 @@ logger = logging.getLogger(__name__)
 
 _EXTRACTION_PROMPT = """You are a memory extractor for MarketCoach AI, a financial coaching assistant.
 
-Given a voice session transcript between a user and the AI coach, extract two types of information:
+Given a voice session transcript between a user and the AI coach, extract FOUR types of information:
 
-1. **profile_facts** -- stable facts about who the user is (extract only what is clearly stated or strongly implied):
+1. **profile_facts** -- stable facts about who the user is (only extract what is clearly stated or strongly implied):
    - experience_level: "beginner" | "intermediate" | "advanced"
    - primary_market: e.g. "crypto", "stocks", "forex", "mixed"
    - preferred_examples: specific tickers/assets they mentioned or seem focused on
@@ -55,6 +55,23 @@ Given a voice session transcript between a user and the AI coach, extract two ty
    - summary: one concise sentence describing the observation
    - confidence: 0.0-1.0
 
+3. **trade_facts** -- specific trade-related decisions or analysis the user discussed:
+   - symbol: ticker symbol (e.g. "AAPL", "BTC")
+   - action: "buy" | "sell" | "hold" | "watch" | "analysed"
+   - rationale: one concise sentence of why (e.g. "RSI oversold, looking for bounce")
+   - confidence: 0.0-1.0
+   (Only extract if a specific asset decision or analysis was discussed.)
+
+4. **risk_observations** -- patterns in how the user thinks about or manages risk:
+   - pattern: one concise sentence (e.g. "Entered trade without stop-loss", "Asked about 2% rule")
+   - confidence: 0.0-1.0
+   (Only extract if risk/position sizing/stop-loss was explicitly discussed.)
+
+5. **watchlist_mentions** -- assets the user showed sustained interest in (mentioned more than once or asked follow-up questions about):
+   - symbol: ticker symbol
+   - reason: one brief phrase why they're interested (e.g. "bullish on earnings", "following breakout")
+   (Only extract for symbols that seemed genuinely important to the user, not just mentioned in passing.)
+
 Rules:
 - Only extract what you actually observed -- do not invent or assume.
 - If the session is very short or off-topic, return empty arrays.
@@ -68,6 +85,15 @@ Return ONLY valid JSON in this exact format (no markdown, no explanation):
   ],
   "coaching_observations": [
     {"category": "learning_gap", "summary": "User struggled with RSI divergence concept", "confidence": 0.7}
+  ],
+  "trade_facts": [
+    {"symbol": "AAPL", "action": "watch", "rationale": "Looking for breakout above 200-day SMA", "confidence": 0.8}
+  ],
+  "risk_observations": [
+    {"pattern": "Asked about sizing a position without mentioning a stop-loss", "confidence": 0.6}
+  ],
+  "watchlist_mentions": [
+    {"symbol": "NVDA", "reason": "Following AI chip cycle momentum"}
   ]
 }"""
 
@@ -219,9 +245,15 @@ async def run(
             logger.error(f"[memory_worker] Coaching memory write failed for {uid}: {exc}")
 
     # 4. Persist extracted facts to ChromaDB for semantic recall
+    trade_facts      = extracted.get("trade_facts",      [])
+    risk_obs         = extracted.get("risk_observations", [])
+    watchlist_items  = extracted.get("watchlist_mentions", [])
+
     try:
         from app.services.chroma_memory_service import ChromaMemoryService
         chroma = ChromaMemoryService()
+
+        # Original categories
         for fact in profile_facts:
             key = fact.get("key", "").strip()
             value = str(fact.get("value", "")).strip()
@@ -232,6 +264,35 @@ async def run(
             category = obs.get("category", "event")
             if summary_text:
                 chroma.store(uid, summary_text, category=category)
+
+        # Phase 4: trade_history
+        for tf in trade_facts:
+            symbol    = tf.get("symbol", "").strip().upper()
+            action    = tf.get("action", "analysed")
+            rationale = tf.get("rationale", "").strip()
+            if symbol and rationale:
+                text = f"{action.capitalize()} {symbol}: {rationale}"
+                chroma.store(uid, text, category="trade_history", symbol=symbol)
+
+        # Phase 4: risk_profile
+        for ro in risk_obs:
+            pattern = ro.get("pattern", "").strip()
+            if pattern:
+                chroma.store(uid, pattern, category="risk_profile")
+
+        # Phase 4: watchlist_patterns
+        for wi in watchlist_items:
+            symbol = wi.get("symbol", "").strip().upper()
+            reason = wi.get("reason", "").strip()
+            if symbol:
+                text = f"Watching {symbol}" + (f": {reason}" if reason else "")
+                chroma.store(uid, text, category="watchlist_patterns", symbol=symbol)
+
+        logger.info(
+            f"[memory_worker] ChromaDB: {len(profile_facts)} prefs, "
+            f"{len(coaching_obs)} coaching, {len(trade_facts)} trades, "
+            f"{len(risk_obs)} risk, {len(watchlist_items)} watchlist"
+        )
     except Exception as exc:
         logger.warning(f"[memory_worker] ChromaDB store failed for {uid}: {exc}")
 

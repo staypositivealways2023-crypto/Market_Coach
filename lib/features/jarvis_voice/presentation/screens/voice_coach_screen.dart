@@ -25,6 +25,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models/voice_session_bootstrap.dart';
 import '../providers/voice_session_provider.dart';
+import '../widgets/caption_bar.dart';
 import '../widgets/mic_button.dart';
 import '../widgets/mode_chip_bar.dart';
 import '../widgets/transcript_list.dart';
@@ -61,6 +62,8 @@ class _VoiceCoachScreenState extends ConsumerState<VoiceCoachScreen>
   final _textController = TextEditingController();
   bool _micPermission = false;
   ProviderSubscription<VoiceSessionState>? _voiceSessionSub;
+  // Cached amplitude stream — re-used across builds to avoid stream leaks
+  Stream<double>? _amplitudeStream;
 
   /// Fires if we're still in "Listening" state 18 seconds after connecting
   /// with no assistant response. Surfaces a clear error and ends the session
@@ -204,96 +207,120 @@ class _VoiceCoachScreenState extends ConsumerState<VoiceCoachScreen>
 
   @override
   Widget build(BuildContext context) {
-    final state   = ref.watch(voiceSessionProvider);
+    final state    = ref.watch(voiceSessionProvider);
     final micState = _resolveMicState(state);
     final canChangeMode = state.connectionState == VoiceConnectionState.idle ||
         state.connectionState == VoiceConnectionState.error;
-
     final orbColor = _resolveOrbColor(state);
+    final isConnected = state.connectionState == VoiceConnectionState.connected;
+    final isConnecting = state.connectionState == VoiceConnectionState.connecting;
+
+    // Cache the amplitude stream — only grab it once to avoid leaks
+    _amplitudeStream ??= ref.read(jarvisRealtimeServiceProvider).onAudioAmplitude;
 
     return Scaffold(
       backgroundColor: _kBg,
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF0A1628), _kBg, Color(0xFF04070B)],
-            stops: [0.0, 0.5, 1.0],
-          ),
-        ),
-        child: SafeArea(
-          child: Column(
-            children: [
-              // ── Header ─────────────────────────────────────────────────────
-              _Header(activeSymbol: state.activeSymbol ?? widget.activeSymbol),
+      body: Stack(
+        children: [
+          // ── Animated mesh gradient background ────────────────────────────
+          _MeshBackground(isActive: isConnected),
 
-              // ── Mode chip bar ───────────────────────────────────────────────
-              ModeChipBar(
-                selected: state.mode,
-                enabled: canChangeMode,
-                onSelected: (mode) =>
-                    ref.read(voiceSessionProvider.notifier).setMode(mode),
-              ),
+          SafeArea(
+            child: Column(
+              children: [
+                // ── Header ─────────────────────────────────────────────────
+                _Header(activeSymbol: state.activeSymbol ?? widget.activeSymbol),
 
-              // ── Connecting progress bar ────────────────────────────────────
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                height: state.connectionState == VoiceConnectionState.connecting ? 2 : 0,
-                child: const LinearProgressIndicator(
-                  backgroundColor: Colors.transparent,
-                  color: _kTeal,
+                // ── Mode chip bar ───────────────────────────────────────────
+                ModeChipBar(
+                  selected: state.mode,
+                  enabled: canChangeMode,
+                  onSelected: (mode) =>
+                      ref.read(voiceSessionProvider.notifier).setMode(mode),
                 ),
-              ),
 
-              // ── Transcript ─────────────────────────────────────────────────
-              Expanded(
-                child: state.transcript.isEmpty
-                    ? _EmptyTranscriptHint(state: state)
-                    : TranscriptList(items: state.transcript),
-              ),
-
-              // ── AI Orb ─────────────────────────────────────────────────────
-              _AiOrb(
-                color: orbColor,
-                isActive: state.connectionState == VoiceConnectionState.connected,
-                pulseScale: _pulseScale,
-                ringOpacity: _ringOpacity,
-                ringController: _orbRing,
-                statusText: _statusText(state),
-              ),
-
-              const SizedBox(height: 8),
-
-              // ── Waveform (speaking) ─────────────────────────────────────────
-              AnimatedOpacity(
-                opacity: state.isAssistantSpeaking ? 1.0 : 0.0,
-                duration: const Duration(milliseconds: 300),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 40),
-                  child: VoiceWaveform(active: state.isAssistantSpeaking),
+                // ── Connecting progress bar ─────────────────────────────────
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 300),
+                  height: isConnecting ? 2 : 0,
+                  child: const LinearProgressIndicator(
+                    backgroundColor: Colors.transparent,
+                    color: _kTeal,
+                  ),
                 ),
-              ),
 
-              const SizedBox(height: 4),
+                // ── Transcript history (completed turns) ────────────────────
+                Expanded(
+                  child: state.transcript.isEmpty
+                      ? const SizedBox.shrink()
+                      : TranscriptList(items: state.transcript),
+                ),
 
-              // ── Error banner ────────────────────────────────────────────────
-              if (state.errorMessage != null)
-                _ErrorBanner(message: state.errorMessage!),
+                // ── Audio-reactive AI Orb ────────────────────────────────────
+                StreamBuilder<double>(
+                  stream: _amplitudeStream,
+                  initialData: 0.0,
+                  builder: (context, snap) {
+                    final amplitude = snap.data ?? 0.0;
+                    return _AiOrb(
+                      color: orbColor,
+                      isActive: isConnected,
+                      pulseScale: _pulseScale,
+                      ringOpacity: _ringOpacity,
+                      ringController: _orbRing,
+                      statusText: _statusText(state),
+                      amplitude: amplitude,
+                    );
+                  },
+                ),
 
-              // ── Bottom controls ─────────────────────────────────────────────
-              _BottomBar(
-                textController: _textController,
-                micState: micState,
-                isConnected: state.connectionState == VoiceConnectionState.connected,
-                onMicTap: _toggleSession,
-                onEnd: state.connectionState == VoiceConnectionState.connected
-                    ? () => ref.read(voiceSessionProvider.notifier).endSession()
-                    : null,
-              ),
-            ],
+                const SizedBox(height: 4),
+
+                // ── Waveform — reacts to audio amplitude ────────────────────
+                AnimatedOpacity(
+                  opacity: state.isAssistantSpeaking ? 1.0 : 0.0,
+                  duration: const Duration(milliseconds: 300),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 40),
+                    child: StreamBuilder<double>(
+                      stream: _amplitudeStream,
+                      initialData: 0.0,
+                      builder: (context, snap) => VoiceWaveform(
+                        active: state.isAssistantSpeaking,
+                        amplitude: snap.data ?? 0.0,
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 4),
+
+                // ── Caption bar (teleprompter) ──────────────────────────────
+                CaptionBar(
+                  assistantText: state.currentAssistantText,
+                  isUserSpeaking: state.isUserSpeaking,
+                  isAssistantSpeaking: state.isAssistantSpeaking,
+                  isConnecting: isConnecting,
+                ),
+
+                // ── Error banner ────────────────────────────────────────────
+                if (state.errorMessage != null)
+                  _ErrorBanner(message: state.errorMessage!),
+
+                // ── Bottom controls ─────────────────────────────────────────
+                _BottomBar(
+                  textController: _textController,
+                  micState: micState,
+                  isConnected: isConnected,
+                  onMicTap: _toggleSession,
+                  onEnd: isConnected
+                      ? () => ref.read(voiceSessionProvider.notifier).endSession()
+                      : null,
+                ),
+              ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -305,7 +332,7 @@ class _VoiceCoachScreenState extends ConsumerState<VoiceCoachScreen>
       case VoiceConnectionState.connected:
         return state.isAssistantSpeaking ? _kCyan : _kTeal;
       default:
-        return _kTeal.withOpacity(0.7);
+        return _kTeal.withValues(alpha: 0.7);
     }
   }
 
@@ -336,6 +363,90 @@ class _VoiceCoachScreenState extends ConsumerState<VoiceCoachScreen>
         return MicState.idle;
     }
   }
+}
+
+// ── Animated mesh gradient background ──────────────────────────────────────────
+
+class _MeshBackground extends StatefulWidget {
+  final bool isActive;
+  const _MeshBackground({required this.isActive});
+  @override
+  State<_MeshBackground> createState() => _MeshBackgroundState();
+}
+
+class _MeshBackgroundState extends State<_MeshBackground>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late Animation<double> _anim;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 8),
+    )..repeat(reverse: true);
+    _anim = CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _anim,
+      builder: (_, _) {
+        final t = _anim.value;
+        return Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: const [Color(0xFF0A1628), _kBg, Color(0xFF04070B)],
+              stops: const [0.0, 0.5, 1.0],
+            ),
+          ),
+          child: CustomPaint(
+            painter: _MeshPainter(t: t, isActive: widget.isActive),
+            size: Size.infinite,
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _MeshPainter extends CustomPainter {
+  final double t;
+  final bool isActive;
+  const _MeshPainter({required this.t, required this.isActive});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (!isActive) return;
+    final cx = size.width / 2;
+    final cy = size.height / 2;
+    // Two slow-drifting radial blobs
+    _blob(canvas, cx + math.sin(t * math.pi) * 60, cy + math.cos(t * math.pi * 0.7) * 40,
+        160, _kTeal.withValues(alpha: 0.06));
+    _blob(canvas, cx - math.cos(t * math.pi * 0.9) * 80, cy - math.sin(t * math.pi * 1.1) * 50,
+        120, _kCyan.withValues(alpha: 0.04));
+  }
+
+  void _blob(Canvas canvas, double x, double y, double r, Color color) {
+    final paint = Paint()
+      ..shader = RadialGradient(
+        colors: [color, Colors.transparent],
+      ).createShader(Rect.fromCircle(center: Offset(x, y), radius: r));
+    canvas.drawCircle(Offset(x, y), r, paint);
+  }
+
+  @override
+  bool shouldRepaint(_MeshPainter old) => old.t != t || old.isActive != isActive;
 }
 
 // ── Header ─────────────────────────────────────────────────────────────────────
@@ -383,9 +494,9 @@ class _Header extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: _kTeal.withOpacity(0.15),
+                color: _kTeal.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: _kTeal.withOpacity(0.4), width: 0.8),
+                border: Border.all(color: _kTeal.withValues(alpha: 0.4), width: 0.8),
               ),
               child: Text(
                 activeSymbol!,
@@ -408,6 +519,8 @@ class _AiOrb extends StatelessWidget {
   final Animation<double> ringOpacity;
   final AnimationController ringController;
   final String statusText;
+  /// Normalised RMS amplitude (0.0–1.0) from the audio delta stream.
+  final double amplitude;
 
   const _AiOrb({
     required this.color,
@@ -416,6 +529,7 @@ class _AiOrb extends StatelessWidget {
     required this.ringOpacity,
     required this.ringController,
     required this.statusText,
+    this.amplitude = 0.0,
   });
 
   @override
@@ -454,41 +568,46 @@ class _AiOrb extends StatelessWidget {
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           border: Border.all(
-                            color: color.withOpacity(ringOpacity.value * 0.5),
+                            color: color.withValues(alpha: ringOpacity.value * 0.5),
                             width: 1.5,
                           ),
                         ),
                       ),
 
-                    // Core orb
+                    // Core orb — amplitude drives glow intensity when speaking
                     ScaleTransition(
                       scale: isActive ? pulseScale : const AlwaysStoppedAnimation(1.0),
-                      child: Container(
-                        width: 80,
-                        height: 80,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient: RadialGradient(
-                            colors: [
-                              color.withOpacity(0.9),
-                              color.withOpacity(0.4),
-                              color.withOpacity(0.0),
-                            ],
-                            stops: const [0.0, 0.55, 1.0],
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: color.withOpacity(isActive ? 0.5 : 0.2),
-                              blurRadius: isActive ? 32 : 16,
-                              spreadRadius: isActive ? 8 : 0,
+                      child: Transform.scale(
+                        // Amplitude adds up to 12% extra scale on loud audio
+                        scale: isActive ? (1.0 + amplitude * 0.12) : 1.0,
+                        child: Container(
+                          width: 80,
+                          height: 80,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: RadialGradient(
+                              colors: [
+                                color.withValues(alpha: 0.9),
+                                color.withValues(alpha: 0.4),
+                                color.withValues(alpha: 0.0),
+                              ],
+                              stops: const [0.0, 0.55, 1.0],
                             ),
-                          ],
-                        ),
-                        child: Center(
-                          child: Icon(
-                            Icons.auto_awesome,
-                            color: Colors.white.withOpacity(0.9),
-                            size: 28,
+                            boxShadow: [
+                              BoxShadow(
+                                color: color.withValues(alpha:
+                                    isActive ? (0.3 + amplitude * 0.5).clamp(0.0, 0.8) : 0.2),
+                                blurRadius: isActive ? (24 + amplitude * 24) : 16,
+                                spreadRadius: isActive ? (4 + amplitude * 8) : 0,
+                              ),
+                            ],
+                          ),
+                          child: Center(
+                            child: Icon(
+                              Icons.auto_awesome,
+                              color: Colors.white.withValues(alpha: 0.9),
+                              size: 28,
+                            ),
                           ),
                         ),
                       ),
@@ -526,7 +645,7 @@ class _ArcPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = color.withOpacity(opacity)
+      ..color = color.withValues(alpha: opacity)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.0
       ..strokeCap = StrokeCap.round;
@@ -542,45 +661,6 @@ class _ArcPainter extends CustomPainter {
   bool shouldRepaint(_ArcPainter old) => false;
 }
 
-// ── Empty transcript hint ──────────────────────────────────────────────────────
-
-class _EmptyTranscriptHint extends StatelessWidget {
-  final VoiceSessionState state;
-  const _EmptyTranscriptHint({required this.state});
-
-  @override
-  Widget build(BuildContext context) {
-    final isIdle = state.connectionState == VoiceConnectionState.idle;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              isIdle ? Icons.tips_and_updates_outlined : Icons.mic_rounded,
-              size: 32,
-              color: Colors.white24,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              isIdle
-                  ? 'Ask me anything about markets, your portfolio, or how to trade.'
-                  : 'Session active — start speaking…',
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.white30,
-                fontSize: 13,
-                height: 1.5,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 // ── Error banner ────────────────────────────────────────────────────────────────
 
 class _ErrorBanner extends StatelessWidget {
@@ -593,9 +673,9 @@ class _ErrorBanner extends StatelessWidget {
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.red.shade900.withOpacity(0.25),
+        color: Colors.red.shade900.withValues(alpha: 0.25),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.red.shade800.withOpacity(0.5), width: 0.8),
+        border: Border.all(color: Colors.red.shade800.withValues(alpha: 0.5), width: 0.8),
       ),
       child: Row(
         children: [
@@ -713,16 +793,16 @@ class _ControlButton extends StatelessWidget {
             width: 52,
             height: 52,
             decoration: BoxDecoration(
-              color: color.withOpacity(0.12),
+              color: color.withValues(alpha: 0.12),
               shape: BoxShape.circle,
-              border: Border.all(color: color.withOpacity(0.3), width: 0.8),
+              border: Border.all(color: color.withValues(alpha: 0.3), width: 0.8),
             ),
             child: Icon(icon, color: color, size: 22),
           ),
           const SizedBox(height: 4),
           Text(
             label,
-            style: TextStyle(color: color.withOpacity(0.8), fontSize: 10),
+            style: TextStyle(color: color.withValues(alpha: 0.8), fontSize: 10),
           ),
         ],
       ),

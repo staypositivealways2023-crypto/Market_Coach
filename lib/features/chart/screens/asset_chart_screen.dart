@@ -16,7 +16,6 @@ import '../../../models/signal_analysis.dart';
 import '../../../services/candle_service.dart';
 import '../../../services/quote_service.dart';
 import '../../../services/technical_analysis_service.dart';
-import '../../../services/pattern_recognition_service.dart';
 import '../../../services/backend_service.dart';
 import '../../../utils/crypto_helper.dart';
 import '../../../widgets/coaching_nudge_card.dart';
@@ -31,7 +30,6 @@ import '../../../widgets/chart/chart_type_selector.dart';
 import '../../../widgets/educational_bottom_sheet.dart';
 import '../../../widgets/earnings_chart.dart';
 import '../../../widgets/fundamentals_card.dart';
-import '../../../widgets/price_range_bar.dart';
 import '../../../providers/analysis_provider.dart';
 import '../../../providers/portfolio_provider.dart';
 import '../../../providers/paper_trading_provider.dart';
@@ -47,6 +45,15 @@ import '../../../widgets/realtime/price_hero_widget.dart';
 import '../../../widgets/realtime/market_position_widget.dart';
 import '../../../widgets/realtime/money_flow_widget.dart';
 import '../../../widgets/realtime/order_book_widget.dart';
+import '../../../widgets/realtime/options_card_widget.dart';
+// Phase 5 — realtime Riverpod providers
+import '../../../providers/realtime_providers.dart';
+import '../../../models/market_flow.dart';
+// Phase 8 — Analyst Graph integration
+import '../../../models/analyst_response.dart';
+import '../../../services/analyst_graph_service.dart';
+import '../../../widgets/cot_thinking_card.dart';
+import 'package:audioplayers/audioplayers.dart';
 
 /// Drop-in replacement for StockDetailScreenEnhanced using native CustomPainter charts.
 class AssetChartScreen extends ConsumerStatefulWidget {
@@ -76,9 +83,13 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
   StreamSubscription<List<Candle>>? _candleSubscription;
   StreamSubscription<Map<String, Quote>>? _quoteSubscription;
   Timer? _stockQuoteTimer;
+  // Phase 5 — backend WS price stream
+  StreamSubscription<PriceTick>? _priceStreamSub;
 
   List<Candle> _candles = [];
   Quote? _liveQuote;
+  // Phase 5 — backend CMF / money flow data
+  MoneyFlowData? _moneyFlowData;
   bool _hasError = false;
   bool _isLoading = false;
   String? _errorMessage;
@@ -113,6 +124,15 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
   // Portfolio
   bool _inPortfolio = false;
 
+  // ── Phase 8: Analyst Graph (DeepSeek-R1 + LangGraph) ──────────────────────
+  final _analystService = AnalystGraphService();
+  AnalystResponse? _analystResult;
+  bool _analystLoading = false;
+  String? _analystError;
+  // Audio player for Cartesia TTS output
+  final _audioPlayer = AudioPlayer();
+  bool _audioPlaying = false;
+
   double get _chartHeight {
     if (_showRSI && _showMACD) return 500;
     if (_showRSI || _showMACD) return 430;
@@ -122,7 +142,7 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this);
+    _tabController = TabController(length: 6, vsync: this);
     _showRSI = widget.initialShowRSI;
     _showMACD = widget.initialShowMACD;
     // Keep subChartType in sync with initial show flags
@@ -149,6 +169,41 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
     if (!widget.stock.isCrypto) {
       _fetchFundamentals();
       _startStockQuotePolling();
+    }
+    // Phase 5 — backend WS price stream (stocks: replaces 30s poll;
+    // crypto: supplements Binance candle stream with a lightweight tick).
+    _subscribeToBackendPriceStream();
+    // Phase 5 — fetch CMF / money flow from backend
+    _fetchMoneyFlow();
+  }
+
+  void _subscribeToBackendPriceStream() {
+    _priceStreamSub?.cancel();
+    // Listen to the Riverpod StreamProvider's underlying stream.
+    _priceStreamSub = ref
+        .read(priceStreamProvider(widget.stock.ticker).stream)
+        .listen((tick) {
+      if (!mounted) return;
+      // Only update if the tick represents a meaningful price change.
+      if (tick.price > 0 &&
+          (_liveQuote == null ||
+              (tick.price - _liveQuote!.price).abs() /
+                      (_liveQuote!.price > 0 ? _liveQuote!.price : 1) >
+                  0.00001)) {
+        setState(() => _liveQuote = Quote(
+              symbol: widget.stock.ticker,
+              price: tick.price,
+              changePercent: tick.changePct,
+            ));
+      }
+    }, onError: (_) {/* stream closed — degrade silently */});
+  }
+
+  Future<void> _fetchMoneyFlow() async {
+    final data = await ref
+        .read(moneyFlowProvider(widget.stock.ticker).future);
+    if (mounted && data != null) {
+      setState(() => _moneyFlowData = data);
     }
   }
 
@@ -849,10 +904,59 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
     _tabController.dispose();
     _candleSubscription?.cancel();
     _quoteSubscription?.cancel();
+    _priceStreamSub?.cancel();
+    _stockQuoteTimer?.cancel();
     _candleService.dispose();
     _quoteService.dispose();
     _chartController.dispose();
+    _audioPlayer.dispose();
     super.dispose();
+  }
+
+  // ── Phase 8: Analyst Graph methods ────────────────────────────────────────
+
+  Future<void> _runDeepAnalysis() async {
+    if (_analystLoading) return;
+    setState(() {
+      _analystLoading = true;
+      _analystError = null;
+      _analystResult = null;
+    });
+
+    final query = AnalystGraphService.defaultQueryFor(
+        widget.stock.ticker, 'technical');
+    final userId = ref.read(userIdProvider);
+    final result = await _analystService.analyze(
+      message: query,
+      userId: userId,
+    );
+
+    if (!mounted) return;
+    if (result.error != null) {
+      setState(() {
+        _analystLoading = false;
+        _analystError = result.error;
+      });
+    } else {
+      setState(() {
+        _analystLoading = false;
+        _analystResult = result;
+      });
+    }
+  }
+
+  Future<void> _toggleAudio(String relativeUrl) async {
+    final url = _analystService.resolveAudioUrl(relativeUrl);
+    if (_audioPlaying) {
+      await _audioPlayer.pause();
+      if (mounted) setState(() => _audioPlaying = false);
+    } else {
+      await _audioPlayer.play(UrlSource(url));
+      if (mounted) setState(() => _audioPlaying = true);
+      _audioPlayer.onPlayerComplete.listen((_) {
+        if (mounted) setState(() => _audioPlaying = false);
+      });
+    }
   }
 
   @override
@@ -873,9 +977,6 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
 
     final displayPrice = _liveQuote?.price ?? widget.stock.price;
     final displayChange = _liveQuote?.changePercent ?? widget.stock.changePercent;
-    final isPositive = displayChange >= 0;
-    final changeColor = isPositive ? Colors.greenAccent : Colors.redAccent;
-
     // Compute indicator data once for sub-panels
     final rsiValues = _candles.isNotEmpty ? TechnicalAnalysisService.calculateRSIHistory(_candles) : <double?>[];
     final macdData = _candles.isNotEmpty ? TechnicalAnalysisService.calculateMACDHistory(_candles) : <String, List<double?>>{};
@@ -986,6 +1087,7 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
                 Tab(text: 'Fundamental'),
                 Tab(text: 'Flow'),
                 Tab(text: 'Macro'),
+                Tab(text: 'Analyst'),   // Phase 8 — DeepSeek-R1 deep analysis
               ],
             ),
           ),
@@ -1000,6 +1102,7 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
                 _buildFundamentalTab(isGuest, theme, colorScheme, analysisAsync),
                 _buildFlowTab(),
                 _buildMacroTab(isGuest),
+                _buildAnalystTab(isGuest),  // Phase 8
               ],
             ),
           ),
@@ -1403,7 +1506,7 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
             ),
           ),
 
-        // Money flow 7-day bars
+        // Money flow — candle-computed bars + optional backend CMF section
         if (_candles.isNotEmpty)
           SliverToBoxAdapter(
             child: Padding(
@@ -1411,6 +1514,7 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
               child: MoneyFlowWidget(
                 candles: _candles,
                 isCrypto: widget.stock.isCrypto,
+                backendData: _moneyFlowData,
               ),
             ),
           ),
@@ -1423,6 +1527,17 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
               symbol: widget.stock.ticker,
               isCrypto: widget.stock.isCrypto,
               currentPrice: _liveQuote?.price ?? widget.stock.price,
+            ),
+          ),
+        ),
+
+        // Options summary card (Phase 5) — graceful "unavailable" for crypto
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: OptionsCardWidget(
+              symbol: widget.stock.ticker,
+              isCrypto: widget.stock.isCrypto,
             ),
           ),
         ),
@@ -1521,152 +1636,157 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
       ],
     ),
   );
+
+  // ── Tab 5: Analyst — Phase 8 ──────────────────────────────────────────────
+  // Full LangGraph pipeline: DeepSeek-R1 reasoning + Claude verification +
+  // Cartesia TTS. Triggered by the "Run Deep Analysis" button.
+  Widget _buildAnalystTab(bool isGuest) {
+    if (isGuest) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.lock_outline, color: Colors.white24, size: 48),
+              SizedBox(height: 16),
+              Text(
+                'Deep Analysis requires an account',
+                style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600),
+                textAlign: TextAlign.center,
+              ),
+              SizedBox(height: 8),
+              Text(
+                'Sign up for free to run the full\nDeepSeek-R1 + Claude analyst pipeline.',
+                style: TextStyle(color: Colors.white38, fontSize: 13, height: 1.5),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return CustomScrollView(
+      physics: const BouncingScrollPhysics(),
+      slivers: [
+        const SliverToBoxAdapter(child: SizedBox(height: 16)),
+
+        // ── CTA button (always shown until analysis runs) ─────────────────
+        if (_analystResult == null && !_analystLoading)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: _AnalystCtaCard(
+                symbol: widget.stock.ticker,
+                onTap: _runDeepAnalysis,
+              ),
+            ),
+          ),
+
+        // ── Loading state ─────────────────────────────────────────────────
+        if (_analystLoading)
+          const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.all(40),
+              child: _AnalystLoadingIndicator(),
+            ),
+          ),
+
+        // ── Error state ───────────────────────────────────────────────────
+        if (_analystError != null)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: _AnalystErrorCard(
+                error: _analystError!,
+                onRetry: _runDeepAnalysis,
+              ),
+            ),
+          ),
+
+        // ── Results ───────────────────────────────────────────────────────
+        if (_analystResult != null) ...[
+          // Verification warning banner
+          if (_analystResult!.isVerificationWarning)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+                child: _VerificationWarningBanner(
+                    claims: _analystResult!.flaggedClaims),
+              ),
+            ),
+
+          // Dean's Coach Response
+          if (_analystResult!.hasCoachResponse)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                child: _DeanCoachCard(
+                  coachText: _analystResult!.coachResponse!,
+                  audioUrl: _analystResult!.audioUrl,
+                  audioPlaying: _audioPlaying,
+                  onAudioTap: _analystResult!.audioUrl != null
+                      ? () => _toggleAudio(_analystResult!.audioUrl!)
+                      : null,
+                  analystService: _analystService,
+                ),
+              ),
+            ),
+
+          const SliverToBoxAdapter(child: SizedBox(height: 10)),
+
+          // CoT Thinking card (collapsed by default)
+          if (_analystResult!.hasThinking)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: CotThinkingCard(thinking: _analystResult!.cotThinking!),
+              ),
+            ),
+
+          const SliverToBoxAdapter(child: SizedBox(height: 10)),
+
+          // Scenario cards
+          if (_analystResult!.scenarioCards != null)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: _AnalystScenarioSection(
+                    scenarios: _analystResult!.scenarioCards!),
+              ),
+            ),
+
+          const SliverToBoxAdapter(child: SizedBox(height: 10)),
+
+          // Run again button
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: TextButton.icon(
+                icon: const Icon(Icons.refresh, size: 16,
+                    color: Color(0xFF12A28C)),
+                label: const Text('Run again',
+                    style: TextStyle(color: Color(0xFF12A28C), fontSize: 13)),
+                onPressed: _runDeepAnalysis,
+              ),
+            ),
+          ),
+        ],
+
+        const SliverToBoxAdapter(child: SizedBox(height: 32)),
+      ],
+    );
+  }
+
 }
 
 // ─── Private helper widgets ──────────────────────────────────────────────────
 
 /// Hero price display — large whole part, muted smaller decimal.
-class _HeroPriceText extends StatelessWidget {
-  final double price;
-  const _HeroPriceText({required this.price});
-
-  @override
-  Widget build(BuildContext context) {
-    final decimals = price < 1 ? 4 : 2;
-    final formatted = price.toStringAsFixed(decimals);
-    final dotIndex = formatted.indexOf('.');
-    final whole = '\$${formatted.substring(0, dotIndex)}';
-    final decimal = formatted.substring(dotIndex); // includes the dot
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        Text(
-          whole,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 42,
-            fontWeight: FontWeight.w800,
-            letterSpacing: -1.5,
-            height: 1.0,
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.only(bottom: 5),
-          child: Text(
-            decimal,
-            style: TextStyle(
-              color: Colors.white.withOpacity(0.55),
-              fontSize: 24,
-              fontWeight: FontWeight.w400,
-              letterSpacing: -0.5,
-              height: 1.0,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _AssetHeader extends StatelessWidget {
-  final StockSummary stock;
-  final double price;
-  final double changePercent;
-  final bool isPositive;
-  final Color changeColor;
-  final bool isLive;
-
-  const _AssetHeader({
-    required this.stock, required this.price, required this.changePercent,
-    required this.isPositive, required this.changeColor, required this.isLive,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return GlassCard(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(children: [
-            Expanded(
-              child: Text(stock.name,
-                  style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
-                  maxLines: 2, overflow: TextOverflow.ellipsis),
-            ),
-            if (isLive)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: colorScheme.primary.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Container(width: 6, height: 6,
-                      decoration: BoxDecoration(color: colorScheme.primary, shape: BoxShape.circle)),
-                  const SizedBox(width: 6),
-                  Text('LIVE', style: theme.textTheme.labelSmall?.copyWith(
-                      color: colorScheme.primary, fontWeight: FontWeight.bold)),
-                ]),
-              ),
-          ]),
-          const SizedBox(height: 4),
-          if (stock.sector != null)
-            Text('${stock.sector}${stock.industry != null ? ' • ${stock.industry}' : ''}',
-                style: theme.textTheme.bodySmall?.copyWith(color: Colors.white70)),
-          const SizedBox(height: 16),
-          Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            _HeroPriceText(price: price),
-            const SizedBox(width: 12),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: changeColor.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(isPositive ? Icons.arrow_upward : Icons.arrow_downward, color: changeColor, size: 16),
-                const SizedBox(width: 4),
-                Text('${isPositive ? '+' : ''}${changePercent.toStringAsFixed(2)}%',
-                    style: theme.textTheme.titleMedium?.copyWith(color: changeColor, fontWeight: FontWeight.w700)),
-              ]),
-            ),
-          ]),
-          if (stock.fundamentals != null) ...[
-            const SizedBox(height: 16),
-            const Divider(height: 1),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 16, runSpacing: 12,
-              children: stock.fundamentals!.entries.take(4).map((e) =>
-                  _FundamentalChip(label: e.key, value: e.value)).toList(),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _FundamentalChip extends StatelessWidget {
-  final String label;
-  final String value;
-  const _FundamentalChip({required this.label, required this.value});
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(label, style: theme.textTheme.bodySmall?.copyWith(color: Colors.white54)),
-      const SizedBox(height: 4),
-      Text(value, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
-    ]);
-  }
-}
-
 class _IndicatorToggle extends StatelessWidget {
   final String label;
   final bool active;
@@ -1922,96 +2042,6 @@ class _TechnicalHighlightsSection extends StatelessWidget {
     );
   }
 }
-
-class _EducationalInsightsPanel extends StatelessWidget {
-  final List<Candle> candles;
-  final List<double?> rsi;
-  final Map<String, List<double?>> macd;
-  const _EducationalInsightsPanel({required this.candles, required this.rsi, required this.macd});
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final insights = PatternRecognitionService.generateInsights(candles, rsi, macd);
-    if (insights.isEmpty) {
-      return GlassCard(
-        padding: const EdgeInsets.all(20),
-        child: Column(children: [
-          const Icon(Icons.analytics_outlined, size: 48, color: Colors.white38),
-          const SizedBox(height: 12),
-          Text('No notable patterns detected',
-              style: theme.textTheme.titleMedium?.copyWith(color: Colors.white70), textAlign: TextAlign.center),
-        ]),
-      );
-    }
-    return GlassCard(
-      padding: const EdgeInsets.all(20),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Icon(Icons.auto_awesome, color: theme.colorScheme.primary, size: 24),
-          const SizedBox(width: 12),
-          Text('Market Insights', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
-          const Spacer(),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.primary.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Text('${insights.length}', style: theme.textTheme.labelSmall?.copyWith(
-                color: theme.colorScheme.primary, fontWeight: FontWeight.bold)),
-          ),
-        ]),
-        const SizedBox(height: 16),
-        ...insights.map((i) => _InsightCard(insight: i)),
-      ]),
-    );
-  }
-}
-
-class _InsightCard extends StatelessWidget {
-  final MarketInsight insight;
-  const _InsightCard({required this.insight});
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final color = _colorFor(insight.type);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surface.withValues(alpha: 0.3),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withValues(alpha: 0.3)),
-        ),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Text(insight.icon, style: const TextStyle(fontSize: 24)),
-            const SizedBox(width: 12),
-            Expanded(child: Text(insight.title,
-                style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600, color: color))),
-          ]),
-          const SizedBox(height: 12),
-          Text(insight.description,
-              style: theme.textTheme.bodyMedium?.copyWith(color: Colors.white.withValues(alpha: 0.9), height: 1.5)),
-        ]),
-      ),
-    );
-  }
-
-  Color _colorFor(InsightType type) {
-    switch (type) {
-      case InsightType.technical: return Colors.blueAccent;
-      case InsightType.pattern: return Colors.purpleAccent;
-      case InsightType.supportResistance: return Colors.orangeAccent;
-      case InsightType.divergence: return Colors.greenAccent;
-    }
-  }
-}
-
-// ── Decision Strip ─────────────────────────────────────────────────────────
-// Pinned top panel: price · % change · AI signal pill · one-line insight.
-// Replaces the combination of PriceHeroWidget + _SignalBadge in the old scroll.
 
 class _DecisionStrip extends StatelessWidget {
   final double price;
@@ -2648,6 +2678,376 @@ class _FundamentalQuickStats extends StatelessWidget {
           Text(e.value, style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700)),
         ])).toList(),
       ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Phase 8 — Analyst Graph private widgets
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// CTA card shown before the user has run deep analysis.
+class _AnalystCtaCard extends StatelessWidget {
+  final String symbol;
+  final VoidCallback onTap;
+  const _AnalystCtaCard({required this.symbol, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassCard(
+      padding: const EdgeInsets.all(20),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(
+            width: 36, height: 36,
+            decoration: BoxDecoration(
+              color: const Color(0xFF12A28C).withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(Icons.biotech, color: Color(0xFF12A28C), size: 20),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Deep Analysis', style: TextStyle(
+                  color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700)),
+              Text('DeepSeek-R1 · Claude Sonnet · Cartesia TTS',
+                  style: TextStyle(color: Colors.white38, fontSize: 11)),
+            ]),
+          ),
+        ]),
+        const SizedBox(height: 14),
+        const Text(
+          'Runs the full 5-node LangGraph pipeline:\n'
+          '• Intent classification (Mistral 7B)\n'
+          '• Real-time market data & technicals\n'
+          '• Deep reasoning (DeepSeek-R1 14B)\n'
+          '• Fact verification (Claude Sonnet)\n'
+          '• Voice synthesis (Cartesia TTS)',
+          style: TextStyle(color: Colors.white54, fontSize: 12.5, height: 1.6),
+        ),
+        const SizedBox(height: 6),
+        const Text('⏱  ~60–90 seconds',
+            style: TextStyle(color: Colors.white38, fontSize: 11)),
+        const SizedBox(height: 16),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            icon: const Icon(Icons.play_arrow_rounded, size: 20, color: Colors.white),
+            label: Text('Run Deep Analysis on $symbol',
+                style: const TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF12A28C),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              elevation: 0,
+            ),
+            onPressed: onTap,
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
+/// Animated loading indicator shown during the ~90 s analysis window.
+class _AnalystLoadingIndicator extends StatefulWidget {
+  const _AnalystLoadingIndicator();
+  @override
+  State<_AnalystLoadingIndicator> createState() => _AnalystLoadingIndicatorState();
+}
+
+class _AnalystLoadingIndicatorState extends State<_AnalystLoadingIndicator> {
+  static const _steps = [
+    'Classifying intent…',
+    'Fetching market data…',
+    'DeepSeek-R1 reasoning…',
+    'Verifying with Claude…',
+    'Synthesising response…',
+  ];
+  int _step = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.doWhile(() async {
+      await Future.delayed(const Duration(seconds: 14));
+      if (!mounted) return false;
+      setState(() => _step = (_step + 1).clamp(0, _steps.length - 1));
+      return _step < _steps.length - 1;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(mainAxisSize: MainAxisSize.min, children: [
+      const SizedBox(
+        width: 44, height: 44,
+        child: CircularProgressIndicator(
+          strokeWidth: 2.5,
+          valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF12A28C)),
+        ),
+      ),
+      const SizedBox(height: 20),
+      Text(_steps[_step],
+          style: const TextStyle(color: Colors.white70, fontSize: 14,
+              fontWeight: FontWeight.w600)),
+      const SizedBox(height: 6),
+      Text('Step ${_step + 1} of ${_steps.length}',
+          style: const TextStyle(color: Colors.white38, fontSize: 12)),
+    ]);
+  }
+}
+
+/// Error card shown when the analyst pipeline fails.
+class _AnalystErrorCard extends StatelessWidget {
+  final String error;
+  final VoidCallback onRetry;
+  const _AnalystErrorCard({required this.error, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Row(children: [
+          Icon(Icons.error_outline, color: Colors.redAccent, size: 18),
+          SizedBox(width: 8),
+          Text('Analysis Failed', style: TextStyle(
+              color: Colors.redAccent, fontSize: 13, fontWeight: FontWeight.w700)),
+        ]),
+        const SizedBox(height: 10),
+        Text(error, style: const TextStyle(color: Colors.white54, fontSize: 12, height: 1.5)),
+        const SizedBox(height: 14),
+        TextButton.icon(
+          icon: const Icon(Icons.refresh, size: 16, color: Color(0xFF12A28C)),
+          label: const Text('Try again', style: TextStyle(color: Color(0xFF12A28C))),
+          onPressed: onRetry,
+        ),
+      ]),
+    );
+  }
+}
+
+/// Yellow warning banner shown when Claude's verification flagged the analysis.
+class _VerificationWarningBanner extends StatelessWidget {
+  final List<String> claims;
+  const _VerificationWarningBanner({required this.claims});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+      decoration: BoxDecoration(
+        color: Colors.orange.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.orange.withValues(alpha: 0.35)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Row(children: [
+          Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 16),
+          SizedBox(width: 6),
+          Text('⚠️ Analysis flagged for review',
+              style: TextStyle(color: Colors.orange,
+                  fontSize: 12, fontWeight: FontWeight.w700)),
+        ]),
+        if (claims.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          ...claims.map((c) => Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text('• $c',
+                style: const TextStyle(color: Colors.white54, fontSize: 11, height: 1.4)),
+          )),
+        ],
+      ]),
+    );
+  }
+}
+
+/// Dean's coach response card — 3–4 sentence verdict with optional audio button.
+class _DeanCoachCard extends StatelessWidget {
+  final String coachText;
+  final String? audioUrl;
+  final bool audioPlaying;
+  final VoidCallback? onAudioTap;
+  final AnalystGraphService analystService;
+
+  const _DeanCoachCard({
+    required this.coachText,
+    required this.audioUrl,
+    required this.audioPlaying,
+    required this.analystService,
+    this.onAudioTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // Header
+        Row(children: [
+          Container(
+            width: 28, height: 28,
+            decoration: BoxDecoration(
+              color: const Color(0xFF12A28C).withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(Icons.record_voice_over,
+                color: Color(0xFF12A28C), size: 16),
+          ),
+          const SizedBox(width: 10),
+          const Text('Dean',
+              style: TextStyle(color: Colors.white,
+                  fontSize: 13, fontWeight: FontWeight.w700)),
+          const SizedBox(width: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: const Color(0xFF12A28C).withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: const Text('AI Coach',
+                style: TextStyle(color: Color(0xFF12A28C),
+                    fontSize: 9, fontWeight: FontWeight.w700)),
+          ),
+        ]),
+        const SizedBox(height: 12),
+        // Coach text inside AI block
+        Container(
+          decoration: const BoxDecoration(
+            border: Border(
+              left: BorderSide(color: Color(0xFF12A28C), width: 2),
+            ),
+          ),
+          padding: const EdgeInsets.only(left: 12),
+          child: Text(coachText,
+              style: const TextStyle(
+                  color: Colors.white, fontSize: 13.5, height: 1.6)),
+        ),
+        // Audio button (shown only when Cartesia URL is present)
+        if (audioUrl != null) ...[
+          const SizedBox(height: 14),
+          const Divider(height: 1, color: Colors.white10),
+          const SizedBox(height: 10),
+          GestureDetector(
+            onTap: onAudioTap,
+            child: Row(children: [
+              Container(
+                width: 34, height: 34,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF12A28C).withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(17),
+                ),
+                child: Icon(
+                  audioPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                  color: const Color(0xFF12A28C), size: 20,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(audioPlaying ? 'Playing…' : 'Play voice summary',
+                  style: const TextStyle(color: Color(0xFF12A28C),
+                      fontSize: 12, fontWeight: FontWeight.w600)),
+            ]),
+          ),
+        ],
+      ]),
+    );
+  }
+}
+
+/// Bull / Base / Bear scenario cards from the analyst synthesis node.
+class _AnalystScenarioSection extends StatelessWidget {
+  final AnalystScenarios scenarios;
+  const _AnalystScenarioSection({required this.scenarios});
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Row(children: [
+          Icon(Icons.bar_chart, color: Color(0xFF12A28C), size: 18),
+          SizedBox(width: 8),
+          Text('Scenarios',
+              style: TextStyle(color: Colors.white,
+                  fontSize: 13, fontWeight: FontWeight.w700)),
+        ]),
+        const SizedBox(height: 14),
+        _AnalystScenarioRow(
+          label: 'BULL',
+          color: const Color(0xFF26A69A),
+          card: scenarios.bull,
+        ),
+        const SizedBox(height: 10),
+        _AnalystScenarioRow(
+          label: 'BASE',
+          color: const Color(0xFF12A28C),
+          card: scenarios.base,
+        ),
+        const SizedBox(height: 10),
+        _AnalystScenarioRow(
+          label: 'BEAR',
+          color: const Color(0xFFEF5350),
+          card: scenarios.bear,
+        ),
+      ]),
+    );
+  }
+}
+
+class _AnalystScenarioRow extends StatelessWidget {
+  final String label;
+  final Color color;
+  final AnalystScenarioCard card;
+
+  const _AnalystScenarioRow({
+    required this.label,
+    required this.color,
+    required this.card,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(label,
+                style: TextStyle(color: color,
+                    fontSize: 10, fontWeight: FontWeight.w800)),
+          ),
+          const Spacer(),
+          if (card.probability.isNotEmpty)
+            Text(card.probability,
+                style: TextStyle(color: color,
+                    fontSize: 12, fontWeight: FontWeight.w700)),
+          if (card.target.isNotEmpty) ...[
+            const SizedBox(width: 8),
+            Text(card.target,
+                style: const TextStyle(color: Colors.white54, fontSize: 11)),
+          ],
+        ]),
+        if (card.trigger.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(card.trigger,
+              style: const TextStyle(
+                  color: Colors.white70, fontSize: 12, height: 1.4)),
+        ],
+      ]),
     );
   }
 }

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../models/lesson.dart';
 import '../../models/lesson_screen.dart';
 import '../../providers/lesson_provider.dart';
@@ -89,8 +88,6 @@ class _LessonDetailScreenState extends ConsumerState<LessonDetailScreen> {
           ? DateTime.now().difference(_lessonStartTime!)
           : null;
 
-      // Fetch recommended lessons
-      final recommendedLessons = await _fetchRecommendedLessons(currentLesson);
 
       if (mounted) {
         // Show completion dialog
@@ -126,39 +123,6 @@ class _LessonDetailScreenState extends ConsumerState<LessonDetailScreen> {
           ),
         );
       }
-    }
-  }
-
-  Future<List<Lesson>> _fetchRecommendedLessons(Lesson currentLesson) async {
-    try {
-      // Fetch lessons of the same or next level
-      final nextLevel = _getNextLevel(currentLesson.level);
-      final snapshot = await FirebaseFirestore.instance
-          .collection('lessons')
-          .where('level', whereIn: [currentLesson.level, nextLevel])
-          .limit(3)
-          .get();
-
-      final lessons = snapshot.docs
-          .map((doc) => Lesson.fromMap(doc.data(), doc.id))
-          .where((lesson) => lesson.id != currentLesson.id) // Exclude current
-          .toList();
-
-      return lessons.take(2).toList(); // Return top 2
-    } catch (e) {
-      debugPrint('Failed to fetch recommended lessons: $e');
-      return [];
-    }
-  }
-
-  String _getNextLevel(String currentLevel) {
-    switch (currentLevel.toLowerCase()) {
-      case 'beginner':
-        return 'Intermediate';
-      case 'intermediate':
-        return 'Advanced';
-      default:
-        return currentLevel;
     }
   }
 

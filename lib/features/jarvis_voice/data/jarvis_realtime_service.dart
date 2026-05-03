@@ -1,7 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as dev;
+import 'dart:math' as math;
+import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../../../../config/api_config.dart';
@@ -39,6 +42,9 @@ class JarvisRealtimeService {
   final _errorController = StreamController<String>.broadcast();
   final _audioDeltaController = StreamController<List<int>>.broadcast();
   final _userSpeechStartedController = StreamController<void>.broadcast();
+  final _userSpeechStoppedController = StreamController<void>.broadcast();
+  final _amplitudeController = StreamController<double>.broadcast();
+  final _assistantTurnDoneController = StreamController<void>.broadcast();
 
   // ignore: library_private_types_in_public_api
   Stream<_TranscriptDelta> get onTranscriptDelta => _transcriptController.stream;
@@ -48,6 +54,12 @@ class JarvisRealtimeService {
   Stream<List<int>> get onAudioDelta => _audioDeltaController.stream;
   /// Fires when the server detects the user has started speaking.
   Stream<void> get onUserSpeechStarted => _userSpeechStartedController.stream;
+  /// Fires when the server detects the user has stopped speaking (VAD silence).
+  Stream<void> get onUserSpeechStopped => _userSpeechStoppedController.stream;
+  /// Emits normalised RMS amplitude (0.0–1.0) for each audio delta chunk.
+  Stream<double> get onAudioAmplitude => _amplitudeController.stream;
+  /// Fires when the assistant's current response turn is fully complete.
+  Stream<void> get onAssistantTurnDone => _assistantTurnDoneController.stream;
 
   bool get isConnected => _channel != null;
 
@@ -84,9 +96,9 @@ class JarvisRealtimeService {
     // The previous catchError() swallowed the error, hiding connection failures.
     try {
       await _channel!.ready;
-      dev.log('[Realtime] ② WebSocket handshake OK', name: 'JarvisRealtime');
+      debugPrint('[Realtime] ② WS handshake OK — proxy accepted connection');
     } catch (e) {
-      dev.log('[Realtime] ② WebSocket handshake FAILED: $e', name: 'JarvisRealtime');
+      debugPrint('[Realtime] ② WS handshake FAILED — $e');
       _channel = null;
       rethrow; // propagate to startSession() catch block
     }
@@ -96,14 +108,16 @@ class JarvisRealtimeService {
     _sub = _channel!.stream.listen(
       _onMessage,
       onError: (e) {
-        dev.log('[Realtime] WS error: $e', name: 'JarvisRealtime');
-        _errorController.add('WebSocket error: $e');
+        debugPrint('[Realtime] ❌ WS stream error: $e');
+        if (!_errorController.isClosed) {
+          _errorController.add('WebSocket error: $e');
+        }
       },
       onDone: () {
         // WS closed — surface as an error so the UI exits "Listening" state.
-        dev.log('[Realtime] WS closed by remote', name: 'JarvisRealtime');
-        _speakingController.add(false);
-        _errorController.add('__ws_closed__'); // sentinel consumed by notifier
+        debugPrint('[Realtime] ❌ WS closed by remote (onDone fired)');
+        if (!_speakingController.isClosed) _speakingController.add(false);
+        if (!_errorController.isClosed) _errorController.add('__ws_closed__');
         _channel = null;
       },
     );
@@ -143,33 +157,42 @@ class JarvisRealtimeService {
     }
 
     final type = event['type'] as String? ?? '';
-    dev.log('[Realtime] event: $type', name: 'JarvisRealtime');
+    debugPrint('[Realtime] event: $type');
 
     switch (type) {
       // OpenAI Realtime handshake confirmations — log so they appear in devtools
       case 'session.created':
-        dev.log('[Realtime] session.created — OpenAI session is live', name: 'JarvisRealtime');
+        debugPrint('[Realtime] ✅ session.created — OpenAI session is live');
         break;
       case 'session.updated':
-        dev.log('[Realtime] session.updated — VAD + modalities confirmed', name: 'JarvisRealtime');
+        debugPrint('[Realtime] ✅ session.updated — VAD + modalities confirmed');
         break;
 
       // Transcript streaming
       case 'response.audio_transcript.delta':
         final delta = event['delta'] as String? ?? '';
-        if (delta.isNotEmpty) {
+        if (delta.isNotEmpty && !_transcriptController.isClosed) {
           _transcriptController.add(_TranscriptDelta('assistant', delta));
         }
         break;
 
       case 'input_audio_buffer.speech_started':
         // User started speaking — signal notifier to cancel any in-progress response
-        _userSpeechStartedController.add(null);
+        if (!_userSpeechStartedController.isClosed) {
+          _userSpeechStartedController.add(null);
+        }
+        break;
+
+      case 'input_audio_buffer.speech_stopped':
+        // User stopped speaking — VAD detected silence
+        if (!_userSpeechStoppedController.isClosed) {
+          _userSpeechStoppedController.add(null);
+        }
         break;
 
       case 'conversation.item.input_audio_transcription.completed':
         final transcript = event['transcript'] as String? ?? '';
-        if (transcript.isNotEmpty) {
+        if (transcript.isNotEmpty && !_transcriptController.isClosed) {
           _transcriptController.add(_TranscriptDelta('user', transcript));
         }
         break;
@@ -179,13 +202,19 @@ class JarvisRealtimeService {
         final audioB64 = event['delta'] as String? ?? '';
         if (audioB64.isNotEmpty) {
           final bytes = base64Decode(audioB64);
-          _audioDeltaController.add(bytes);
-          _speakingController.add(true);
+          if (!_audioDeltaController.isClosed) _audioDeltaController.add(bytes);
+          if (!_speakingController.isClosed) _speakingController.add(true);
+          // Compute RMS amplitude (0.0–1.0) from PCM16 bytes
+          if (!_amplitudeController.isClosed) {
+            _amplitudeController.add(_computeAmplitude(bytes));
+          }
         }
         break;
 
       case 'response.audio.done':
-        _speakingController.add(false);
+        if (!_speakingController.isClosed) _speakingController.add(false);
+        if (!_amplitudeController.isClosed) _amplitudeController.add(0.0);
+        if (!_assistantTurnDoneController.isClosed) _assistantTurnDoneController.add(null);
         break;
 
       // Tool calls
@@ -197,7 +226,7 @@ class JarvisRealtimeService {
         try {
           args = jsonDecode(argsRaw) as Map<String, dynamic>;
         } catch (_) {}
-        if (name.isNotEmpty) {
+        if (name.isNotEmpty && !_toolCallController.isClosed) {
           _toolCallController.add(ToolCallEvent(callId: callId, name: name, arguments: args));
         }
         break;
@@ -206,8 +235,8 @@ class JarvisRealtimeService {
       case 'error':
         final err = event['error'] as Map? ?? {};
         final msg = err['message'] as String? ?? 'Unknown Realtime error';
-        dev.log('[Realtime] error: $msg', name: 'JarvisRealtime');
-        _errorController.add(msg);
+        debugPrint('[Realtime] ❌ OpenAI error message: $msg');
+        if (!_errorController.isClosed) _errorController.add(msg);
         break;
     }
   }
@@ -231,7 +260,34 @@ class JarvisRealtimeService {
   /// Interrupt the current assistant response (user started speaking).
   void cancelResponse() {
     _send({'type': 'response.cancel'});
-    _speakingController.add(false);
+    if (!_speakingController.isClosed) _speakingController.add(false);
+  }
+
+  /// Inject a text narration into the active session so Jarvis speaks it aloud.
+  ///
+  /// Used after chart vision analysis completes — passes the voice-optimised
+  /// [narration] string as an assistant turn and triggers a spoken response.
+  /// No-ops silently if the session is not connected.
+  void injectNarration(String narration) {
+    if (_channel == null || narration.trim().isEmpty) return;
+
+    // 1. Insert the narration as an assistant conversation item
+    _send({
+      'type': 'conversation.item.create',
+      'item': {
+        'type': 'message',
+        'role': 'assistant',
+        'content': [
+          {'type': 'text', 'text': narration.trim()},
+        ],
+      },
+    });
+
+    // 2. Ask OpenAI Realtime to generate a spoken response from that item
+    _send({'type': 'response.create'});
+
+    dev.log('[Realtime] injected chart narration (${narration.length} chars)',
+        name: 'JarvisRealtime');
   }
 
   /// Append raw PCM16 audio bytes to the input buffer.
@@ -240,6 +296,20 @@ class JarvisRealtimeService {
       'type': 'input_audio_buffer.append',
       'audio': base64Encode(pcm16Bytes),
     });
+  }
+
+  /// Compute normalised RMS amplitude (0.0–1.0) from raw PCM16 LE bytes.
+  static double _computeAmplitude(List<int> bytes) {
+    if (bytes.length < 2) return 0.0;
+    final samples = Uint8List.fromList(bytes).buffer.asInt16List();
+    if (samples.isEmpty) return 0.0;
+    double sum = 0.0;
+    for (final s in samples) {
+      sum += s * s;
+    }
+    final rms = math.sqrt(sum / samples.length);
+    // Int16 max is 32768 — normalise and clamp
+    return (rms / 32768.0).clamp(0.0, 1.0);
   }
 
   void _send(Map<String, dynamic> event) {
@@ -254,10 +324,15 @@ class JarvisRealtimeService {
   // ── Cleanup ────────────────────────────────────────────────────────────────
 
   Future<void> close() async {
-    await _sub?.cancel();
-    await _channel?.sink.close();
-    _channel = null;
+    // Null out references FIRST so any in-flight callbacks see _channel == null
+    // and _sub == null before we await the cancellations.  This prevents the
+    // onDone / onError handlers from firing and trying to add to closed controllers.
+    final sub = _sub;
+    final channel = _channel;
     _sub = null;
+    _channel = null;
+    await sub?.cancel();
+    await channel?.sink.close();
   }
 
   void dispose() {
@@ -268,6 +343,9 @@ class JarvisRealtimeService {
     _errorController.close();
     _audioDeltaController.close();
     _userSpeechStartedController.close();
+    _userSpeechStoppedController.close();
+    _amplitudeController.close();
+    _assistantTurnDoneController.close();
   }
 }
 

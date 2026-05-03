@@ -125,7 +125,7 @@ class _LiveLineChartState extends State<LiveLineChart> {
             ),
             child: Container(
               decoration: BoxDecoration(
-                color: widget.lineColor.withOpacity(0.06),
+                color: widget.lineColor.withValues(alpha: 0.06),
                 borderRadius: BorderRadius.circular(12),
               ),
             ),
@@ -183,7 +183,7 @@ class _LinePainter extends CustomPainter {
       ..style = PaintingStyle.stroke;
 
     final shadow = Paint()
-      ..color = color.withOpacity(0.2)
+      ..color = color.withValues(alpha: 0.2)
       ..strokeWidth = 6
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3)
       ..style = PaintingStyle.stroke;
