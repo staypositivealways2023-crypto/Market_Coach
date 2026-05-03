@@ -9,6 +9,10 @@ from pydantic import BaseModel
 
 from app.models.analysis import AIAnalysisResponse
 from app.services.analysis_aggregator import AnalysisAggregator
+from app.services.monte_carlo_service import MonteCarloService
+from app.services.bayesian_service import BayesianService
+from app.services.macro_agent_service import MacroAgentService
+from app.services.probabilistic_report_service import ProbabilisticReportService
 from app.services.claude_service import ClaudeService
 from app.services.mock_analysis_service import MockAnalysisService
 from app.services.structured_analysis_service import StructuredAnalysisService
@@ -25,6 +29,14 @@ router = APIRouter()
 
 # Initialize services
 aggregator = AnalysisAggregator()
+monte_carlo_service = MonteCarloService()
+bayesian_service = BayesianService()
+macro_agent_service = MacroAgentService()
+probabilistic_report_service = ProbabilisticReportService(
+    monte_carlo_service=monte_carlo_service,
+    bayesian_service=bayesian_service,
+    macro_agent_service=macro_agent_service,
+)
 claude_service = ClaudeService()
 mock_service = MockAnalysisService()
 prompt_builder = PromptBuilder()
@@ -313,3 +325,118 @@ async def clear_analysis_cache(symbol: str):
         "message": f"Cache cleared for {symbol}",
         "symbol": symbol
     }
+
+
+# ---------------------------------------------------------------------------
+# Monte Carlo
+# ---------------------------------------------------------------------------
+
+class MonteCarloRequest(BaseModel):
+    symbol: str
+    horizon_days: int = 30
+    num_simulations: int = 1000
+
+
+@router.post("/analysis/monte-carlo")
+async def run_monte_carlo(req: MonteCarloRequest):
+    """
+    Run a GBM Monte Carlo price simulation for a symbol.
+
+    Returns percentile fan, expected price, profit/loss probabilities,
+    annualised volatility, and daily drift.
+    """
+    result = await monte_carlo_service.simulate(
+        symbol=req.symbol.upper(),
+        horizon_days=req.horizon_days,
+        num_simulations=req.num_simulations,
+    )
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+# ── Bayesian Price-Target Updater ──────────────────────────────────────────────
+
+class BayesianTargetRequest(BaseModel):
+    symbol: str
+    analyst_target: float
+    analyst_confidence: float = 5.0
+    horizon_days: int = 30
+
+
+@router.post("/bayesian-target")
+async def bayesian_target(req: BayesianTargetRequest):
+    """
+    Bayesian price-target update (Normal-Normal conjugate).
+
+    Takes an analyst price target + confidence as the prior, updates it with
+    recent return likelihood from historical data, and returns a posterior
+    expected price with 90% credible interval.
+
+    Raises HTTP 400 if the service returns an error (e.g. insufficient history).
+    """
+    result = await bayesian_service.update_price_target(
+        symbol=req.symbol.upper(),
+        analyst_target=req.analyst_target,
+        analyst_confidence=req.analyst_confidence,
+        horizon_days=req.horizon_days,
+    )
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+# ── MacroAgent Regime Classifier ───────────────────────────────────────────────
+
+class MacroRegimeRequest(BaseModel):
+    symbol: str
+
+
+@router.post("/macro-regime")
+async def macro_regime(req: MacroRegimeRequest):
+    """
+    Classify the current macro regime using FRED indicators and return
+    drift_adj / vol_adj multipliers for Monte Carlo simulations.
+
+    The regime is market-wide; `symbol` is for logging context only.
+
+    Raises HTTP 400 if the service returns an error.
+    """
+    result = await macro_agent_service.assess_regime(symbol=req.symbol.upper())
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+# ── Probabilistic Synthesis Report ────────────────────────────────────────────
+
+class ProbabilisticReportRequest(BaseModel):
+    symbol: str
+    analyst_target: float
+    analyst_confidence: float = 5.0
+    horizon_days: int = 30
+    num_simulations: int = 1000
+
+
+@router.post("/probabilistic-report")
+async def probabilistic_report(req: ProbabilisticReportRequest):
+    """
+    Unified probabilistic synthesis report.
+
+    Runs Monte Carlo, Bayesian price-target update, and MacroAgent regime
+    classification concurrently, applies macro multipliers to the Monte Carlo
+    output, and returns a single consolidated JSON with an overall conviction
+    score and one-sentence summary.
+
+    Raises HTTP 400 if any engine returns an error.
+    """
+    result = await probabilistic_report_service.generate_report(
+        symbol=req.symbol.upper(),
+        analyst_target=req.analyst_target,
+        analyst_confidence=req.analyst_confidence,
+        horizon_days=req.horizon_days,
+        num_simulations=req.num_simulations,
+    )
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
