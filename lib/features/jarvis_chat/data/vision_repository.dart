@@ -140,8 +140,8 @@ class VisionRepository {
     final body = jsonEncode({
       'image_b64': imageB64,
       'media_type': mediaType,
-      ?'symbol': symbol,
-      ?'question': question,
+      'symbol': symbol,
+      'question': question,
     });
 
     dev.log('[VisionRepo] POST /vision — size=${imageB64.length} symbol=$symbol',

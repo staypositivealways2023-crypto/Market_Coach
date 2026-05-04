@@ -101,15 +101,22 @@ class _MarketViewAllScreenState extends State<MarketViewAllScreen> {
             comparison = a.name.compareTo(b.name);
             break;
           case SortCriteria.volume:
+            return _compareNullableNumber(a.volume, b.volume);
           case SortCriteria.marketCap:
-            // TODO: Add volume/market cap data to model
-            comparison = 0;
-            break;
+            return _compareNullableNumber(a.marketCap, b.marketCap);
         }
 
         return _ascending ? comparison : -comparison;
       });
     });
+  }
+
+  int _compareNullableNumber(double? a, double? b) {
+    if (a == null && b == null) return 0;
+    if (a == null) return 1;
+    if (b == null) return -1;
+    final comparison = a.compareTo(b);
+    return _ascending ? comparison : -comparison;
   }
 
   @override
@@ -179,6 +186,14 @@ class _MarketViewAllScreenState extends State<MarketViewAllScreen> {
                           DropdownMenuItem(
                             value: SortCriteria.price,
                             child: Text('Price'),
+                          ),
+                          DropdownMenuItem(
+                            value: SortCriteria.volume,
+                            child: Text('Volume'),
+                          ),
+                          DropdownMenuItem(
+                            value: SortCriteria.marketCap,
+                            child: Text('Market Cap'),
                           ),
                           DropdownMenuItem(
                             value: SortCriteria.name,

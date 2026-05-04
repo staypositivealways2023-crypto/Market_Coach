@@ -1,10 +1,10 @@
-/// Models for Phase 5 real-time market data endpoints.
-///
-/// Endpoint → Model:
-///   GET /api/market/moneyflow/{symbol}      → MoneyFlowData
-///   GET /api/market/marketposition/{symbol} → MarketPositionData
-///   GET /api/market/options/{symbol}        → OptionsData
-///   WS  /api/market/stream/{symbol}         → PriceTick
+// Models for Phase 5 real-time market data endpoints.
+//
+// Endpoint → Model:
+//   GET /api/market/moneyflow/{symbol}      → MoneyFlowData
+//   GET /api/market/marketposition/{symbol} → MarketPositionData
+//   GET /api/market/options/{symbol}        → OptionsData
+//   WS  /api/market/stream/{symbol}         → PriceTick
 
 // ── Money Flow ────────────────────────────────────────────────────────────────
 

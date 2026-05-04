@@ -16,6 +16,9 @@ import '../models/lesson_screen.dart';
 /// - **`quiz_single`**: Interactive single-choice quiz with feedback
 ///   - Content: `question` (string), `options` (list), `correctIndex` (int), `explanation` (string)
 ///
+/// - **`quiz_multi`**: Multi-choice quiz — select all that apply
+///   - Content: `question` (string), `options` (list), `correctIndices` (list of ints), `explanation` (string)
+///
 /// - **`bullets`**: Bullet point list with optional title/subtitle
 ///   - Content: `items` (list of strings)
 ///
@@ -56,8 +59,11 @@ class LessonScreenWidget extends StatelessWidget {
           onPassed: onQuizPassed,
         );
       case 'quiz_multi':
-        // TODO: Implement multi-choice quiz widget
-        return _UnsupportedScreen(type: 'quiz_multi (coming soon)');
+        return _QuizMultiScreen(
+          screen: screen,
+          onAnswered: onQuizAnswered,
+          onPassed: onQuizPassed,
+        );
       case 'bullets':
         return _BulletsScreen(screen: screen);
       case 'takeaways':
@@ -351,6 +357,198 @@ class _QuizSingleScreenState extends State<_QuizSingleScreen> {
                 ],
               ),
             ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// QUIZ MULTI SCREEN
+class _QuizMultiScreen extends StatefulWidget {
+  const _QuizMultiScreen({
+    required this.screen,
+    this.onAnswered,
+    this.onPassed,
+  });
+  final LessonScreen screen;
+  final Function(bool isCorrect)? onAnswered;
+  final VoidCallback? onPassed;
+
+  @override
+  State<_QuizMultiScreen> createState() => _QuizMultiScreenState();
+}
+
+class _QuizMultiScreenState extends State<_QuizMultiScreen> {
+  final Set<int> _selectedIndices = {};
+  bool _showAnswer = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final content = widget.screen.content;
+    final question = content['question'] as String? ?? '';
+    final options =
+        (content['options'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [];
+    final correctIndices = ((content['correctIndices'] ?? content['correct_indices']) as List<dynamic>?)
+            ?.map((e) => (e as num).toInt())
+            .toSet() ??
+        <int>{};
+    final explanation = content['explanation'] as String?;
+
+    final isCorrect =
+        _selectedIndices.length == correctIndices.length &&
+        _selectedIndices.every(correctIndices.contains);
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(question, style: Theme.of(context).textTheme.headlineSmall),
+          const SizedBox(height: 8),
+          Text(
+            'Select all that apply',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+                ),
+          ),
+          const SizedBox(height: 20),
+          ...List.generate(options.length, (index) {
+            final isSelected = _selectedIndices.contains(index);
+            final isCorrectOption = correctIndices.contains(index);
+            final showCorrect = _showAnswer && isCorrectOption;
+            final showIncorrect = _showAnswer && isSelected && !isCorrectOption;
+
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12.0),
+              child: Material(
+                color: showCorrect
+                    ? Colors.green.withValues(alpha: 0.2)
+                    : showIncorrect
+                        ? Colors.red.withValues(alpha: 0.2)
+                        : isSelected
+                            ? Theme.of(context).colorScheme.primaryContainer
+                            : Theme.of(context).colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(12),
+                child: InkWell(
+                  onTap: _showAnswer
+                      ? null
+                      : () => setState(() {
+                            if (_selectedIndices.contains(index)) {
+                              _selectedIndices.remove(index);
+                            } else {
+                              _selectedIndices.add(index);
+                            }
+                          }),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: showCorrect
+                            ? Colors.green
+                            : showIncorrect
+                                ? Colors.red
+                                : isSelected
+                                    ? Theme.of(context).colorScheme.primary
+                                    : Colors.transparent,
+                        width: 2,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          isSelected
+                              ? Icons.check_box
+                              : Icons.check_box_outline_blank,
+                          color: isSelected
+                              ? Theme.of(context).colorScheme.primary
+                              : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+                          size: 20,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(child: Text(options[index])),
+                        if (showCorrect)
+                          const Icon(Icons.check_circle, color: Colors.green),
+                        if (showIncorrect)
+                          const Icon(Icons.cancel, color: Colors.red),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }),
+          const SizedBox(height: 16),
+          if (!_showAnswer && _selectedIndices.isNotEmpty)
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: () {
+                  setState(() => _showAnswer = true);
+                  widget.onAnswered?.call(isCorrect);
+                  if (isCorrect) widget.onPassed?.call();
+                },
+                child: const Text('Check Answer'),
+              ),
+            ),
+          if (_showAnswer) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isCorrect
+                    ? Colors.green.withValues(alpha: 0.1)
+                    : Colors.red.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: isCorrect ? Colors.green : Colors.red,
+                  width: 1,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    isCorrect ? Icons.check_circle : Icons.cancel,
+                    color: isCorrect ? Colors.green : Colors.red,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      isCorrect ? 'All correct!' : 'Not quite — review the highlighted answers.',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (explanation != null) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.info_outline,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        explanation,
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ],
       ),

@@ -181,6 +181,7 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
     _priceStreamSub?.cancel();
     // Listen to the Riverpod StreamProvider's underlying stream.
     _priceStreamSub = ref
+        // ignore: deprecated_member_use
         .read(priceStreamProvider(widget.stock.ticker).stream)
         .listen((tick) {
       if (!mounted) return;

@@ -158,10 +158,10 @@ class _CmfSection extends StatelessWidget {
     final instFlow   = data.institutionalFlow;
     final retailFlow = data.retailFlow;
     final hasSplit   = instFlow != null && retailFlow != null && (instFlow != 0 || retailFlow != 0);
-    final total    = hasSplit ? (instFlow!.abs() + retailFlow!.abs()) : 0.0;
-    final instPct  = hasSplit && total > 0 ? instFlow!.abs() / total : 0.5;
-    final instBull   = hasSplit && instFlow! >= 0;
-    final retailBull = hasSplit && retailFlow! >= 0;
+    final total    = hasSplit ? (instFlow.abs() + retailFlow.abs()) : 0.0;
+    final instPct  = hasSplit && total > 0 ? instFlow.abs() / total : 0.5;
+    final instBull   = hasSplit && instFlow >= 0;
+    final retailBull = hasSplit && retailFlow >= 0;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

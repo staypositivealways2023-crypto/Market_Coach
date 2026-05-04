@@ -183,8 +183,15 @@ class _MarketScreenState extends State<MarketScreen> {
         if (symbol == null) continue;
         final price = double.tryParse(t['lastPrice'] as String? ?? '') ?? 0.0;
         final change = double.tryParse(t['priceChangePercent'] as String? ?? '') ?? 0.0;
+        final volume = double.tryParse(t['quoteVolume'] as String? ?? '') ??
+            double.tryParse(t['volume'] as String? ?? '');
         if (price > 0) {
-          quotes[symbol] = {'symbol': symbol, 'price': price, 'change_percent': change};
+          quotes[symbol] = {
+            'symbol': symbol,
+            'price': price,
+            'change_percent': change,
+            'volume': volume,
+          };
         }
       }
       return quotes;
@@ -201,6 +208,8 @@ class _MarketScreenState extends State<MarketScreen> {
       price: (q?['price'] as num?)?.toDouble() ?? 0.0,
       changePercent: (q?['change_percent'] as num?)?.toDouble() ?? 0.0,
       isCrypto: meta.isCrypto,
+      volume: (q?['volume'] as num?)?.toDouble(),
+      marketCap: (q?['market_cap'] as num?)?.toDouble(),
       sector: meta.sector,
     );
   }

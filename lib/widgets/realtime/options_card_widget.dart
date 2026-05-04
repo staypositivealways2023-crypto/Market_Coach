@@ -35,7 +35,7 @@ class OptionsCardWidget extends ConsumerWidget {
     final async = ref.watch(optionsProvider(symbol));
     return async.when(
       loading: () => _buildShimmer(),
-      error: (_, __) => _buildUnavailable('Could not load options data.'),
+      error: (_, e) => _buildUnavailable('Could not load options data.'),
       data: (data) {
         if (data == null || !data.available) {
           return _buildUnavailable(
