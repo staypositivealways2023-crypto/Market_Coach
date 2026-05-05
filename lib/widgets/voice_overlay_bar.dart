@@ -15,120 +15,81 @@ import '../features/jarvis_voice/presentation/screens/voice_coach_screen.dart';
 import '../providers/auth_provider.dart';
 
 class VoiceOverlayBar extends ConsumerWidget {
-  const VoiceOverlayBar({super.key});
+  /// Pass RootShell's selectedIndex so the bar hides on the Coach tab (index 2),
+  /// which already provides its own voice and chat surfaces.
+  final int selectedIndex;
+  const VoiceOverlayBar({super.key, required this.selectedIndex});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final voiceState = ref.watch(voiceSessionProvider);
-    final isGuest    = ref.watch(isGuestProvider);
+    // Hide on Coach tab — it has its own mic / chat UI
+    if (selectedIndex == 2) return const SizedBox.shrink();
 
-    // Don't show for guests
+    final isGuest = ref.watch(isGuestProvider);
     if (isGuest) return const SizedBox.shrink();
 
-    final isConnected = voiceState.connectionState ==
-        VoiceConnectionState.connected;
-    final isConnecting = voiceState.connectionState ==
-        VoiceConnectionState.connecting;
-    final isSpeaking  = voiceState.isAssistantSpeaking;
+    final voiceState = ref.watch(voiceSessionProvider);
+    final isConnected  = voiceState.connectionState == VoiceConnectionState.connected;
+    final isConnecting = voiceState.connectionState == VoiceConnectionState.connecting;
+    final isActive     = isConnected || isConnecting;
 
-    // Get latest transcript line (user or assistant)
-    String statusText = 'Tap to talk to your AI coach';
+    // Hide entirely when no session is running — no clutter when idle
+    if (!isActive) return const SizedBox.shrink();
+
+    final isSpeaking = voiceState.isAssistantSpeaking;
+
+    final Color micColor;
+    if (isConnecting) {
+      micColor = Colors.orange;
+    } else if (isSpeaking) {
+      micColor = const Color(0xFF06B6D4);
+    } else {
+      micColor = const Color(0xFF12A28C);
+    }
+
+    String statusText;
     if (isConnecting) {
       statusText = 'Connecting…';
-    } else if (isConnected) {
+    } else {
       final transcript = voiceState.transcript;
       if (transcript.isNotEmpty) {
         final last = transcript.last;
-        statusText = last.text.length > 60
-            ? '${last.text.substring(0, 57)}…'
-            : last.text;
+        statusText = last.text.length > 60 ? '${last.text.substring(0, 57)}…' : last.text;
       } else {
         statusText = 'Listening…';
       }
-    }
-
-    // Mic icon color
-    Color micColor;
-    if (isConnecting) {
-      micColor = Colors.orange;
-    } else if (isConnected && isSpeaking) {
-      micColor = const Color(0xFF06B6D4);
-    } else if (isConnected) {
-      micColor = const Color(0xFF12A28C);
-    } else {
-      micColor = Colors.white38;
     }
 
     return GestureDetector(
       onTap: () => _openVoiceScreen(context),
       child: Container(
         margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-        padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
         decoration: BoxDecoration(
           color: const Color(0xFF0D1117).withValues(alpha: 0.92),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: isConnected
-                ? const Color(0xFF12A28C).withValues(alpha: 0.4)
-                : Colors.white.withValues(alpha: 0.08),
+            color: micColor.withValues(alpha: 0.35),
             width: 1,
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.35),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
         ),
         child: Row(
           children: [
-            // Live indicator dot
-            if (isConnected)
-              Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: _PulseDot(color: micColor),
-              ),
-
-            // Status text
+            _PulseDot(color: micColor),
+            const SizedBox(width: 8),
             Expanded(
               child: Text(
                 statusText,
-                style: TextStyle(
-                  color: isConnected ? Colors.white : Colors.white54,
-                  fontSize: 13,
-                  fontWeight: isConnected ? FontWeight.w500 : FontWeight.w400,
-                ),
+                style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-
             const SizedBox(width: 8),
-
-            // Mic button — long press starts session, tap opens screen
-            GestureDetector(
-              onLongPress: () => _startSession(context, ref),
-              onTap: () => _openVoiceScreen(context),
-              child: Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: isConnected
-                      ? micColor.withValues(alpha: 0.15)
-                      : Colors.white.withValues(alpha: 0.05),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  isConnecting
-                      ? Icons.hourglass_top_rounded
-                      : isConnected
-                          ? Icons.mic_rounded
-                          : Icons.mic_none_rounded,
-                  size: 18,
-                  color: micColor,
-                ),
-              ),
+            Icon(
+              isConnecting ? Icons.hourglass_top_rounded : Icons.mic_rounded,
+              size: 18,
+              color: micColor,
             ),
           ],
         ),
@@ -138,17 +99,8 @@ class VoiceOverlayBar extends ConsumerWidget {
 
   void _openVoiceScreen(BuildContext context) {
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => const VoiceCoachScreen(
-          initialMode: VoiceMode.general,
-        ),
-      ),
+      MaterialPageRoute(builder: (_) => const VoiceCoachScreen(initialMode: VoiceMode.general)),
     );
-  }
-
-  void _startSession(BuildContext context, WidgetRef ref) {
-    // Navigate to voice screen which auto-starts the session
-    _openVoiceScreen(context);
   }
 }
 

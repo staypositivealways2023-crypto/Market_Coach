@@ -125,9 +125,8 @@ class _RootShellState extends ConsumerState<RootShell>
       bottomNavigationBar: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Voice overlay bar — shows live session status above the nav.
-          // Self-hides when no session is active or user is a guest.
-          const VoiceOverlayBar(),
+          // Voice overlay bar — only visible during active sessions, hidden on Coach tab.
+          VoiceOverlayBar(selectedIndex: _selectedIndex),
           FloatingBottomNav(
             items: _navItems,
             selectedIndex: _selectedIndex,

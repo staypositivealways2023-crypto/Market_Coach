@@ -15,6 +15,8 @@ import '../../widgets/iq_score_card.dart';
 import '../learn/learn_screen.dart';
 import '../profile/profile_screen.dart';
 import '../../features/chart/screens/asset_chart_screen.dart';
+import '../stock_detail/stock_detail_screen.dart';
+import '../crypto_detail/crypto_detail_screen.dart';
 
 // ── Ticker symbols used as live index proxies ──────────────────────────────────
 const _indexStockSymbols = {'SPY', 'QQQ'};
@@ -759,7 +761,9 @@ class StockCard extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => AssetChartScreen(stock: stock),
+          builder: (_) => stock.isCrypto
+              ? CryptoDetailScreen(stock: stock)
+              : StockDetailScreen(stock: stock),
         ),
       ),
       child: Row(

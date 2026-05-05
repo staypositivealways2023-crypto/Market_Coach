@@ -8,6 +8,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../config/api_config.dart';
 import '../models/quote.dart';
+import '../utils/backend_http.dart';
 
 abstract class QuoteService {
   Stream<Map<String, Quote>> streamQuotes(Set<String> symbols);
@@ -304,16 +305,15 @@ class BackendQuoteService implements QuoteService {
     if (_symbols.isEmpty) return;
     try {
       final symbolList = _symbols.join(',');
-      final uri = Uri.parse(
-        '${APIConfig.backendBaseUrl}/api/market/quotes?symbols=$symbolList',
-      );
       dev.log('[BackendQuote] fetching: $symbolList', name: 'Quotes');
 
-      final response =
-          await http.get(uri).timeout(const Duration(seconds: 15));
+      final response = await BackendHttp.get(
+        '/api/market/quotes?symbols=$symbolList',
+        timeout: const Duration(seconds: 15),
+      );
 
-      if (response.statusCode != 200) {
-        dev.log('[BackendQuote] HTTP ${response.statusCode}', name: 'Quotes');
+      if (response == null || response.statusCode != 200) {
+        dev.log('[BackendQuote] HTTP ${response?.statusCode ?? 'null'}', name: 'Quotes');
         return;
       }
 

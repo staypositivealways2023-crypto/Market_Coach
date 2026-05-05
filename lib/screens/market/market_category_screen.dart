@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../features/chart/screens/asset_chart_screen.dart';
+import '../stock_detail/stock_detail_screen.dart';
+import '../crypto_detail/crypto_detail_screen.dart';
 import '../../models/stock_summary.dart';
 import '../../providers/market_data_provider.dart';
 
@@ -258,7 +260,9 @@ class MarketCategoryScreen extends ConsumerWidget {
                       ),
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute(
-                          builder: (_) => AssetChartScreen(stock: stock),
+                          builder: (_) => stock.isCrypto
+                              ? CryptoDetailScreen(stock: stock)
+                              : StockDetailScreen(stock: stock),
                         ),
                       ),
                     ),

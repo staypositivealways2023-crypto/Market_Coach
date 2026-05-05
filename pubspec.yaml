@@ -53,6 +53,7 @@ dependencies:
   url_launcher: ^6.2.0            # Phase 5 — open news articles in browser
   audioplayers: ^6.0.0            # Phase 8 — play Cartesia TTS MP3 audio inline
   image_picker: ^1.1.2            # Phase 2 — chart image upload for vision analysis
+  webview_flutter: ^4.10.0        # Phase 2 — TradingView Lightweight Charts embed
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.

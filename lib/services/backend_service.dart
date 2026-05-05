@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../config/api_config.dart';
+import '../utils/backend_http.dart';
 import '../models/fundamentals.dart';
 import '../models/holding.dart';
 import '../models/market_detail.dart';
@@ -14,6 +15,7 @@ import '../models/signal_analysis.dart';
 class BackendService {
   static String get _base => APIConfig.backendBaseUrl;
   static const _timeout = Duration(seconds: 10);
+
 
   // ── Auth headers ──────────────────────────────────────────────────────────
   // Used by AI-cost endpoints (analyse, portfolio/analyse, trade-debrief, chat).
@@ -274,14 +276,13 @@ class BackendService {
   // ── Structured AI Analysis ────────────────────────────────────────────────
 
   Future<Map<String, dynamic>?> getStructuredAnalysis(String symbol) async {
-    try {
-      final resp = await http
-          .get(Uri.parse('$_base/api/analysis/structured/${symbol.toUpperCase()}'))
-          .timeout(const Duration(seconds: 60));
-      if (resp.statusCode == 200) {
-        return jsonDecode(resp.body) as Map<String, dynamic>;
-      }
-    } catch (_) {}
+    final resp = await BackendHttp.get(
+      '/api/analysis/structured/${symbol.toUpperCase()}',
+      timeout: const Duration(seconds: 60),
+    );
+    if (resp != null && resp.statusCode == 200) {
+      return jsonDecode(resp.body) as Map<String, dynamic>;
+    }
     return null;
   }
 

@@ -8,6 +8,8 @@ import '../../models/stock_summary.dart';
 import '../../services/backend_service.dart';
 import '../../widgets/glass_card.dart';
 import '../../features/chart/screens/asset_chart_screen.dart';
+import '../stock_detail/stock_detail_screen.dart';
+import '../crypto_detail/crypto_detail_screen.dart';
 import 'market_view_all_screen.dart';
 
 // ── Default symbol lists ──────────────────────────────────────────────────────
@@ -498,7 +500,11 @@ class _AssetRow extends StatelessWidget {
 
     return GestureDetector(
       onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => AssetChartScreen(stock: asset)),
+        MaterialPageRoute(
+          builder: (_) => asset.isCrypto
+              ? CryptoDetailScreen(stock: asset)
+              : StockDetailScreen(stock: asset),
+        ),
       ),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -728,7 +734,9 @@ class _AssetCard extends StatelessWidget {
         width: 200,
         padding: const EdgeInsets.all(16),
         onTap: () => Navigator.of(context).push(MaterialPageRoute(
-          builder: (_) => AssetChartScreen(stock: asset),
+          builder: (_) => asset.isCrypto
+              ? CryptoDetailScreen(stock: asset)
+              : StockDetailScreen(stock: asset),
         )),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

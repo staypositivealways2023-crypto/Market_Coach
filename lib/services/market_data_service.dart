@@ -2,12 +2,12 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../config/api_config.dart';
-import '../models/order_book.dart';
 import '../models/market_flow.dart';
+import '../models/order_book.dart';
+import '../utils/backend_http.dart';
 
 /// Phase 5 — Centralized service for all real-time market data endpoints.
 ///
@@ -26,28 +26,16 @@ class MarketDataService {
   factory MarketDataService() => _instance;
   MarketDataService._internal();
 
-  static String get _base => APIConfig.backendBaseUrl;
   static String get _wsBase => APIConfig.backendWsUrl;
-  static const _timeout = Duration(seconds: 10);
 
   // ── Order Book ─────────────────────────────────────────────────────────────
 
   Future<OrderBook?> getOrderBook(String symbol, {int levels = 10}) async {
-    final url =
-        '$_base/api/market/orderbook/${symbol.toUpperCase()}?levels=$levels';
-    try {
-      final resp =
-          await http.get(Uri.parse(url)).timeout(_timeout);
-      if (resp.statusCode == 200) {
-        return OrderBook.fromMap(
-            jsonDecode(resp.body) as Map<String, dynamic>);
-      }
-      if (kDebugMode) {
-        debugPrint(
-            '[MarketDataService] orderbook ${resp.statusCode}: ${resp.body.substring(0, resp.body.length.clamp(0, 200))}');
-      }
-    } catch (e) {
-      if (kDebugMode) debugPrint('[MarketDataService] getOrderBook error: $e');
+    final resp = await BackendHttp.get(
+      '/api/market/orderbook/${symbol.toUpperCase()}?levels=$levels',
+    );
+    if (resp != null && resp.statusCode == 200) {
+      return OrderBook.fromMap(jsonDecode(resp.body) as Map<String, dynamic>);
     }
     return null;
   }
@@ -55,20 +43,12 @@ class MarketDataService {
   // ── Money Flow ─────────────────────────────────────────────────────────────
 
   Future<MoneyFlowData?> getMoneyFlow(String symbol) async {
-    final url = '$_base/api/market/moneyflow/${symbol.toUpperCase()}';
-    try {
-      final resp =
-          await http.get(Uri.parse(url)).timeout(const Duration(seconds: 20));
-      if (resp.statusCode == 200) {
-        return MoneyFlowData.fromMap(
-            jsonDecode(resp.body) as Map<String, dynamic>);
-      }
-      if (kDebugMode) {
-        debugPrint(
-            '[MarketDataService] moneyflow ${resp.statusCode}');
-      }
-    } catch (e) {
-      if (kDebugMode) debugPrint('[MarketDataService] getMoneyFlow error: $e');
+    final resp = await BackendHttp.get(
+      '/api/market/moneyflow/${symbol.toUpperCase()}',
+      timeout: const Duration(seconds: 20),
+    );
+    if (resp != null && resp.statusCode == 200) {
+      return MoneyFlowData.fromMap(jsonDecode(resp.body) as Map<String, dynamic>);
     }
     return null;
   }
@@ -76,22 +56,12 @@ class MarketDataService {
   // ── Market Position ────────────────────────────────────────────────────────
 
   Future<MarketPositionData?> getMarketPosition(String symbol) async {
-    final url = '$_base/api/market/marketposition/${symbol.toUpperCase()}';
-    try {
-      final resp =
-          await http.get(Uri.parse(url)).timeout(const Duration(seconds: 20));
-      if (resp.statusCode == 200) {
-        return MarketPositionData.fromMap(
-            jsonDecode(resp.body) as Map<String, dynamic>);
-      }
-      if (kDebugMode) {
-        debugPrint(
-            '[MarketDataService] marketposition ${resp.statusCode}');
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('[MarketDataService] getMarketPosition error: $e');
-      }
+    final resp = await BackendHttp.get(
+      '/api/market/marketposition/${symbol.toUpperCase()}',
+      timeout: const Duration(seconds: 20),
+    );
+    if (resp != null && resp.statusCode == 200) {
+      return MarketPositionData.fromMap(jsonDecode(resp.body) as Map<String, dynamic>);
     }
     return null;
   }
@@ -99,19 +69,12 @@ class MarketDataService {
   // ── Options ────────────────────────────────────────────────────────────────
 
   Future<OptionsData?> getOptions(String symbol) async {
-    final url = '$_base/api/market/options/${symbol.toUpperCase()}';
-    try {
-      final resp =
-          await http.get(Uri.parse(url)).timeout(const Duration(seconds: 20));
-      if (resp.statusCode == 200) {
-        return OptionsData.fromMap(
-            jsonDecode(resp.body) as Map<String, dynamic>);
-      }
-      if (kDebugMode) {
-        debugPrint('[MarketDataService] options ${resp.statusCode}');
-      }
-    } catch (e) {
-      if (kDebugMode) debugPrint('[MarketDataService] getOptions error: $e');
+    final resp = await BackendHttp.get(
+      '/api/market/options/${symbol.toUpperCase()}',
+      timeout: const Duration(seconds: 20),
+    );
+    if (resp != null && resp.statusCode == 200) {
+      return OptionsData.fromMap(jsonDecode(resp.body) as Map<String, dynamic>);
     }
     return null;
   }

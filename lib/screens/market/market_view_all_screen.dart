@@ -8,6 +8,8 @@ import '../../services/quote_service.dart';
 import '../../utils/crypto_helper.dart';
 import '../../widgets/glass_card.dart';
 import '../../features/chart/screens/asset_chart_screen.dart';
+import '../stock_detail/stock_detail_screen.dart';
+import '../crypto_detail/crypto_detail_screen.dart';
 
 enum SortCriteria { price, changePercent, volume, marketCap, name }
 
@@ -331,12 +333,10 @@ class _AssetListTile extends StatelessWidget {
       onTap: () {
         Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (_) => AssetChartScreen(
-              stock: asset.copyWith(
-                price: price,
-                changePercent: changePercent,
-              ),
-            ),
+            builder: (_) {
+              final s = asset.copyWith(price: price, changePercent: changePercent);
+              return s.isCrypto ? CryptoDetailScreen(stock: s) : StockDetailScreen(stock: s);
+            },
           ),
         );
       },

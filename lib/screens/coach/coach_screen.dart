@@ -1,18 +1,20 @@
 import 'package:flutter/material.dart';
 
 import '../../features/jarvis_chat/presentation/jarvis_chat_screen.dart';
+import '../analysis/analysis_screen.dart';
 import '../learn/learn_screen.dart';
 
-/// Coach tab — two sub-tabs:
-///   • Learn  – lesson library (LearnScreen embedded without its own AppBar)
-///   • Ask    – Jarvis text + voice conversation (JarvisChatScreen)
+/// Coach tab — three sub-tabs:
+///   • Learn    – lesson library
+///   • Analyse  – AI-powered symbol analysis
+///   • Ask      – Jarvis text + voice conversation
 class CoachScreen extends StatelessWidget {
   const CoachScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Scaffold(
         backgroundColor: Colors.transparent,
         appBar: AppBar(
@@ -53,6 +55,11 @@ class CoachScreen extends StatelessWidget {
                 iconMargin: EdgeInsets.only(bottom: 2),
               ),
               Tab(
+                icon: Icon(Icons.auto_awesome_outlined, size: 18),
+                text: 'Analyse',
+                iconMargin: EdgeInsets.only(bottom: 2),
+              ),
+              Tab(
                 icon: Icon(Icons.chat_bubble_outline_rounded, size: 18),
                 text: 'Ask',
                 iconMargin: EdgeInsets.only(bottom: 2),
@@ -69,6 +76,7 @@ class CoachScreen extends StatelessWidget {
         body: const TabBarView(
           children: [
             LearnScreen(),
+            AnalysisScreen(),
             JarvisChatScreen(showAppBar: false),
           ],
         ),

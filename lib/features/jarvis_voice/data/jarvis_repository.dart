@@ -3,18 +3,12 @@ import 'dart:developer' as dev;
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:http/http.dart' as http;
 
-import '../../../config/api_config.dart';
+import '../../../utils/backend_http.dart';
 import 'models/voice_session_bootstrap.dart';
 
 /// HTTP client for MarketCoach backend /api/voice/* routes.
-///
-/// All requests include a fresh Firebase ID token for authentication.
-/// This is the thin backend layer that replaces the old localhost:7700 Jarvis path
-/// for voice sessions (the old JarvisService is untouched for text mode).
 class JarvisRepository {
-  static String get _base => '${APIConfig.backendBaseUrl}/api/voice';
   static const _timeout = Duration(seconds: 20);
 
   Future<Map<String, String>> _authHeaders(User user) async {
@@ -46,9 +40,8 @@ class JarvisRepository {
 
     dev.log('[JarvisRepo] POST /session/create mode=${mode.value}', name: 'JarvisRepository');
 
-    final res = await http
-        .post(Uri.parse('$_base/session/create'), headers: headers, body: body)
-        .timeout(_timeout);
+    final res = await BackendHttp.post('/api/voice/session/create', headers: headers, body: body, timeout: _timeout);
+    if (res == null) throw Exception('session/create: no response from backend');
 
     if (res.statusCode == 200) {
       return VoiceSessionBootstrap.fromJson(
@@ -70,9 +63,7 @@ class JarvisRepository {
     final headers = await _authHeaders(user);
     dev.log('[JarvisRepo] POST /session/force-end (orphan recovery)', name: 'JarvisRepository');
     try {
-      await http
-          .post(Uri.parse('$_base/session/force-end'), headers: headers)
-          .timeout(_timeout);
+      await BackendHttp.post('/api/voice/session/force-end', headers: headers, body: '', timeout: _timeout);
       dev.log('[JarvisRepo] force-end OK — stale lock cleared', name: 'JarvisRepository');
     } catch (e) {
       dev.log('[JarvisRepo] force-end failed (non-fatal): $e', name: 'JarvisRepository');
@@ -96,9 +87,7 @@ class JarvisRepository {
     dev.log('[JarvisRepo] POST /session/end session=$sessionId', name: 'JarvisRepository');
 
     try {
-      await http
-          .post(Uri.parse('$_base/session/end'), headers: headers, body: body)
-          .timeout(_timeout);
+      await BackendHttp.post('/api/voice/session/end', headers: headers, body: body, timeout: _timeout);
     } catch (e) {
       dev.log('[JarvisRepo] session/end failed (non-fatal): $e', name: 'JarvisRepository');
     }
@@ -123,16 +112,13 @@ class JarvisRepository {
 
     dev.log('[JarvisRepo] POST /tools/invoke tool=$toolName', name: 'JarvisRepository');
 
-    final res = await http
-        .post(Uri.parse('$_base/tools/invoke'), headers: headers, body: body)
-        .timeout(const Duration(seconds: 15));
-
-    if (res.statusCode == 200) {
+    final res = await BackendHttp.post('/api/voice/tools/invoke', headers: headers, body: body, timeout: const Duration(seconds: 15));
+    if (res != null && res.statusCode == 200) {
       final data = jsonDecode(res.body) as Map<String, dynamic>;
       return data['result'] as Map<String, dynamic>? ?? {};
     }
-    dev.log('[JarvisRepo] tools/invoke failed ${res.statusCode}', name: 'JarvisRepository');
-    return {'error': 'Tool invocation failed: ${res.statusCode}'};
+    dev.log('[JarvisRepo] tools/invoke failed ${res?.statusCode}', name: 'JarvisRepository');
+    return {'error': 'Tool invocation failed: ${res?.statusCode}'};
   }
 
   // ── Events ─────────────────────────────────────────────────────────────────
@@ -146,9 +132,7 @@ class JarvisRepository {
     try {
       final headers = await _authHeaders(user);
       final body = jsonEncode({'events': events});
-      await http
-          .post(Uri.parse('$_base/events/batch'), headers: headers, body: body)
-          .timeout(const Duration(seconds: 10));
+      await BackendHttp.post('/api/voice/events/batch', headers: headers, body: body, timeout: const Duration(seconds: 10));
     } catch (e) {
       dev.log('[JarvisRepo] events/batch failed (non-fatal): $e', name: 'JarvisRepository');
     }
@@ -166,9 +150,7 @@ class JarvisRepository {
     try {
       final headers = await _authHeaders(user);
       final body = jsonEncode({'key': key, 'value': value, 'source': source});
-      await http
-          .post(Uri.parse('$_base/memory/upsert'), headers: headers, body: body)
-          .timeout(_timeout);
+      await BackendHttp.post('/api/voice/memory/upsert', headers: headers, body: body, timeout: _timeout);
     } catch (e) {
       dev.log('[JarvisRepo] memory/upsert failed (non-fatal): $e', name: 'JarvisRepository');
     }
