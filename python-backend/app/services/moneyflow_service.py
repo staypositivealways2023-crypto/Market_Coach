@@ -170,6 +170,10 @@ def _fetch_df(symbol: str, period: str = "3mo") -> Optional[pd.DataFrame]:
         df = yf.download(yf_sym, period=period, progress=False, auto_adjust=True)
         if df is None or len(df) < 21:
             return None
+        # yfinance >=0.2.18 returns MultiIndex columns for single-symbol downloads:
+        # ('Close', 'AAPL'), ('High', 'AAPL'), … — flatten to bare price-type names.
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
         df = df.dropna()
         return df
     except Exception as e:

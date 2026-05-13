@@ -63,8 +63,18 @@ class _OrderBookWidgetState extends State<OrderBookWidget> {
       } else {
         if (mounted) setState(() { _loading = false; _error = 'Server ${resp.statusCode}'; });
       }
+    } on TimeoutException {
+      if (mounted) setState(() { _loading = false; _error = 'Request timed out'; });
     } catch (e) {
-      if (mounted) setState(() { _loading = false; _error = e.toString(); });
+      // Avoid raw ClientException / SocketException strings in the UI
+      final msg = e.toString();
+      final friendly = (msg.contains('ClientException') ||
+              msg.contains('SocketException') ||
+              msg.contains('Connection') ||
+              msg.contains('connection'))
+          ? 'Order book temporarily unavailable'
+          : 'Order book temporarily unavailable';
+      if (mounted) setState(() { _loading = false; _error = friendly; });
     }
   }
 
@@ -140,8 +150,26 @@ class _OrderBookWidgetState extends State<OrderBookWidget> {
 
   Widget _buildError() {
     return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Text(_error ?? 'Unknown error', style: const TextStyle(color: _label, fontSize: 11)),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Row(
+        children: [
+          const Icon(Icons.cloud_off_rounded, color: _label, size: 14),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              _error ?? 'Order book temporarily unavailable',
+              style: const TextStyle(color: _label, fontSize: 11),
+            ),
+          ),
+          GestureDetector(
+            onTap: _fetch,
+            child: const Padding(
+              padding: EdgeInsets.only(left: 8),
+              child: Icon(Icons.refresh_rounded, color: _label, size: 15),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

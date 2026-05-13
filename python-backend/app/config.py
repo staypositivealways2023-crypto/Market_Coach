@@ -20,6 +20,12 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
 
+    # Reddit PRAW (Phase 4 — sentiment scraper)
+    # Create a script app at https://www.reddit.com/prefs/apps
+    REDDIT_CLIENT_ID: str = ""
+    REDDIT_CLIENT_SECRET: str = ""
+    REDDIT_USER_AGENT: str = "MarketCoach/1.0 by u/marketcoach_bot"
+
     # Redis (for voice session working memory and usage counters)
     REDIS_URL: str = "redis://localhost:6379"
     REDIS_TTL_SESSION: int = 10800   # 3 hours — live voice session state

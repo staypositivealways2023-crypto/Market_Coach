@@ -1,5 +1,6 @@
 """Valuation Service - DCF and comparative valuation"""
 
+import asyncio
 import yfinance as yf
 from typing import Optional
 import logging
@@ -21,8 +22,7 @@ class ValuationService:
         """Calculate DCF valuation"""
 
         try:
-            ticker = yf.Ticker(symbol)
-            info = ticker.info
+            info = await asyncio.to_thread(lambda: yf.Ticker(symbol).info)
 
             # Get required data
             fcf = info.get('freeCashflow')
@@ -92,8 +92,7 @@ class ValuationService:
         """Calculate comparative valuation metrics"""
 
         try:
-            ticker = yf.Ticker(symbol)
-            info = ticker.info
+            info = await asyncio.to_thread(lambda: yf.Ticker(symbol).info)
 
             # Extract metrics
             pe_ratio = info.get('trailingPE')

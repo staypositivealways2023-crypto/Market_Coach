@@ -135,7 +135,9 @@ class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
     if (_aiLoading) return;
     setState(() { _aiLoading = true; _aiError = null; });
     try {
-      final interval = isCryptoSymbol(widget.stock.ticker) ? '1h' : '1d';
+      // Use the same interval as the currently selected chart timeframe so
+      // AI indicators match what the user sees (not stale daily values).
+      final interval = _stockInterval(_timeframe);
       final result = await _backend.analyseStock(
         widget.stock.ticker,
         interval: interval,
@@ -370,6 +372,7 @@ class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
             : TvChartWidget(
                 candles: _candles,
                 chartType: _chartType,
+                timeframe: _timeframe,
                 height: 320,
               ),
 
@@ -437,8 +440,10 @@ class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
       _Stat('Day Low',    r?.dayLow   != null ? '\$${r!.dayLow!.toStringAsFixed(2)}' : '—'),
       _Stat('52W High',   r?.yearHigh != null ? '\$${r!.yearHigh!.toStringAsFixed(2)}' : '—'),
       _Stat('52W Low',    r?.yearLow  != null ? '\$${r!.yearLow!.toStringAsFixed(2)}' : '—'),
-      _Stat('Volume',     _fmtVol(r?.volume)),
-      _Stat('Mkt Cap',    _fmt(r?.marketCap ?? widget.stock.marketCap)),
+      // Volume: prefer direct field, fallback to turnover computation
+      _Stat('Volume',     r?.volume != null ? _fmtVol(r!.volume) : _fmt(r?.turnover)),
+      // Market cap: prefer backend range field, then StockSummary, then turnover
+      _Stat('Mkt Cap',    _fmt(r?.marketCap ?? widget.stock.marketCap ?? r?.turnover)),
       if (fd != null && !fd.isCrypto) ...[
         _Stat('P/E',      fd.pe?.toStringAsFixed(1) ?? '—'),
         _Stat('EPS (TTM)', fd.ttmEps?.toStringAsFixed(2) ?? '—'),

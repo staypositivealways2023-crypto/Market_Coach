@@ -33,6 +33,21 @@ class Subscription {
   /// Whether portfolio AI analysis is accessible.
   bool get canUsePortfolioAI => isPro;
 
+  /// Whether the Smart Screener is accessible.
+  bool get canUseScreener => isPro;
+
+  /// Whether Technical Alerts are accessible.
+  bool get canUseAlerts => isPro;
+
+  /// Whether the Macro Dashboard is accessible.
+  bool get canUseMacroDashboard => isPro;
+
+  /// Whether the Probabilistic Engine (Monte Carlo / Bayesian) is accessible.
+  bool get canUseProbabilistic => isPro;
+
+  /// Whether backtesting features are accessible.
+  bool get canUseBacktest => isPro;
+
   // ── Factory ────────────────────────────────────────────────────────────────
 
   factory Subscription.fromMap(Map<String, dynamic> map, {String? userEmail}) {

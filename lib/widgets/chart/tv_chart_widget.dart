@@ -26,12 +26,17 @@ class TvChartWidget extends StatefulWidget {
   final List<Candle> candles;
   final TvChartType chartType;
   final double height;
+  /// Timeframe string (e.g. '1m','5m','15m','1h','1D').
+  /// Used to pick a sensible initial visible-bar count so short-interval
+  /// candles are not squashed to hairlines by fitContent().
+  final String? timeframe;
 
   const TvChartWidget({
     super.key,
     required this.candles,
     this.chartType = TvChartType.candlestick,
     this.height = 320,
+    this.timeframe,
   });
 
   @override
@@ -106,7 +111,7 @@ class _TvChartWidgetState extends State<TvChartWidget> {
 <script>
 var chart, series;
 
-function initChart(type, data) {
+function initChart(type, data, visibleBars) {
   var loader = document.getElementById('loading');
   if (loader) loader.remove();
 
@@ -164,7 +169,14 @@ function initChart(type, data) {
 
   if (data && data.length > 0) {
     series.setData(data);
-    chart.timeScale().fitContent();
+    if (visibleBars > 0 && data.length > visibleBars) {
+      chart.timeScale().setVisibleLogicalRange({
+        from: data.length - visibleBars,
+        to: data.length - 1
+      });
+    } else {
+      chart.timeScale().fitContent();
+    }
   }
 
   window.addEventListener('resize', function() {
@@ -172,14 +184,29 @@ function initChart(type, data) {
   });
 }
 
-function updateData(type, dataJson) {
+function updateData(type, dataJson, visibleBars) {
   var data = JSON.parse(dataJson);
-  initChart(type, data);
+  initChart(type, data, visibleBars || 0);
 }
 </script>
 </body>
 </html>
 ''';
+
+  // How many bars to show on initial render for short-interval timeframes.
+  // Returns 0 to fall back to fitContent() for daily+ charts.
+  int _visibleBars() {
+    switch (widget.timeframe) {
+      case '1m':  return 60;
+      case '5m':  return 50;
+      case '15m': return 40;
+      case '30m': return 60;
+      case '1h':  return 72;
+      case '2h':  return 60;
+      case '4h':  return 60;
+      default:    return 0;
+    }
+  }
 
   // Serialise candles and call JS updateData().
   void _pushData() {
@@ -212,7 +239,8 @@ function updateData(type, dataJson) {
     final deduped = points.where((p) => seen.add(p['time'] as int)).toList();
 
     final json = jsonEncode(deduped);
-    _controller.runJavaScript('updateData("$type", ${jsonEncode(json)})');
+    final bars = _visibleBars();
+    _controller.runJavaScript('updateData("$type", ${jsonEncode(json)}, $bars)');
   }
 
   @override

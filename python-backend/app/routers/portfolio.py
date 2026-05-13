@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from app.services.data_fetcher import MarketDataFetcher
 from app.services.claude_service import ClaudeService
+from app.services.backtest_engine import BacktestHolding, run_portfolio_backtest
 from app.utils.auth import require_auth
 from app.utils.rate_limit import limiter
 
@@ -31,6 +32,12 @@ class HoldingInput(BaseModel):
 
 class PortfolioAnalyseRequest(BaseModel):
     holdings: List[HoldingInput]
+
+
+class PortfolioBacktestRequest(BaseModel):
+    holdings: List[HoldingInput]
+    period: str = "1y"
+    initial_value: float = 10000
 
 
 class HoldingResult(BaseModel):
@@ -61,6 +68,9 @@ class PortfolioAnalyseResponse(BaseModel):
     holdings: List[HoldingResult]
     metrics: PortfolioMetrics
     correlation: dict
+    sector_exposure: dict = {}
+    risk_attribution: List[dict] = []
+    max_drawdown: Optional[float] = None
     rebalancing: List[str]
     ai_insight: str
 
@@ -135,6 +145,36 @@ def _portfolio_returns(
     return port
 
 
+def _max_drawdown_from_returns(returns: List[float]) -> Optional[float]:
+    if not returns:
+        return None
+    equity = 1.0
+    peak = 1.0
+    worst = 0.0
+    for ret in returns:
+        equity *= 1 + ret
+        peak = max(peak, equity)
+        worst = min(worst, (equity - peak) / peak)
+    return worst
+
+
+def _sector_for_symbol(symbol: str) -> str:
+    sectors = {
+        "Tech": {"AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "ADBE", "CRM", "CSCO", "INTC", "AMD", "QCOM", "AVGO", "NFLX", "PLTR"},
+        "Finance": {"BRK-B", "BRK.B", "JPM", "V", "MA", "BAC", "GS", "MS"},
+        "Healthcare": {"JNJ", "UNH", "PFE", "MRK", "ABBV", "LLY", "TMO"},
+        "Energy": {"XOM", "CVX"},
+        "Consumer": {"WMT", "HD", "COST", "PG", "PEP", "KO", "DIS", "ACN"},
+        "ETF": {"SPY", "QQQ", "ARKK", "IWM"},
+        "Crypto": {"BTC", "ETH", "BNB", "SOL", "ADA", "DOT", "AVAX", "XRP", "DOGE"},
+    }
+    normalized = symbol.upper().replace("-", ".")
+    for sector, symbols in sectors.items():
+        if normalized in symbols or symbol.upper() in symbols:
+            return sector
+    return "Other"
+
+
 # ── Endpoint ──────────────────────────────────────────────────────────────────
 
 @router.post("/analyse", response_model=PortfolioAnalyseResponse)
@@ -144,7 +184,8 @@ async def analyse_portfolio(request: Request, req: PortfolioAnalyseRequest, uid:
     if not holdings:
         return PortfolioAnalyseResponse(
             total_value=0, total_cost=0, total_pnl=0, total_pnl_pct=0,
-            holdings=[], metrics=PortfolioMetrics(), correlation={},
+            holdings=[], metrics=PortfolioMetrics(), correlation={}, sector_exposure={},
+            risk_attribution=[], max_drawdown=None,
             rebalancing=[], ai_insight="No holdings provided.",
         )
 
@@ -186,11 +227,13 @@ async def analyse_portfolio(request: Request, req: PortfolioAnalyseRequest, uid:
     total_pnl = total_value - total_cost
     total_pnl_pct = (total_pnl / total_cost * 100) if total_cost > 0 else 0
 
-    # 3. Fetch 30-day candles for each symbol
+    # 3. Fetch ~3-month candles for each symbol.
+    #    Sharpe/Sortino need ≥ 30 returns (31 closes) for statistical significance;
+    #    63 trading days (~3 months) yields meaningfully lower standard error.
     symbol_returns: dict = {}
     for sym in symbols:
         try:
-            candles = await _fetcher.get_candles(sym, interval="1d", limit=31)
+            candles = await _fetcher.get_candles(sym, interval="1d", limit=64)
             closes = [float(c.close) for c in candles] if candles else []
             symbol_returns[sym] = _daily_returns(closes)
         except Exception as e:
@@ -216,6 +259,7 @@ async def analyse_portfolio(request: Request, req: PortfolioAnalyseRequest, uid:
         sortino_ratio=round(sortino, 3) if sortino is not None else None,
         portfolio_volatility=round(vol, 4) if vol is not None else None,
     )
+    max_drawdown = _max_drawdown_from_returns(port_returns)
 
     # 7. Correlation matrix (top pairs)
     correlation: dict = {}
@@ -227,6 +271,23 @@ async def analyse_portfolio(request: Request, req: PortfolioAnalyseRequest, uid:
             if c is not None:
                 key = f"{a}/{b}"
                 correlation[key] = round(c, 3)
+
+    sector_exposure: dict = {}
+    for r in holding_results:
+        if r.allocation_pct is None:
+            continue
+        sector = _sector_for_symbol(r.symbol)
+        sector_exposure[sector] = round(sector_exposure.get(sector, 0.0) + r.allocation_pct, 2)
+
+    raw_risk = []
+    for sym, rets in symbol_returns.items():
+        contribution = weights.get(sym, 0.0) * (_std(rets) * math.sqrt(252) if rets else 0.0)
+        raw_risk.append((sym, contribution))
+    total_risk = sum(v for _, v in raw_risk)
+    risk_attribution = [
+        {"symbol": sym, "risk_pct": round((value / total_risk) * 100, 2) if total_risk > 0 else 0.0}
+        for sym, value in sorted(raw_risk, key=lambda item: item[1], reverse=True)
+    ]
 
     # 8. Rebalancing suggestions
     rebalancing: List[str] = []
@@ -281,6 +342,23 @@ async def analyse_portfolio(request: Request, req: PortfolioAnalyseRequest, uid:
         holdings=holding_results,
         metrics=metrics,
         correlation=correlation,
+        sector_exposure=sector_exposure,
+        risk_attribution=risk_attribution,
+        max_drawdown=round(max_drawdown, 4) if max_drawdown is not None else None,
         rebalancing=rebalancing,
         ai_insight=ai_insight,
+    )
+
+
+@router.post("/backtest")
+@limiter.limit("5/minute")
+async def backtest_portfolio(request: Request, req: PortfolioBacktestRequest, uid: str = Depends(require_auth)):
+    holdings = [
+        BacktestHolding(symbol=h.symbol.upper(), shares=h.shares, avg_cost=h.avg_cost)
+        for h in req.holdings
+    ]
+    return run_portfolio_backtest(
+        holdings=holdings,
+        period=req.period,
+        initial_value=req.initial_value,
     )

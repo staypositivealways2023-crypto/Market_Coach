@@ -38,6 +38,14 @@ class ClaudeAnalysisService {
     if (data == null) {
       throw AnalysisException('AI analysis unavailable. Please try again later.');
     }
+    // backend_service now wraps errors as {'error': reason, 'status': code}.
+    if (data.containsKey('error')) {
+      final msg = data['error']?.toString() ?? 'AI analysis unavailable.';
+      final status = data['status'] as int? ?? 0;
+      if (status == 429) throw RateLimitException();
+      if (status == 503) throw ServiceUnavailableException();
+      throw AnalysisException(msg, statusCode: status);
+    }
     final price = (data['current_price'] as num?)?.toDouble() ?? 0.0;
     return _parseJsonResponse(jsonEncode(data), price, symbol);
   }

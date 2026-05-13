@@ -13,6 +13,8 @@ import '../../models/chat_session.dart';
 import '../../models/subscription.dart';
 import '../../providers/chat_provider.dart';
 import '../../providers/subscription_provider.dart';
+import '../../providers/usage_analytics_provider.dart';
+import '../../services/usage_analytics_service.dart';
 import '../../widgets/disclaimer_banner.dart';
 import '../../widgets/paywall_bottom_sheet.dart';
 
@@ -178,6 +180,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     if (text.trim().isEmpty) return;
     _textController.clear();
     _focusNode.unfocus();
+    ref.read(usageAnalyticsProvider)?.logFeatureUsed(UsageFeature.chat);
     ref.read(chatProvider.notifier).sendMessage(text);
     _scrollToBottom();
   }

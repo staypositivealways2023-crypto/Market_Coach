@@ -192,20 +192,11 @@ async def run(state: AnalystState) -> dict:
     tool_results = state.get("tool_results") or {}
     intent = state.get("intent", "general")
 
-    # ── Bypass for general intent (no numbers to verify) ─────────────────────
-    if intent == "general":
-        logger.info("[verification] general intent — auto-pass (no numerical claims)")
-        return {
-            "verification_passed": True,
-            "verification_score": 1.0,
-            "flagged_claims": [],
-            "retry_count": retry_count,
-        }
-
     # ── Hard fail when reasoning answer is empty ─────────────────────────────
-    # DO NOT auto-pass here — an empty answer means DeepSeek returned nothing,
-    # and passing would allow synthesis to hallucinate a backup answer from
-    # its own training data.  Fail → retry_count++ → reasoning node reruns.
+    # This check MUST come before the general-intent bypass.  An empty answer
+    # means DeepSeek (or Ollama) returned nothing; auto-passing would let
+    # synthesis hallucinate from its training data.
+    # Fail with retry_count++ so the router's retry branch re-runs reasoning.
     if not reasoning_answer or not reasoning_answer.strip():
         logger.warning(
             "[verification] reasoning_answer is empty — hard-failing to trigger retry "
@@ -219,6 +210,17 @@ async def run(state: AnalystState) -> dict:
                 "Retry required."
             ],
             "retry_count": retry_count + 1,
+        }
+
+    # ── Bypass for general intent (no numbers to verify) ─────────────────────
+    # Only reached when reasoning_answer is non-empty (guard above passed).
+    if intent == "general":
+        logger.info("[verification] general intent — auto-pass (no numerical claims)")
+        return {
+            "verification_passed": True,
+            "verification_score": 1.0,
+            "flagged_claims": [],
+            "retry_count": retry_count,
         }
 
     # ── Bypass when no API key ────────────────────────────────────────────────

@@ -17,6 +17,11 @@ class MarketChart extends StatefulWidget {
   final double height;
   final void Function(dynamic pattern)? onPatternTap;
 
+  /// Called with `true` when a pan/pinch gesture begins, `false` when it ends.
+  /// Used by the parent CustomScrollView to freeze scrolling while the chart
+  /// is being interacted with (prevents gesture-arena conflicts).
+  final void Function(bool active)? onInteractionChanged;
+
   // RSI/MACD data for in-canvas panels
   final List<double?> rsiValues;
   final List<double?> macdLine;
@@ -37,6 +42,7 @@ class MarketChart extends StatefulWidget {
     this.histogram = const [],
     this.showRSI = false,
     this.showMACD = false,
+    this.onInteractionChanged,
   });
 
   @override
@@ -60,6 +66,7 @@ class _MarketChartState extends State<MarketChart> {
   void _onScaleStart(ScaleStartDetails d) {
     _lastScale = 1.0;
     _lastFocalPoint = d.localFocalPoint;
+    widget.onInteractionChanged?.call(true);
   }
 
   void _onScaleUpdate(ScaleUpdateDetails d) {
@@ -87,6 +94,7 @@ class _MarketChartState extends State<MarketChart> {
   void _onScaleEnd(ScaleEndDetails d) {
     _lastFocalPoint = null;
     _lastScale = 1.0;
+    widget.onInteractionChanged?.call(false);
   }
 
   void _onLongPressStart(LongPressStartDetails d) {

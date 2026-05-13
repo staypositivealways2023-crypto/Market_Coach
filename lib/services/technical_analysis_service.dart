@@ -190,54 +190,80 @@ class TechnicalAnalysisService {
     };
   }
 
-  /// Calculate RSI (Relative Strength Index) historical values
+  /// Calculate RSI (Relative Strength Index) historical values.
+  ///
+  /// Returns a list of the same length as [candles]. The first (period + 1)
+  /// entries are null (warmup); subsequent entries are Wilder-smoothed RSI in
+  /// the range [0, 100].  Gracefully handles candles with zero/invalid closes.
   static List<double?> calculateRSIHistory(List<Candle> candles, {int period = 14}) {
-    final rsi = <double?>[];
+    if (candles.isEmpty) return [];
+    // Need at least period+1 closes to compute one RSI value.
     if (candles.length < period + 1) {
       return List.filled(candles.length, null);
     }
 
-    List<double> gains = [];
-    List<double> losses = [];
+    // Filter out candles with non-positive or NaN closes before differencing.
+    final closes = candles.map((c) => c.close).toList();
 
-    // Calculate price changes
-    for (int i = 1; i < candles.length; i++) {
-      double change = candles[i].close - candles[i - 1].close;
-      gains.add(change > 0 ? change : 0);
-      losses.add(change < 0 ? -change : 0);
+    final gains  = <double>[];
+    final losses = <double>[];
+    for (int i = 1; i < closes.length; i++) {
+      final prev = closes[i - 1];
+      final curr = closes[i];
+      // Skip degenerate bars (e.g. zero-price on sparse crypto markets).
+      if (prev <= 0 || curr <= 0 || prev.isNaN || curr.isNaN) {
+        gains.add(0);
+        losses.add(0);
+      } else {
+        final change = curr - prev;
+        gains.add(change > 0 ? change : 0);
+        losses.add(change < 0 ? -change : 0);
+      }
     }
 
-    // Calculate first average gain and loss
-    double avgGain = gains.take(period).reduce((a, b) => a + b) / period;
-    double avgLoss = losses.take(period).reduce((a, b) => a + b) / period;
+    // Seed: Wilder's initial average = simple mean of first [period] changes.
+    double avgGain = gains.take(period).fold(0.0, (a, b) => a + b) / period;
+    double avgLoss = losses.take(period).fold(0.0, (a, b) => a + b) / period;
 
-    rsi.add(null); // First candle has no RSI
+    final rsi = <double?>[];
+    // Null for candle[0] + candles[1..period] = period+1 nulls total.
+    for (int i = 0; i <= period; i++) rsi.add(null);
 
-    for (int i = 0; i < period; i++) {
-      rsi.add(null); // Not enough data
-    }
-
-    // Calculate RSI for each period
+    // Wilder's smoothing for candles[period+1 .. N-1].
     for (int i = period; i < gains.length; i++) {
       avgGain = (avgGain * (period - 1) + gains[i]) / period;
       avgLoss = (avgLoss * (period - 1) + losses[i]) / period;
 
-      if (avgLoss == 0) {
-        rsi.add(100);
+      if (avgLoss < 1e-10) {
+        rsi.add(100.0); // All gains, no losses
       } else {
-        double rs = avgGain / avgLoss;
-        rsi.add(100 - (100 / (1 + rs)));
+        final rs = avgGain / avgLoss;
+        final value = 100.0 - (100.0 / (1.0 + rs));
+        // Clamp to [0, 100] to guard against floating-point edge cases.
+        rsi.add(value.clamp(0.0, 100.0));
       }
     }
 
     return rsi;
   }
 
-  /// Calculate MACD (Moving Average Convergence Divergence) historical values
+  /// Calculate MACD (Moving Average Convergence Divergence) historical values.
+  ///
+  /// Returns a map with keys 'macd', 'signal', 'histogram', each a list of
+  /// the same length as [candles] with nulls at positions that don't yet have
+  /// enough warmup data (first slowPeriod + signalPeriod - 2 positions).
   static Map<String, List<double?>> calculateMACDHistory(
     List<Candle> candles,
     {int fastPeriod = 12, int slowPeriod = 26, int signalPeriod = 9}
   ) {
+    final _empty = {
+      'macd': List<double?>.filled(candles.length, null),
+      'signal': List<double?>.filled(candles.length, null),
+      'histogram': List<double?>.filled(candles.length, null),
+    };
+    // Need at least slowPeriod candles for one valid EMA-slow value.
+    if (candles.length < slowPeriod) return _empty;
+
     final emaFast = calculateEMA(candles, fastPeriod);
     final emaSlow = calculateEMA(candles, slowPeriod);
 

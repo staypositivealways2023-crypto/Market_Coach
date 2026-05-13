@@ -3,7 +3,7 @@
 import aiohttp
 import yfinance as yf
 from typing import Optional, List
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 import logging
 
 from app.config import settings
@@ -125,45 +125,62 @@ class EarningsService:
             return []
 
     async def get_upcoming_earnings(self, symbol: str) -> UpcomingEarnings:
-        """Next earnings date + estimates via yfinance"""
-        result = UpcomingEarnings(
-            symbol=symbol.upper(),
-            earnings_date=None,
-            eps_estimate=None,
-            revenue_estimate=None,
-        )
+        """Next earnings date + estimates via yfinance (non-blocking)."""
+        sym = symbol.upper()
 
-        try:
-            ticker = yf.Ticker(symbol)
+        def _fetch_sync() -> UpcomingEarnings:
+            result = UpcomingEarnings(
+                symbol=sym,
+                earnings_date=None,
+                eps_estimate=None,
+                revenue_estimate=None,
+            )
+            try:
+                ticker = yf.Ticker(symbol)
 
-            # yfinance calendar returns a DataFrame or dict
-            calendar = ticker.calendar
-            if calendar is not None and not _is_empty(calendar):
-                if hasattr(calendar, 'get'):
-                    # dict format
-                    earnings_date = calendar.get("Earnings Date")
-                    if earnings_date:
-                        if hasattr(earnings_date, '__iter__') and not isinstance(earnings_date, str):
-                            earnings_date = list(earnings_date)[0]
-                        result.earnings_date = str(earnings_date)[:10]
-                    result.eps_estimate = calendar.get("EPS Estimate")
-                    result.revenue_estimate = calendar.get("Revenue Estimate")
-                else:
-                    # DataFrame format — transpose to get values
-                    cal_dict = calendar.to_dict()
-                    for col, values in cal_dict.items():
-                        v = list(values.values())[0] if values else None
-                        if "Earnings Date" in col and v:
-                            result.earnings_date = str(v)[:10]
-                        elif "EPS Estimate" in col:
-                            result.eps_estimate = v
-                        elif "Revenue Estimate" in col:
-                            result.revenue_estimate = v
+                # ── Primary: yfinance calendar (DataFrame or dict) ────────────
+                calendar = ticker.calendar
+                if calendar is not None and not _is_empty(calendar):
+                    if hasattr(calendar, 'get'):
+                        earnings_date = calendar.get("Earnings Date")
+                        if earnings_date:
+                            if hasattr(earnings_date, '__iter__') and not isinstance(earnings_date, str):
+                                earnings_date = list(earnings_date)[0]
+                            result.earnings_date = str(earnings_date)[:10]
+                        result.eps_estimate = calendar.get("EPS Estimate")
+                        result.revenue_estimate = calendar.get("Revenue Estimate")
+                    else:
+                        cal_dict = calendar.to_dict()
+                        for col, values in cal_dict.items():
+                            v = list(values.values())[0] if values else None
+                            if "Earnings Date" in col and v:
+                                result.earnings_date = str(v)[:10]
+                            elif "EPS Estimate" in col:
+                                result.eps_estimate = v
+                            elif "Revenue Estimate" in col:
+                                result.revenue_estimate = v
 
-        except Exception as e:
-            logger.warning(f"Upcoming earnings error for {symbol}: {e}")
+                # ── Fallback: ticker.info earningsTimestamp ───────────────────
+                if not result.earnings_date:
+                    try:
+                        info = ticker.info or {}
+                        ts = info.get("earningsTimestamp") or info.get("earningsTimestampStart")
+                        if ts:
+                            ed = datetime.fromtimestamp(ts, tz=timezone.utc).date()
+                            if ed >= date.today():
+                                result.earnings_date = ed.isoformat()
+                        if not result.eps_estimate:
+                            result.eps_estimate = info.get("epsForward") or info.get("epsTrailingTwelveMonths")
+                    except Exception:
+                        pass
 
-        return result
+            except Exception as e:
+                logger.warning(f"Upcoming earnings error for {symbol}: {e}")
+
+            return result
+
+        import asyncio
+        return await asyncio.to_thread(_fetch_sync)
 
     async def get_earnings_summary(self, symbol: str, history_limit: int = 8) -> dict:
         """Combined: upcoming date + historical EPS — used by the endpoint"""

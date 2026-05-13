@@ -13,7 +13,9 @@ class FundamentalsCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    if (data.isCrypto) return const SizedBox.shrink();
+    // Crypto assets use a different set of fields — equity ratios (P/E, EPS)
+    // are meaningless for them.  Show market-cap only when available.
+    if (data.isCrypto) return _buildCryptoCard(context, theme);
     if (!data.hasRatios) return const SizedBox.shrink();
 
     final metrics = _buildMetrics();
@@ -138,6 +140,43 @@ class FundamentalsCard extends StatelessWidget {
     if (cr >= 1) return Colors.white70;
     return const Color(0xFFFF4D6A);
   }
+
+  /// Crypto-specific card — shows market cap only (no equity ratios).
+  /// Always renders so the section is visible; shows '—' when data is loading.
+  Widget _buildCryptoCard(BuildContext context, ThemeData theme) {
+    final cap = data.marketCap;
+
+    String _fmtCap(double v) {
+      if (v >= 1e12) return '\$${(v / 1e12).toStringAsFixed(2)}T';
+      if (v >= 1e9)  return '\$${(v / 1e9).toStringAsFixed(2)}B';
+      if (v >= 1e6)  return '\$${(v / 1e6).toStringAsFixed(2)}M';
+      return '\$${v.toStringAsFixed(0)}';
+    }
+
+    final capLabel = (cap != null && cap > 0) ? _fmtCap(cap) : '—';
+
+    return GlassCard(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      child: Row(
+        children: [
+          Icon(Icons.currency_bitcoin,
+              color: theme.colorScheme.primary, size: 18),
+          const SizedBox(width: 8),
+          Text('Market Cap',
+              style: theme.textTheme.bodyMedium
+                  ?.copyWith(color: Colors.white54, fontSize: 12)),
+          const Spacer(),
+          Text(
+            capLabel,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _Metric {
@@ -202,8 +241,7 @@ class _TTMRow extends StatelessWidget {
       ],
     );
   }
-
-  String _fmt(double v) {
+  String _fmt(double v) {
     if (v.abs() >= 1e12) return '\$${(v / 1e12).toStringAsFixed(2)}T';
     if (v.abs() >= 1e9)  return '\$${(v / 1e9).toStringAsFixed(1)}B';
     if (v.abs() >= 1e6)  return '\$${(v / 1e6).toStringAsFixed(1)}M';

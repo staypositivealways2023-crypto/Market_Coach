@@ -29,7 +29,7 @@ class TimeframeSelector extends StatelessWidget {
           return Padding(
             padding: const EdgeInsets.only(right: 4),
             child: GestureDetector(
-              onTap: () => onChanged(tf),
+              onTap: () { if (tf != selectedTimeframe) onChanged(tf); },
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
                 decoration: BoxDecoration(

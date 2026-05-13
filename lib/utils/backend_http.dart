@@ -19,11 +19,14 @@ class BackendHttp {
 
   static Future<http.Response?> get(
     String path, {
+    Map<String, String>? headers,
     Duration timeout = const Duration(seconds: 10),
   }) async {
     for (final base in _bases()) {
       try {
-        final resp = await http.get(Uri.parse('$base$path')).timeout(timeout);
+        final resp = await http
+            .get(Uri.parse('$base$path'), headers: headers)
+            .timeout(timeout);
         if (resp.statusCode < 500) return resp;
       } catch (_) {}
     }

@@ -51,6 +51,7 @@ def _build_crew(symbol: str, uid: str, user_level: str):
         get_deep_fundamentals,
         calculate_risk_metrics,
         recall_user_context,
+        get_probabilistic_data,
     )
 
     # ── LLM config ──────────────────────────────────────────────────────────
@@ -172,6 +173,25 @@ def _build_crew(symbol: str, uid: str, user_level: str):
         allow_delegation=False,
     )
 
+    quant_agent = Agent(
+        role="Quantitative Analyst",
+        goal=(
+            f"Run probabilistic price-path simulations for {symbol} and deliver "
+            "a quantitative commentary section: Monte Carlo percentile fan, "
+            "VaR/CVaR, black-swan flag, and Bayesian price target with credible interval. "
+            "Express everything in concrete numbers. No opinions — only maths."
+        ),
+        backstory=(
+            "You are a quant analyst trained in stochastic calculus and Bayesian inference. "
+            "You never guess — you simulate. Your output feeds directly into the coach's "
+            "scenario probabilities."
+        ),
+        tools=[get_probabilistic_data],
+        llm=ollama_llm,
+        verbose=False,
+        allow_delegation=False,
+    )
+
     coach_agent = Agent(
         role="Personal Trading Coach",
         goal=(
@@ -199,7 +219,8 @@ def _build_crew(symbol: str, uid: str, user_level: str):
     # 3. task_fundamentals — DCF + quality scoring (DeepSeek-R1)
     # 4. task_technical    — signal confluence + support/resistance
     # 5. task_risk         — ATR stop-loss, sizing (references task_technical + task_fundamentals)
-    # 6. task_coach        — full synthesis (context = all 5 prior tasks)
+    # 6. task_quant        — Monte Carlo + Bayesian probabilistic commentary
+    # 7. task_coach        — full synthesis (context = all 6 prior tasks)
 
     task_data = Task(
         description=(
@@ -306,6 +327,32 @@ def _build_crew(symbol: str, uid: str, user_level: str):
         context=[task_data, task_technical, task_fundamentals],
     )
 
+    task_quant = Task(
+        description=(
+            f"1. Use get_probabilistic_data('{symbol}') to fetch Monte Carlo GBM paths "
+            "and Bayesian posterior price target.\n"
+            "2. Report the following quantitative metrics:\n"
+            "   - Percentile price fan at horizon: p10, p25, p50, p75, p90\n"
+            "   - Expected price (mean of simulated paths)\n"
+            "   - Probability of profit (price > current)\n"
+            "   - VaR 95 (% loss at 95th confidence, positive number)\n"
+            "   - CVaR 95 (expected loss beyond VaR, positive number)\n"
+            "   - Black swan flag (true/false) with excess kurtosis value\n"
+            "   - Bayesian posterior mean price and 90% credible interval\n"
+            "3. If black_swan_prone is true, note: 'Fat-tailed returns detected "
+            "(kurtosis > 3) — tail risk is elevated beyond normal distribution assumptions.'\n"
+            "4. If prob_profit < 0.45, flag as 'bearish tilt from simulation'.\n"
+            "5. Output as structured JSON."
+        ),
+        agent=quant_agent,
+        expected_output=(
+            "JSON with: percentile_fan (p10/p25/p50/p75/p90), expected_price, "
+            "prob_profit, var_95, cvar_95, black_swan_prone, excess_kurtosis, "
+            "bayesian_posterior_mean, bayesian_credible_interval_90, quant_commentary."
+        ),
+        context=[task_data],
+    )
+
     task_coach = Task(
         description=(
             f"You have the full hedge-fund analysis above. Create a personalised coaching response:\n\n"
@@ -322,9 +369,11 @@ def _build_crew(symbol: str, uid: str, user_level: str):
             "4. Use the FundamentalsAgent's valuation_verdict to anchor the Base "
             "scenario price target.\n"
             "5. Assign risk_level from the RiskAgent output (do not re-calculate).\n"
-            "5b. If risk output shows black_swan_prone=true, add a one-line tail-risk warning "
-            "in the narrative (e.g. 'Note: this asset has fat-tailed return distribution — "
-            "size positions conservatively').\n"
+            "5b. If risk output or QuantAgent output shows black_swan_prone=true, add a "
+            "one-line tail-risk warning in the narrative (e.g. 'Note: this asset has "
+            "fat-tailed return distribution — size positions conservatively').\n"
+            "5c. Reference the QuantAgent's p50 (median MC price) and Bayesian posterior mean "
+            "when anchoring the Base scenario price target.\n"
             f"6. Write a coaching_note for a {user_level} trader (max 2 sentences, "
             "reference their learning history if available).\n"
             "7. Provide a plain-English narrative (max 150 words) that integrates "
@@ -339,7 +388,7 @@ def _build_crew(symbol: str, uid: str, user_level: str):
             "fundamentals_verdict, stop_loss, take_profit, position_size_pct, "
             "coaching_note, narrative."
         ),
-        context=[task_data, task_sentiment, task_fundamentals, task_technical, task_risk],
+        context=[task_data, task_sentiment, task_fundamentals, task_technical, task_risk, task_quant],
     )
 
     crew = Crew(
@@ -349,6 +398,7 @@ def _build_crew(symbol: str, uid: str, user_level: str):
             fundamentals_agent,
             technical_agent,
             risk_agent,
+            quant_agent,
             coach_agent,
         ],
         tasks=[
@@ -357,6 +407,7 @@ def _build_crew(symbol: str, uid: str, user_level: str):
             task_fundamentals,
             task_technical,
             task_risk,
+            task_quant,
             task_coach,
         ],
         process=Process.sequential,
@@ -381,61 +432,49 @@ def _store_crew_memory(uid: str, symbol: str, result: dict) -> None:
         from app.services.chroma_memory_service import ChromaMemoryService
         chroma = ChromaMemoryService()
 
-        # ── trade_history: narrative summary of what the crew found ─────────
-        narrative = result.get("narrative") or ""
-        composite = result.get("composite_signal") or ""
-        verdict   = result.get("fundamentals_verdict") or ""
+        # narrative summary of what the crew found
+        narrative = result.get('narrative') or ''
+        composite = result.get('composite_signal') or ''
+        verdict   = result.get('fundamentals_verdict') or ''
+        risk_lvl  = result.get('risk_level') or ''
 
-        # Build a concise one-sentence summary for this analysis run
-        parts = [f"Analysed {symbol}"]
-        if composite:
-            parts.append(f"signal={composite}")
-        if verdict:
-            parts.append(f"fundamentals={verdict}")
-        if narrative:
-            # Trim to first 200 chars to keep the memory snippet readable
-            parts.append(narrative[:200].replace("\n", " ").strip())
-
-        trade_text = "; ".join(parts)
-        chroma.store(uid, trade_text, category="trade_history", symbol=symbol)
-
-        # ── watchlist_patterns: lightweight "user looked at this symbol" ────
+        memory_text = (
+            f"{symbol} crew analysis: signal={composite}, fundamentals={verdict}, "
+            f"risk={risk_lvl}. {narrative[:200]}"
+        )
+        chroma.store(uid, memory_text, category='trade_history', symbol=symbol)
         chroma.store(
             uid,
-            f"Ran full crew analysis on {symbol}",
-            category="watchlist_patterns",
+            f'Ran full crew analysis on {symbol}',
+            category='watchlist_patterns',
             symbol=symbol,
         )
-
-        logger.debug(f"[crew] memory stored for {uid} / {symbol}")
+        logger.debug(f'[crew] memory stored for {uid} / {symbol}')
     except Exception as exc:
-        logger.warning(f"[crew] _store_crew_memory failed for {uid}/{symbol}: {exc}")
+        logger.warning(f'[crew] _store_crew_memory failed for {uid}/{symbol}: {exc}')
 
 
 async def run_crew(
     symbol: str,
-    uid: str = "anonymous",
-    user_level: str = "beginner",
+    uid: str = 'anonymous',
+    user_level: str = 'beginner',
 ) -> dict:
     """
-    Run the full 6-agent crew for a symbol and return a structured result dict.
+    Run the full 7-agent crew for a symbol and return a structured result dict.
 
     Falls back gracefully to an empty result if CrewAI is not installed or
-    any agent throws an exception — the caller can then fall back to the
-    existing single-Claude analyse endpoint.
+    any agent throws an exception.
     """
     global _CURRENT_UID
     _CURRENT_UID = uid
 
     try:
         crew   = _build_crew(symbol=symbol, uid=uid, user_level=user_level)
-        # CrewAI kickoff is blocking — run in executor to avoid blocking the event loop
         loop   = asyncio.get_event_loop()
         result = await loop.run_in_executor(None, crew.kickoff)
 
         raw = str(result)
 
-        # Try to extract JSON from the output
         import re
         import json
         match = re.search(r'\{.*\}', raw, re.DOTALL)
@@ -447,13 +486,13 @@ async def run_crew(
             except json.JSONDecodeError:
                 pass
 
-        fallback = {"narrative": raw, "crew_raw": True}
+        fallback = {'narrative': raw, 'crew_raw': True}
         _store_crew_memory(uid, symbol, fallback)
         return fallback
 
     except ImportError:
-        logger.warning("[crew] crewai not installed — returning empty result")
+        logger.warning('[crew] crewai not installed -- returning empty result')
         return {}
     except Exception as e:
-        logger.error(f"[crew] run failed for {symbol}: {e}", exc_info=True)
-        return {"error": str(e)}
+        logger.error(f'[crew] run failed for {symbol}: {e}', exc_info=True)
+        return {'error': str(e)}

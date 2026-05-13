@@ -17,3 +17,9 @@ final portfolioHoldingsProvider = StreamProvider<List<Holding>>((ref) {
   if (service == null) return Stream.value([]);
   return service.streamHoldings();
 });
+
+final portfolioTransactionsProvider = StreamProvider<List<PortfolioTransaction>>((ref) {
+  final service = ref.watch(portfolioServiceProvider);
+  if (service == null) return Stream.value([]);
+  return service.streamTransactions();
+});

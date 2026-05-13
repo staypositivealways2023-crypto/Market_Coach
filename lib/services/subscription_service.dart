@@ -46,13 +46,24 @@ class SubscriptionService {
   }
 
   /// Purchase Pro via RevenueCat.
+  /// Prefers [packageType] — 'monthly' (default) or 'annual'.
   /// No-op on web (purchases_flutter does not support web).
-  Future<void> upgradeToPro() async {
+  Future<void> upgradeToPro({String packageType = 'monthly'}) async {
     if (kIsWeb) throw UnsupportedError('In-app purchases are not available on web.');
     try {
       final offerings = await Purchases.getOfferings();
-      final package = offerings.current?.monthly ??
-          offerings.current?.availablePackages.firstOrNull;
+      final current = offerings.current;
+      if (current == null) throw Exception('No offering available');
+
+      Package? package;
+      if (packageType == 'annual') {
+        package = current.annual ??
+            current.availablePackages
+                .where((p) => p.packageType == PackageType.annual)
+                .firstOrNull;
+      }
+      package ??= current.monthly ??
+          current.availablePackages.firstOrNull;
       if (package == null) throw Exception('No offering available');
 
       // ignore: deprecated_member_use

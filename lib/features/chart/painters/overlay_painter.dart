@@ -57,6 +57,11 @@ class OverlayPainter extends CustomPainter {
       _drawSRLine(canvas, size, sr, yForPrice);
     }
 
+    // Draw AI trade-plan levels (stop loss / price targets)
+    for (final level in overlays.tradeLevels) {
+      _drawTradeLevel(canvas, size, level, yForPrice);
+    }
+
     // Draw VWAP line
     if (overlays.vwapLine != null && overlays.vwapLine!.isNotEmpty) {
       _drawVWAP(canvas, size, startIdx, overlays.vwapLine!, yForPrice);
@@ -67,10 +72,145 @@ class OverlayPainter extends CustomPainter {
       _drawCurrentPriceLine(canvas, size, overlays.currentPriceLine!, yForPrice);
     }
 
+    // Draw signal markers (buy ▲ / sell ▼) inside the chart clip
+    if (overlays.signalMarkers.isNotEmpty) {
+      _drawSignalMarkers(canvas, size, startIdx, yForPrice);
+    }
+
     canvas.restore();
 
     // Draw pattern markers (outside clip for labels)
     _drawPatternMarkers(canvas, size, startIdx, yForPrice);
+  }
+
+  // ─── AI trade-plan level lines ──────────────────────────────────────────────
+
+  void _drawTradeLevel(Canvas canvas, Size size, TradeLevel level,
+      double Function(double) yForPrice) {
+    final y = yForPrice(level.price);
+    // Skip if out of visible range
+    if (y < 0 || y > _chartH(size)) return;
+
+    final baseAlpha = (level.alpha.clamp(0.0, 1.0) * 255).round();
+    final lineColor = level.color.withAlpha((baseAlpha * 0.7).round());
+
+    // Solid line across full draw width
+    canvas.drawLine(
+      Offset(0, y),
+      Offset(size.width - _rightPad, y),
+      Paint()
+        ..color = lineColor
+        ..strokeWidth = 0.9,
+    );
+
+    // Left-edge label badge (doesn't collide with right-edge S/R labels)
+    final tp = TextPainter(
+      text: TextSpan(
+        text: level.label,
+        style: TextStyle(
+          color: level.color.withAlpha(baseAlpha),
+          fontSize: 8.5,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      textDirection: ui.TextDirection.ltr,
+    )..layout();
+
+    const pH = 5.0;
+    const pV = 2.5;
+    final bgRect = Rect.fromLTWH(
+      2, y - tp.height / 2 - pV,
+      tp.width + pH * 2, tp.height + pV * 2,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(bgRect, const Radius.circular(3)),
+      Paint()..color = level.color.withAlpha((baseAlpha * 0.18).round()),
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(bgRect, const Radius.circular(3)),
+      Paint()
+        ..color = level.color.withAlpha((baseAlpha * 0.45).round())
+        ..strokeWidth = 0.8
+        ..style = PaintingStyle.stroke,
+    );
+    tp.paint(canvas, Offset(2 + pH, y - tp.height / 2));
+
+    // Price value to the right of the badge
+    final priceTp = TextPainter(
+      text: TextSpan(
+        text: _fmtPrice(level.price),
+        style: TextStyle(
+          color: level.color.withAlpha((baseAlpha * 0.8).round()),
+          fontSize: 8,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      textDirection: ui.TextDirection.ltr,
+    )..layout();
+    priceTp.paint(canvas,
+        Offset(bgRect.right + 4, y - priceTp.height / 2));
+  }
+
+  static String _fmtPrice(double p) {
+    if (p >= 10000) return '\$${p.toStringAsFixed(0)}';
+    if (p >= 1)     return '\$${p.toStringAsFixed(2)}';
+    return '\$${p.toStringAsFixed(4)}';
+  }
+
+  // ─── Signal markers (buy ▲ / sell ▼) ───────────────────────────────────────
+
+  void _drawSignalMarkers(Canvas canvas, Size size, int startIdx,
+      double Function(double) yForPrice) {
+    const buyColor  = Color(0xFF00C896);  // teal-green
+    const sellColor = Color(0xFFFF4D6A);  // red
+    const arrowH    = 8.0;
+    const arrowW    = 7.0;
+    const gap       = 5.0; // pixels between candle wick tip and arrow
+
+    final endIdx = controller.viewportEnd.ceil().clamp(0, controller.candles.length);
+
+    for (final marker in overlays.signalMarkers) {
+      final idx = marker.candleIndex;
+      if (idx < startIdx || idx >= endIdx || idx >= controller.candles.length) continue;
+
+      final candle = controller.candles[idx];
+      final x      = controller.indexToX(idx, _drawSize(size));
+      final alpha  = (marker.strength.clamp(0.4, 1.0) * 255).round();
+
+      void drawArrow(Path path, Color color) {
+        canvas.drawPath(path, Paint()..color = color.withAlpha((alpha * 0.22).round()));
+        canvas.drawPath(path, Paint()
+          ..color = color.withAlpha(alpha)
+          ..strokeWidth = 1.2
+          ..style = PaintingStyle.stroke);
+      }
+
+      if (marker.isBuy) {
+        // ▲ below the candle low — apex closest to candle, base further below
+        final apexY = yForPrice(candle.low) + gap;
+        final baseY = apexY + arrowH;
+        drawArrow(
+          Path()
+            ..moveTo(x,          apexY)   // apex (pointing up toward candle)
+            ..lineTo(x - arrowW, baseY)   // bottom-left
+            ..lineTo(x + arrowW, baseY)   // bottom-right
+            ..close(),
+          buyColor,
+        );
+      } else {
+        // ▼ above the candle high — apex closest to candle, base further above
+        final apexY = yForPrice(candle.high) - gap;
+        final baseY = apexY - arrowH;
+        drawArrow(
+          Path()
+            ..moveTo(x,          apexY)   // apex (pointing down toward candle)
+            ..lineTo(x - arrowW, baseY)   // top-left
+            ..lineTo(x + arrowW, baseY)   // top-right
+            ..close(),
+          sellColor,
+        );
+      }
+    }
   }
 
   void _drawMALine(Canvas canvas, Size size, int startIdx, MALine ma, double Function(double) yForPrice) {

@@ -10,7 +10,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/enhanced_ai_analysis.dart';
 import '../../providers/analysis_provider.dart';
 import '../../providers/market_data_provider.dart';
+import '../../providers/usage_analytics_provider.dart';
+import '../../services/usage_analytics_service.dart';
 import './_enhanced_analysis_display.dart';
+import 'alerts_screen.dart';
 
 class AnalysisScreen extends ConsumerStatefulWidget {
   const AnalysisScreen({super.key});
@@ -19,7 +22,11 @@ class AnalysisScreen extends ConsumerStatefulWidget {
   ConsumerState<AnalysisScreen> createState() => _AnalysisScreenState();
 }
 
-class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
+class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
   final _controller = TextEditingController();
   String? _activeSymbol;
 
@@ -37,6 +44,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     setState(() => _activeSymbol = s);
     _controller.text = s;
     FocusScope.of(context).unfocus();
+    // Log feature usage
+    ref.read(usageAnalyticsProvider)?.logFeatureUsed(UsageFeature.aiAnalysis);
   }
 
   void _refresh() {
@@ -46,6 +55,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // required by AutomaticKeepAliveClientMixin
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
@@ -56,6 +66,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 20),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.notifications_active_outlined, color: Colors.white70),
+            tooltip: 'Technical Alerts',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const AlertsScreen()),
+            ),
+          ),
           if (_activeSymbol != null)
             IconButton(
               icon: const Icon(Icons.refresh_rounded, color: Colors.white70),

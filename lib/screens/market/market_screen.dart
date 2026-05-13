@@ -8,9 +8,10 @@ import '../../models/stock_summary.dart';
 import '../../services/backend_service.dart';
 import '../../widgets/glass_card.dart';
 import '../../features/chart/screens/asset_chart_screen.dart';
-import '../stock_detail/stock_detail_screen.dart';
-import '../crypto_detail/crypto_detail_screen.dart';
 import 'market_view_all_screen.dart';
+import '../earnings/earnings_calendar_screen.dart';
+import '../screener/screener_screen.dart';
+import 'macro_dashboard_screen.dart';
 
 // ── Default symbol lists ──────────────────────────────────────────────────────
 
@@ -239,6 +240,27 @@ class _MarketScreenState extends State<MarketScreen> {
         title: const Text('Markets',
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 20)),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.event_note_rounded, color: Colors.white70),
+            tooltip: 'Earnings Calendar',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const EarningsCalendarScreen()),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.manage_search_rounded, color: Colors.white70),
+            tooltip: 'Screener',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const ScreenerScreen()),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.public_rounded, color: Colors.white70),
+            tooltip: 'Macro Dashboard',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const MacroDashboardScreen()),
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.refresh, color: Colors.white70),
             tooltip: 'Refresh quotes',
@@ -500,11 +522,7 @@ class _AssetRow extends StatelessWidget {
 
     return GestureDetector(
       onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => asset.isCrypto
-              ? CryptoDetailScreen(stock: asset)
-              : StockDetailScreen(stock: asset),
-        ),
+        MaterialPageRoute(builder: (_) => AssetChartScreen(stock: asset)),
       ),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -734,9 +752,7 @@ class _AssetCard extends StatelessWidget {
         width: 200,
         padding: const EdgeInsets.all(16),
         onTap: () => Navigator.of(context).push(MaterialPageRoute(
-          builder: (_) => asset.isCrypto
-              ? CryptoDetailScreen(stock: asset)
-              : StockDetailScreen(stock: asset),
+          builder: (_) => AssetChartScreen(stock: asset),
         )),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -864,11 +880,9 @@ class _QuickMarketInsights extends StatelessWidget {
                 color: theme.colorScheme.primary, shape: BoxShape.circle),
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
           Expanded(
-            child: Text(text,
-                style: theme.textTheme.bodyMedium
-                    ?.copyWith(color: Colors.white.withValues(alpha: 0.9), height: 1.5)),
+            child: Text(text, style: theme.textTheme.bodyMedium?.copyWith(color: Colors.white70)),
           ),
         ],
       );

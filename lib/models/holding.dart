@@ -73,3 +73,45 @@ class HoldingWithValue {
       pnl != null && totalCost > 0 ? (pnl! / totalCost) * 100 : null;
   bool get isPositive => (pnl ?? 0) >= 0;
 }
+
+class PortfolioTransaction {
+  final String id;
+  final String type;
+  final String symbol;
+  final String name;
+  final double shares;
+  final double price;
+  final double totalValue;
+  final double? realizedPnl;
+  final DateTime timestamp;
+
+  const PortfolioTransaction({
+    required this.id,
+    required this.type,
+    required this.symbol,
+    required this.name,
+    required this.shares,
+    required this.price,
+    required this.totalValue,
+    this.realizedPnl,
+    required this.timestamp,
+  });
+
+  bool get isBuy => type == 'BUY';
+  bool get isSell => type == 'SELL';
+
+  factory PortfolioTransaction.fromDoc(DocumentSnapshot doc) {
+    final map = doc.data() as Map<String, dynamic>;
+    return PortfolioTransaction(
+      id: doc.id,
+      type: map['type'] as String? ?? 'BUY',
+      symbol: map['symbol'] as String? ?? '',
+      name: map['name'] as String? ?? map['symbol'] as String? ?? '',
+      shares: (map['shares'] as num?)?.toDouble() ?? 0,
+      price: (map['price'] as num?)?.toDouble() ?? 0,
+      totalValue: (map['total_value'] as num?)?.toDouble() ?? 0,
+      realizedPnl: (map['realized_pnl'] as num?)?.toDouble(),
+      timestamp: Holding._parseDateTime(map['created_at']) ?? DateTime.now(),
+    );
+  }
+}

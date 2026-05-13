@@ -109,13 +109,9 @@ class FundamentalService:
         cur_liab    = _val(bs, "current_liabilities")
         liabilities = _val(bs, "liabilities")
 
-        # Market cap: Massive financials don't include it, fetch from yfinance
+        # Market cap: use the already-fetched quote price × shares if available.
+        # Do NOT call yf.Ticker.info here — this is a sync method in an async context.
         mkt_cap = None
-        try:
-            ticker_info = yf.Ticker(symbol).info
-            mkt_cap = ticker_info.get("marketCap")
-        except Exception:
-            pass
 
         # P/E only meaningful when EPS is positive
         pe  = _safe_div(current_price, ttm_eps) if ttm_eps and ttm_eps > 0 else None

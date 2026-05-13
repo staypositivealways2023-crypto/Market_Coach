@@ -15,8 +15,6 @@ import '../../widgets/iq_score_card.dart';
 import '../learn/learn_screen.dart';
 import '../profile/profile_screen.dart';
 import '../../features/chart/screens/asset_chart_screen.dart';
-import '../stock_detail/stock_detail_screen.dart';
-import '../crypto_detail/crypto_detail_screen.dart';
 
 // ── Ticker symbols used as live index proxies ──────────────────────────────────
 const _indexStockSymbols = {'SPY', 'QQQ'};
@@ -181,22 +179,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   // ── Build live MarketIndex list from index quotes ───────────────────────────
 
   List<MarketIndex> _buildIndexList() {
-    final tickers = ['SPY', 'QQQ', 'BTC', 'ETH'];
-    final result = <MarketIndex>[];
-    for (final t in tickers) {
+    // Build a per-ticker mock map so we can fall back individually.
+    // This ensures all 4 cards always appear while live quotes are loading.
+    final mockMap = <String, MarketIndex>{
+      for (final m in [...mockIndices, ...mockCryptoIndices]) m.ticker: m,
+    };
+    const tickers = ['SPY', 'QQQ', 'BTC', 'ETH'];
+    return tickers.map((t) {
       final q = _indexQuotes[t];
       if (q != null && q.price > 0) {
-        result.add(MarketIndex(
+        // Live quote available — use it.
+        return MarketIndex(
           name: _indexNames[t] ?? t,
           ticker: t,
           value: q.price,
           changePercent: q.changePercent,
-        ));
+        );
       }
-    }
-    // Fall back to mock data for any missing entries
-    if (result.isEmpty) return [...mockIndices, ...mockCryptoIndices];
-    return result;
+      // Fall back to mock while quote is loading or unavailable.
+      return mockMap[t] ??
+          MarketIndex(name: t, ticker: t, value: 0, changePercent: 0);
+    }).toList();
   }
 
   // ── Derived sentiment from live index quotes ────────────────────────────────
@@ -761,9 +764,7 @@ class StockCard extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => stock.isCrypto
-              ? CryptoDetailScreen(stock: stock)
-              : StockDetailScreen(stock: stock),
+          builder: (_) => AssetChartScreen(stock: stock),
         ),
       ),
       child: Row(

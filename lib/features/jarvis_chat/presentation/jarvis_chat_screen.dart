@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../providers/auth_provider.dart';
+import '../../../providers/usage_analytics_provider.dart';
+import '../../../services/usage_analytics_service.dart';
 import '../../../theme/app_tokens.dart';
 import '../../jarvis_voice/data/models/voice_session_bootstrap.dart';
 import '../../jarvis_voice/presentation/providers/voice_session_provider.dart';
@@ -72,6 +74,7 @@ class _JarvisChatScreenState extends ConsumerState<JarvisChatScreen>
     final text = _inputCtrl.text.trim();
     if (text.isEmpty) return;
     _inputCtrl.clear();
+    ref.read(usageAnalyticsProvider)?.logFeatureUsed(UsageFeature.chat);
     ref.read(jarvisChatProvider.notifier).sendMessage(text);
     _scrollToBottom();
   }

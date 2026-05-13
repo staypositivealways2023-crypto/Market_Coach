@@ -1,5 +1,7 @@
 """Analysis Router - AI-powered market analysis endpoints"""
 
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from datetime import datetime
 from typing import Optional
@@ -13,6 +15,7 @@ from app.services.monte_carlo_service import MonteCarloService
 from app.services.bayesian_service import BayesianService
 from app.services.macro_agent_service import MacroAgentService
 from app.services.probabilistic_report_service import ProbabilisticReportService
+from app.services.reddit_service import RedditService
 from app.services.claude_service import ClaudeService
 from app.services.mock_analysis_service import MockAnalysisService
 from app.services.structured_analysis_service import StructuredAnalysisService
@@ -37,6 +40,7 @@ probabilistic_report_service = ProbabilisticReportService(
     bayesian_service=bayesian_service,
     macro_agent_service=macro_agent_service,
 )
+reddit_service = RedditService()
 claude_service = ClaudeService()
 mock_service = MockAnalysisService()
 prompt_builder = PromptBuilder()
@@ -440,3 +444,88 @@ async def probabilistic_report(req: ProbabilisticReportRequest):
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
     return result
+
+
+# -- Reddit Sentiment ---------------------------------------------------------
+
+@router.get("/reddit-sentiment/{symbol}")
+async def reddit_sentiment(symbol: str):
+    """
+    Scrape r/wallstreetbets, r/stocks, r/investing for symbol mentions.
+
+    Returns: reddit_sentiment_score, mention_count, sentiment_label,
+    bullish/bearish/neutral counts, top_posts[].
+
+    Cached 15 minutes (Reddit rate-limit friendly).
+    """
+    sym = symbol.upper()
+    cache_key = f"reddit_sentiment:{sym}"
+    cached = cache_manager.get(cache_key)
+    if cached:
+        return cached
+
+    result = await reddit_service.get_sentiment(sym)
+    if "error" in result:
+        raise HTTPException(status_code=500, detail=result["error"])
+
+    cache_manager.set(cache_key, result, ttl=900)  # 15 min
+    return result
+
+
+# -- Unified Probabilistic GET endpoint (Flutter-friendly) --------------------
+
+@router.get("/probabilistic/{symbol}")
+async def get_probabilistic(
+    symbol: str,
+    analyst_target: Optional[float] = None,
+    analyst_confidence: float = 5.0,
+    horizon_days: int = 21,
+    num_simulations: int = 1000,
+):
+    """
+    GET convenience wrapper for the probabilistic synthesis report.
+    Also injects Reddit sentiment into the response.
+
+    analyst_target: If omitted, the Bayesian prior is set to current market price
+                    (data-only mode -- no analyst bias).
+    Cached 30 minutes.
+    """
+    sym = symbol.upper()
+    cache_key = f"probabilistic:{sym}:{horizon_days}"
+    cached = cache_manager.get(cache_key)
+    if cached:
+        return cached
+
+    target = analyst_target if analyst_target is not None else 0.0
+
+    prob_result, reddit_result = await asyncio.gather(
+        probabilistic_report_service.generate_report(
+            symbol=sym,
+            analyst_target=target,
+            analyst_confidence=analyst_confidence,
+            horizon_days=horizon_days,
+            num_simulations=num_simulations,
+        ),
+        reddit_service.get_sentiment(sym),
+        return_exceptions=True,
+    )
+
+    if isinstance(prob_result, Exception) or (
+        isinstance(prob_result, dict) and "error" in prob_result
+    ):
+        detail = str(prob_result) if isinstance(prob_result, Exception) else prob_result["error"]
+        raise HTTPException(status_code=400, detail=detail)
+
+    # Inject Reddit sentiment (non-fatal if it fails)
+    if isinstance(reddit_result, dict) and "error" not in reddit_result:
+        prob_result["reddit"] = {
+            "sentiment_score": reddit_result.get("reddit_sentiment_score"),
+            "mention_count":   reddit_result.get("mention_count"),
+            "sentiment_label": reddit_result.get("sentiment_label"),
+            "top_posts":       reddit_result.get("top_posts", [])[:3],
+        }
+    else:
+        prob_result["reddit"] = None
+
+    cache_manager.set(cache_key, prob_result, ttl=1800)  # 30 min
+    return prob_result

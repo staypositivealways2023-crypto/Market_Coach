@@ -94,6 +94,11 @@ service cloud.firestore {
         allow read, write: if isOwner(userId);
       }
 
+      // Real portfolio transaction history
+      match /portfolio_transactions/{txId} {
+        allow read, write: if isOwner(userId);
+      }
+
       // Paper trading account doc (users/{uid}/paper/account)
       match /paper/{docId} {
         allow read, write: if isOwner(userId);
@@ -106,6 +111,20 @@ service cloud.firestore {
 
       // Paper trading transaction history
       match /paper_transactions/{txId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // Feature usage analytics (written by UsageAnalyticsService)
+      match /usage/{docId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // Chat sessions (written by JarvisChatScreen / Ask tab)
+      match /chat_sessions/{sessionId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      match /chat_sessions/{sessionId}/messages/{msgId} {
         allow read, write: if isOwner(userId);
       }
     }

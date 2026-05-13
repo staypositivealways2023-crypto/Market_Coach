@@ -1,5 +1,21 @@
 import 'package:flutter/material.dart';
 
+/// A single entry or exit signal marker to paint on the candlestick chart.
+///
+/// [candleIndex] is the absolute index into the candles list.
+/// [isBuy] — true = green ▲ below the candle low; false = red ▼ above the high.
+/// [strength] — 0.0–1.0, controls marker opacity (strong signal = fully opaque).
+class SignalMarker {
+  final int candleIndex;
+  final bool isBuy;
+  final double strength;
+  const SignalMarker({
+    required this.candleIndex,
+    required this.isBuy,
+    this.strength = 1.0,
+  });
+}
+
 class MALine {
   final List<double?> values;
   final Color color;
@@ -21,6 +37,22 @@ class SRLine {
   SRLine({required this.price, required this.color, required this.label});
 }
 
+/// An AI-derived trade-plan level (stop loss / price target) to overlay on
+/// the chart as a solid horizontal line with a left-edge label badge.
+/// Kept separate from [SRLine] so painters can style them distinctly.
+class TradeLevel {
+  final double price;
+  final Color color;
+  final String label;       // e.g. "SL", "Target", "Bull", "Bear"
+  final double alpha;       // 0.0–1.0, controls overall opacity
+  const TradeLevel({
+    required this.price,
+    required this.color,
+    required this.label,
+    this.alpha = 1.0,
+  });
+}
+
 class OverlayData {
   final List<MALine> maLines;
   final BollingerData? bollinger;
@@ -33,6 +65,13 @@ class OverlayData {
   /// Live price for the horizontal dashed current-price line. Null = hidden.
   final double? currentPriceLine;
 
+  /// Buy / sell signal markers derived from RSI + MACD crossovers.
+  final List<SignalMarker> signalMarkers;
+
+  /// AI trade-plan levels from RiskAgent (stop loss, targets).
+  /// Drawn as solid left-labelled horizontal lines.
+  final List<TradeLevel> tradeLevels;
+
   const OverlayData({
     this.maLines = const [],
     this.bollinger,
@@ -40,5 +79,7 @@ class OverlayData {
     this.patterns,
     this.vwapLine,
     this.currentPriceLine,
+    this.signalMarkers = const [],
+    this.tradeLevels = const [],
   });
 }

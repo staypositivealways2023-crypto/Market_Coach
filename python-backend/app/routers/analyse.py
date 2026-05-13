@@ -95,11 +95,20 @@ async def analyse_symbol(
             logger.warning(f"[analyse] Cache deserialisation failed for {symbol}, recomputing: {e}")
             cache_manager.delete(cache_key)
 
-    logger.info(f"[analyse] {symbol} interval={interval} level={user_level}")
+    logger.info(f"[analyse] START symbol={symbol} interval={interval} level={user_level}")
 
     # ── Layer 1: Data ingestion ───────────────────────────────────────────────
-    candles = await _data_fetcher.get_candles(symbol, interval=interval, limit=200)
+    # Fetch 250 bars: 200 display + 50 warmup for all indicators.
+    # RSI(14) needs 15, MACD(26,9) needs 34, SMA200 needs 200 — 250 covers all.
+    _FETCH_LIMIT = 250
+    candles = await _data_fetcher.get_candles(symbol, interval=interval, limit=_FETCH_LIMIT)
     quote   = await _data_fetcher.get_quote(symbol)
+
+    logger.info(
+        f"[analyse] PAYLOAD symbol={symbol} interval={interval} "
+        f"candles_fetched={len(candles) if candles else 0} "
+        f"quote_price={quote.price if quote else None}"
+    )
 
     quote_dict = {}
     if quote:
@@ -113,6 +122,7 @@ async def analyse_symbol(
         }
 
     # ── Layer 2: Signal engine ────────────────────────────────────────────────
+    # Need ≥ 26 bars for MACD slow EMA; surface a warning when data is sparse.
     indicators = None
     if candles and len(candles) >= 26:
         indicators = _indicator_svc.calculate_indicators(
@@ -120,10 +130,31 @@ async def analyse_symbol(
             candles=candles,
             current_price=quote.price if quote else None,
         )
+    else:
+        logger.warning(
+            f"[analyse] {symbol} has only {len(candles) if candles else 0} candles "
+            f"for interval={interval}; indicators skipped (need ≥26)"
+        )
+
+    if indicators:
+        logger.info(
+            f"[analyse] INDICATORS symbol={symbol} interval={interval} "
+            f"rsi={indicators.rsi.value if indicators.rsi else None} "
+            f"macd={indicators.macd.macd if indicators.macd else None} "
+            f"signal={indicators.macd.signal if indicators.macd else None} "
+            f"ema12={indicators.ema_12} ema26={indicators.ema_26} "
+            f"sma20={indicators.sma_20} sma50={indicators.sma_50} "
+            f"atr={indicators.atr}"
+        )
 
     signals = _signal_engine.run(
         candles=candles or [],
         indicators=indicators,
+    )
+
+    logger.info(
+        f"[analyse] SIGNALS symbol={symbol} interval={interval} "
+        f"composite={signals.composite_score:.4f} label={signals.signal_label.value}"
     )
 
     # ── Layer 3: Probability Engine ───────────────────────────────────────────
@@ -133,6 +164,16 @@ async def analyse_symbol(
         current_price=quote.price if quote else None,
         interval=interval,
     )
+
+    if prediction:
+        logger.info(
+            f"[analyse] PREDICTION symbol={symbol} interval={interval} "
+            f"direction={prediction.direction} "
+            f"price={prediction.price_current} "
+            f"target_base={prediction.price_target_base} "
+            f"target_high={prediction.price_target_high} "
+            f"target_low={prediction.price_target_low}"
+        )
 
     # ── Scenario probabilities (computed from score + ATR targets) ───────────
     scenarios = _build_scenarios(signals, prediction)
@@ -302,20 +343,41 @@ def _build_scenarios(signals, prediction) -> "Scenarios | None":
     cs = signals.candlestick
     pattern_ctx = cs.pattern or "current setup"
 
+    current = prediction.price_current or 0.0
+
+    # ── Target sanity: bull target must be above current price, bear below.
+    # When the signal is strongly bearish the ATR math can push price_target_high
+    # below the current price. Clamp before returning to avoid inverted cards.
+    raw_high = prediction.price_target_high
+    raw_base = prediction.price_target_base
+    raw_low  = prediction.price_target_low
+
+    # Bull: must be strictly above current (floor = +0.5%)
+    bull_target = max(raw_high, current * 1.005) if current > 0 else raw_high
+    # Bear: must be strictly below current (ceiling = -0.5%)
+    bear_target = min(raw_low,  current * 0.995) if current > 0 else raw_low
+    # Base: clamp between bear and bull targets
+    base_target = max(bear_target, min(raw_base, bull_target))
+
+    logger.debug(
+        f"[scenarios] targets: bull={bull_target:.4f} base={base_target:.4f} "
+        f"bear={bear_target:.4f} (current={current:.4f})"
+    )
+
     return Scenarios(
         bull=ScenarioCase(
             probability=bull_p,
-            price_target=round(prediction.price_target_high, 4),
+            price_target=round(bull_target, 4),
             thesis=f"Price breaks higher as {pattern_ctx} confirms with expanding volume.",
         ),
         base=ScenarioCase(
             probability=base_p,
-            price_target=round(prediction.price_target_base, 4),
+            price_target=round(base_target, 4),
             thesis=f"Price consolidates near current level; signal drift toward the {signals.signal_label.value.lower().replace('_', ' ')} case.",
         ),
         bear=ScenarioCase(
             probability=bear_p,
-            price_target=round(prediction.price_target_low, 4),
+            price_target=round(bear_target, 4),
             thesis=f"Support fails and {pattern_ctx} reverses as selling pressure increases.",
         ),
     )
@@ -381,72 +443,5 @@ def _build_fallback_analysis(symbol: str, signals) -> str:
     lines.append(f"EMA Stack: {ind.ema_stack}")
     lines.append(f"Volume: {ind.volume}")
     lines.append("")
-    lines.append("(AI narrative unavailable — Claude API not configured)")
-
+    lines.append("(AI narrative unavailable -- Claude API call failed.)")
     return "\n".join(lines)
-
-
-# ── Phase 9: CrewAI Streaming SSE Endpoint ────────────────────────────────────
-
-@router.get("/analyse/{symbol}/stream")
-@limiter.limit("5/minute")
-async def analyse_symbol_stream(
-    request: Request,
-    symbol: str,
-    user_level: str = "beginner",
-    uid: str = Depends(require_auth),
-):
-    """
-    Server-Sent Events endpoint that streams CrewAI agent progress.
-
-    Flutter listens via Dio's ResponseType.stream and shows each agent's
-    status as it completes:
-      {"agent": "MarketDataAgent",  "status": "running"}
-      {"agent": "SentimentAgent",   "status": "running"}
-      {"agent": "TechnicalAgent",   "status": "running"}
-      {"agent": "CoachAgent",       "status": "running"}
-      {"agent": "done",             "result": {...scenario card...}}
-
-    Falls back gracefully if crewai is not installed.
-    """
-    sym = symbol.upper()
-
-    async def event_stream():
-        agents = [
-            ("MarketDataAgent",  "Fetching price, indicators & patterns…"),
-            ("SentimentAgent",   "Reading news & macro context…"),
-            ("TechnicalAgent",   "Interpreting signals & key levels…"),
-            ("CoachAgent",       "Personalising coaching for you…"),
-        ]
-
-        # Send agent-start events so the UI can show a progress list
-        for name, description in agents:
-            yield f"data: {json.dumps({'agent': name, 'status': 'running', 'description': description})}\n\n"
-            await asyncio.sleep(0.1)  # small delay so UI renders each chip
-
-        # Run the crew
-        try:
-            from app.agents.crew import run_crew
-            result = await run_crew(symbol=sym, uid=uid, user_level=user_level)
-
-            for name, _ in agents:
-                yield f"data: {json.dumps({'agent': name, 'status': 'done'})}\n\n"
-
-            yield f"data: {json.dumps({'agent': 'done', 'result': result})}\n\n"
-
-        except ImportError:
-            # CrewAI not installed — fall back to single-agent analysis
-            logger.warning("[stream] crewai not installed, sending fallback")
-            yield f"data: {json.dumps({'agent': 'done', 'result': {}, 'fallback': True})}\n\n"
-        except Exception as e:
-            logger.error(f"[stream] crew error for {sym}: {e}")
-            yield f"data: {json.dumps({'agent': 'error', 'error': str(e)})}\n\n"
-
-    return StreamingResponse(
-        event_stream(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control":  "no-cache",
-            "X-Accel-Buffering": "no",
-        },
-    )

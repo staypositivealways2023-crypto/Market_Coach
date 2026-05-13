@@ -17,9 +17,12 @@ class PaywallBottomSheet extends ConsumerWidget {
   static const _features = [
     (Icons.chat_outlined, 'Unlimited AI conversations'),
     (Icons.bar_chart, 'Full signal analysis on every stock'),
+    (Icons.search_rounded, 'Smart Screener — filter by signal, sector & RSI'),
+    (Icons.notifications_outlined, 'Technical Alerts — RSI & volume spike scanner'),
+    (Icons.public_rounded, 'Macro Dashboard — Fear & Greed, yield curve, FRED'),
     (Icons.insights, 'AI trade debrief after every paper trade'),
-    (Icons.pie_chart_outline, 'Portfolio AI analysis'),
-    (Icons.notifications_outlined, 'Daily market brief notifications'),
+    (Icons.pie_chart_outline, 'Portfolio AI analysis & backtesting'),
+    (Icons.stacked_line_chart_rounded, 'Probabilistic Engine — Monte Carlo & Bayesian'),
   ];
 
   @override

@@ -8,6 +8,8 @@ import '../../models/paper_account.dart';
 import '../../providers/paper_trading_provider.dart';
 import '../../providers/portfolio_provider.dart';
 import '../../providers/subscription_provider.dart';
+import '../../providers/usage_analytics_provider.dart';
+import '../../services/usage_analytics_service.dart';
 import '../../services/backend_service.dart';
 import '../../services/paper_trading_service.dart';
 import '../../services/portfolio_service.dart';
@@ -40,6 +42,8 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen>
   // ── Portfolio-level AI analysis ───────────────────────────────────────────
   Map<String, dynamic>? _portfolioAnalysis;
   bool _analysisLoading = false;
+  Map<String, dynamic>? _backtestResult;
+  bool _backtestLoading = false;
 
   @override
   void initState() {
@@ -114,6 +118,26 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen>
     setState(() { _portfolioAnalysis = result; _analysisLoading = false; });
   }
 
+  Future<void> _runBacktest(List<Holding> holdings) async {
+    if (holdings.isEmpty || _backtestLoading) return;
+    setState(() => _backtestLoading = true);
+    ref.read(usageAnalyticsProvider)?.logFeatureUsed(UsageFeature.backtest);
+    final result = await _backend.backtestPortfolio(holdings);
+    if (!mounted) return;
+    if (result == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Backtest unavailable - check your connection and try again.'),
+          duration: Duration(seconds: 4),
+        ),
+      );
+    }
+    setState(() {
+      _backtestResult = result;
+      _backtestLoading = false;
+    });
+  }
+
   List<HoldingWithValue> _enrich(List<Holding> holdings) {
     return holdings
         .map((h) => HoldingWithValue(holding: h, currentPrice: _prices[h.symbol]))
@@ -173,6 +197,7 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen>
     }
 
     final holdingsAsync = ref.watch(portfolioHoldingsProvider);
+    final transactionsAsync = ref.watch(portfolioTransactionsProvider);
 
     // Real portfolio: fetch prices whenever holdings change.
     ref.listen<AsyncValue<List<Holding>>>(portfolioHoldingsProvider, (_, next) {
@@ -215,10 +240,32 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen>
                   builder: (context, ref, _) {
                     final sub = ref.watch(subscriptionProvider).valueOrNull;
                     return IconButton(
+                      icon: const Icon(Icons.stacked_line_chart_rounded),
+                      tooltip: 'Backtest',
+                      onPressed: () {
+                        if (sub != null && !sub.canUseBacktest) {
+                          showModalBottomSheet(
+                            context: context,
+                            isScrollControlled: true,
+                            backgroundColor: Colors.transparent,
+                            builder: (_) => const PaywallBottomSheet(),
+                          );
+                          return;
+                        }
+                        _runBacktest(holdings);
+                      },
+                    );
+                  },
+                ),
+              if (holdings.isNotEmpty)
+                Consumer(
+                  builder: (context, ref, _) {
+                    final sub = ref.watch(subscriptionProvider).valueOrNull;
+                    return IconButton(
                       icon: const Icon(Icons.insights_outlined),
                       tooltip: 'AI Analysis',
                       onPressed: () {
-                        if (sub != null && !sub.isPro) {
+                        if (sub != null && !sub.canUsePortfolioAI) {
                           showModalBottomSheet(
                             context: context,
                             isScrollControlled: true,
@@ -228,6 +275,8 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen>
                           return;
                         }
                         _fetchPortfolioAnalysis(holdings);
+                        ref.read(usageAnalyticsProvider)
+                            ?.logFeatureUsed(UsageFeature.portfolioAI);
                       },
                     );
                   },
@@ -300,6 +349,20 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen>
                             child: _PortfolioAnalysisCard(data: _portfolioAnalysis!),
                           ),
                         ),
+                      if (_backtestLoading)
+                        const SliverToBoxAdapter(
+                          child: Padding(
+                            padding: EdgeInsets.fromLTRB(16, 12, 16, 0),
+                            child: _BacktestLoadingCard(),
+                          ),
+                        )
+                      else if (_backtestResult != null)
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                            child: _BacktestResultCard(data: _backtestResult!),
+                          ),
+                        ),
                       SliverToBoxAdapter(
                         child: Padding(
                           padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -327,6 +390,12 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen>
                             ),
                           ),
                           childCount: enriched.length,
+                        ),
+                      ),
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                          child: _PortfolioTransactionsCard(txAsync: transactionsAsync),
                         ),
                       ),
                       const SliverToBoxAdapter(child: SizedBox(height: 40)),
@@ -427,6 +496,7 @@ class _PaperTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final accountAsync = ref.watch(paperAccountProvider);
     final holdingsAsync = ref.watch(paperHoldingsProvider);
+    final txAsync = ref.watch(paperTransactionsProvider);
 
     return accountAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -463,9 +533,23 @@ class _PaperTab extends ConsumerWidget {
             final isPositive = totalPnl >= 0;
 
             if (holdings.isEmpty) {
-              return _PaperEmptyView(
-                cashBalance: account.cashBalance,
-                onRefresh: onRefresh,
+              return CustomScrollView(
+                physics: const BouncingScrollPhysics(),
+                slivers: [
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: _PaperEmptyView(
+                      cashBalance: account.cashBalance,
+                      onRefresh: onRefresh,
+                    ),
+                  ),
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                      child: _PaperTransactionsCard(txAsync: txAsync),
+                    ),
+                  ),
+                ],
               );
             }
 
@@ -551,6 +635,13 @@ class _PaperTab extends ConsumerWidget {
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                       child: _CashBalanceRow(cashBalance: account.cashBalance),
+                    ),
+                  ),
+
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                      child: _PaperTransactionsCard(txAsync: txAsync),
                     ),
                   ),
 
@@ -683,6 +774,125 @@ class _PaperSummaryCard extends StatelessWidget {
     if (v >= 1e6) return '${(v / 1e6).toStringAsFixed(2)}M';
     if (v >= 1e3) return '${(v / 1e3).toStringAsFixed(1)}K';
     return NumberFormat('#,##0.00').format(v);
+  }
+}
+
+class _PaperTransactionsCard extends StatelessWidget {
+  final AsyncValue<List<PaperTransaction>> txAsync;
+  const _PaperTransactionsCard({required this.txAsync});
+
+  @override
+  Widget build(BuildContext context) {
+    return txAsync.when(
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
+      data: (txList) {
+        if (txList.isEmpty) return const SizedBox.shrink();
+        return GlassCard(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Row(children: [
+                Icon(Icons.receipt_long_outlined,
+                    color: Color(0xFF12A28C), size: 18),
+                SizedBox(width: 8),
+                Text('Paper Transactions',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700)),
+              ]),
+              const SizedBox(height: 12),
+              ...txList.take(8).map((tx) => _PaperTransactionRow(tx: tx)),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _PaperTransactionRow extends StatelessWidget {
+  final PaperTransaction tx;
+  const _PaperTransactionRow({required this.tx});
+
+  @override
+  Widget build(BuildContext context) {
+    final isBuy = tx.isBuy;
+    final color = isBuy ? const Color(0xFF12A28C) : Colors.redAccent;
+    final fmt = NumberFormat('#,##0.00');
+    final dateFmt = DateFormat('MMM d, h:mm a');
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.14),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              isBuy ? Icons.arrow_downward : Icons.arrow_upward,
+              color: color,
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Text(isBuy ? 'BUY' : 'SELL',
+                      style: TextStyle(
+                          color: color,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800)),
+                  const SizedBox(width: 6),
+                  Text(tx.symbol,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700)),
+                ]),
+                Text(
+                  '${tx.shares.toStringAsFixed(4)} @ \$${fmt.format(tx.price)}',
+                  style: const TextStyle(color: Colors.white54, fontSize: 11),
+                ),
+                Text(dateFmt.format(tx.timestamp),
+                    style: const TextStyle(color: Colors.white30, fontSize: 10)),
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                '${isBuy ? '-' : '+'}\$${fmt.format(tx.totalValue)}',
+                style: TextStyle(
+                    color: isBuy ? Colors.redAccent : const Color(0xFF12A28C),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700),
+              ),
+              if (!isBuy && tx.realizedPnl != null)
+                Text(
+                  '${tx.realizedPnl! >= 0 ? '+' : ''}\$${fmt.format(tx.realizedPnl!)} P&L',
+                  style: TextStyle(
+                      color: tx.realizedPnl! >= 0
+                          ? const Color(0xFF12A28C)
+                          : Colors.redAccent,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -1230,6 +1440,106 @@ class _PaperActivationViewState extends State<_PaperActivationView> {
 // REAL PORTFOLIO WIDGETS (unchanged)
 // ═══════════════════════════════════════════════════════════════════════════════
 
+class _PortfolioTransactionsCard extends StatelessWidget {
+  final AsyncValue<List<PortfolioTransaction>> txAsync;
+  const _PortfolioTransactionsCard({required this.txAsync});
+
+  @override
+  Widget build(BuildContext context) {
+    return txAsync.when(
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
+      data: (transactions) {
+        if (transactions.isEmpty) return const SizedBox.shrink();
+        return GlassCard(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Row(children: [
+                Icon(Icons.receipt_long_outlined,
+                    color: Color(0xFF12A28C), size: 18),
+                SizedBox(width: 8),
+                Text('Transactions',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700)),
+              ]),
+              const SizedBox(height: 12),
+              ...transactions.take(8).map((tx) => _PortfolioTransactionRow(tx: tx)),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _PortfolioTransactionRow extends StatelessWidget {
+  final PortfolioTransaction tx;
+  const _PortfolioTransactionRow({required this.tx});
+
+  @override
+  Widget build(BuildContext context) {
+    final fmt = NumberFormat('#,##0.00');
+    final dateFmt = DateFormat('MMM d');
+    final isSell = tx.isSell || tx.type == 'REMOVE';
+    final color = isSell ? const Color(0xFFEF4444) : const Color(0xFF12A28C);
+    final sharesText = tx.shares >= 1
+        ? tx.shares.toStringAsFixed(2)
+        : tx.shares.toStringAsFixed(6);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              isSell ? Icons.south_west_rounded : Icons.north_east_rounded,
+              color: color,
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('${tx.type} ${tx.symbol}',
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700)),
+                Text('$sharesText @ \$${fmt.format(tx.price)}',
+                    style: const TextStyle(color: Colors.white54, fontSize: 11)),
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text('\$${fmt.format(tx.totalValue)}',
+                  style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600)),
+              Text(dateFmt.format(tx.timestamp),
+                  style: const TextStyle(color: Colors.white38, fontSize: 10)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _SummaryCard extends StatelessWidget {
   final double totalValue;
   final double totalPnl;
@@ -1439,6 +1749,97 @@ class _AnalysisLoadingCard extends StatelessWidget {
   }
 }
 
+class _BacktestLoadingCard extends StatelessWidget {
+  const _BacktestLoadingCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassCard(
+      padding: const EdgeInsets.all(18),
+      child: Row(children: [
+        SizedBox(
+          width: 18,
+          height: 18,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+        ),
+        const SizedBox(width: 12),
+        const Text('Running portfolio backtest...',
+            style: TextStyle(color: Colors.white70, fontSize: 14)),
+      ]),
+    );
+  }
+}
+
+class _BacktestResultCard extends StatelessWidget {
+  final Map<String, dynamic> data;
+  const _BacktestResultCard({required this.data});
+
+  @override
+  Widget build(BuildContext context) {
+    final totalReturn = (data['total_return_pct'] as num?)?.toDouble();
+    final isPositive = (totalReturn ?? 0) >= 0;
+    final color = isPositive ? const Color(0xFF12A28C) : const Color(0xFFEF4444);
+
+    return GlassCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(Icons.stacked_line_chart_rounded,
+                color: Theme.of(context).colorScheme.primary, size: 18),
+            const SizedBox(width: 8),
+            const Text('Backtest Results',
+                style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700)),
+            const Spacer(),
+            Text((data['period'] ?? '1y').toString().toUpperCase(),
+                style: const TextStyle(color: Colors.white38, fontSize: 11)),
+          ]),
+          const SizedBox(height: 14),
+          Text(
+            '${_fmtSigned(totalReturn)}%',
+            style: TextStyle(color: color, fontSize: 28, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '\$${_fmtMoney(data['initial_value'])} to \$${_fmtMoney(data['final_value'])}',
+            style: const TextStyle(color: Colors.white60, fontSize: 12),
+          ),
+          const SizedBox(height: 14),
+          _MetricRow('Annualized Return', '${_fmtSigned(data['annualized_return_pct'])}%'),
+          _MetricRow('Max Drawdown', '${_fmt(data['max_drawdown_pct'])}%'),
+          _MetricRow('Volatility', '${_fmt(data['volatility_pct'])}%'),
+          _MetricRow('Sharpe Ratio', _fmt(data['sharpe_ratio'])),
+          _MetricRow('Best / Worst Day',
+              '${_fmtSigned(data['best_day_pct'])}% / ${_fmtSigned(data['worst_day_pct'])}%'),
+        ],
+      ),
+    );
+  }
+
+  String _fmt(dynamic v) {
+    if (v == null) return '-';
+    return (v as num).toStringAsFixed(2);
+  }
+
+  String _fmtSigned(dynamic v) {
+    if (v == null) return '-';
+    final value = (v as num).toDouble();
+    return '${value >= 0 ? '+' : ''}${value.toStringAsFixed(2)}';
+  }
+
+  String _fmtMoney(dynamic v) {
+    if (v == null) return '-';
+    return NumberFormat('#,##0').format((v as num).toDouble());
+  }
+}
+
 class _PortfolioAnalysisCard extends StatelessWidget {
   final Map<String, dynamic> data;
   const _PortfolioAnalysisCard({required this.data});
@@ -1447,6 +1848,9 @@ class _PortfolioAnalysisCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final metrics = data['metrics'] as Map<String, dynamic>?;
     final rebalancing = data['rebalancing'] as List<dynamic>?;
+    final correlation = data['correlation'] as Map<String, dynamic>?;
+    final sectorExposure = data['sector_exposure'] as Map<String, dynamic>?;
+    final riskAttribution = data['risk_attribution'] as List<dynamic>?;
     final insight = data['ai_insight'] as String?;
 
     return GlassCard(
@@ -1470,6 +1874,42 @@ class _PortfolioAnalysisCard extends StatelessWidget {
             _MetricRow('Sortino Ratio', _fmt(metrics['sortino_ratio'])),
             _MetricRow('Volatility (ann.)',
                 '${_fmtPct(metrics['portfolio_volatility'])}%'),
+            _MetricRow('Max Drawdown', '${_fmtPct(data['max_drawdown'])}%'),
+            const SizedBox(height: 12),
+          ],
+          if (sectorExposure != null && sectorExposure.isNotEmpty) ...[
+            const Text('Sector Exposure',
+                style: TextStyle(
+                    color: Colors.white60,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600)),
+            const SizedBox(height: 6),
+            ...sectorExposure.entries.map((e) =>
+                _MetricRow(e.key, '${_fmt(e.value)}%')),
+            const SizedBox(height: 12),
+          ],
+          if (riskAttribution != null && riskAttribution.isNotEmpty) ...[
+            const Text('Risk Attribution',
+                style: TextStyle(
+                    color: Colors.white60,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600)),
+            const SizedBox(height: 6),
+            ...riskAttribution.take(4).map((item) {
+              final row = item as Map<String, dynamic>;
+              return _MetricRow(
+                  row['symbol'].toString(), '${_fmt(row['risk_pct'])}%');
+            }),
+            const SizedBox(height: 12),
+          ],
+          if (correlation != null && correlation.isNotEmpty) ...[
+            const Text('Correlation Pairs',
+                style: TextStyle(
+                    color: Colors.white60,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600)),
+            const SizedBox(height: 6),
+            ...correlation.entries.take(4).map((e) => _MetricRow(e.key, _fmt(e.value))),
             const SizedBox(height: 12),
           ],
           if (rebalancing != null && rebalancing.isNotEmpty) ...[
@@ -1513,12 +1953,12 @@ class _PortfolioAnalysisCard extends StatelessWidget {
   }
 
   String _fmt(dynamic v) {
-    if (v == null) return '—';
+    if (v == null) return '-';
     return (v as num).toStringAsFixed(2);
   }
 
   String _fmtPct(dynamic v) {
-    if (v == null) return '—';
+    if (v == null) return '-';
     return ((v as num) * 100).toStringAsFixed(1);
   }
 }
@@ -2002,7 +2442,11 @@ class _SellHoldingSheetState extends State<_SellHoldingSheet> {
   Future<void> _confirmSell() async {
     setState(() => _selling = true);
     try {
-      await widget.service.sell(widget.holding.symbol, _sharesToSell);
+      await widget.service.sell(
+        widget.holding.symbol,
+        _sharesToSell,
+        price: widget.holding.currentPrice ?? widget.holding.avgCost,
+      );
       if (mounted) {
         Navigator.pop(context);
         widget.onSold();
@@ -2121,7 +2565,11 @@ class _AddHoldingSheetState extends State<_AddHoldingSheet> {
     Future.delayed(const Duration(milliseconds: 600), () async {
       if (_lastTyped != capturedTime || !mounted) return;
       setState(() => _lookingUp = true);
-      final quote = await _backend.getQuote(trimmed);
+      var quote = await _backend.getQuote(trimmed);
+      if (quote == null) {
+        final quotes = await _backend.getQuotes([trimmed]);
+        quote = quotes[trimmed] ?? quotes[trimmed.toUpperCase()];
+      }
       if (!mounted) return;
       if (quote != null) {
         final price = (quote['price'] as num?)?.toDouble() ??
@@ -2161,15 +2609,24 @@ class _AddHoldingSheetState extends State<_AddHoldingSheet> {
       return;
     }
     setState(() { _saving = true; _error = null; });
-    await widget.service.upsert(Holding(
-      symbol: symbol,
-      name: name,
-      shares: shares,
-      avgCost: cost,
-      addedAt: widget.existing?.addedAt ?? DateTime.now(),
-    ));
-    widget.onSaved();
-    if (mounted) Navigator.pop(context);
+    try {
+      await widget.service.upsert(Holding(
+        symbol: symbol,
+        name: name,
+        shares: shares,
+        avgCost: cost,
+        addedAt: widget.existing?.addedAt ?? DateTime.now(),
+      ));
+      widget.onSaved();
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _error = 'Could not save position: $e';
+        });
+      }
+    }
   }
 
   @override

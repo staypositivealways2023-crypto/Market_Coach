@@ -22,7 +22,7 @@ class BinanceCandleService {
     'XLM': 'XLMUSDT',
   };
 
-  static const _maxCandles = 365;
+  static const _maxCandles = 500; // raised to handle 1Y+ crypto requests
 
   WebSocketChannel? _channel;
 
@@ -38,7 +38,16 @@ class BinanceCandleService {
   Timer? _reconnectTimer;
   int _reconnectAttempts = 0;
 
-  Stream<List<Candle>> streamCandles(String symbol, {String interval = '1m'}) {
+  // Set true before an intentional disconnect so that the WS onDone handler
+  // does not schedule a spurious reconnect while a controlled resubscription
+  // is already in flight.
+  bool _intentionalClose = false;
+
+  Stream<List<Candle>> streamCandles(
+    String symbol, {
+    String interval = '1m',
+    int limit = 365,
+  }) {
     final key = '$symbol-$interval';
 
     if (!_controllers.containsKey(key)) {
@@ -47,7 +56,7 @@ class BinanceCandleService {
           _activeKeys.add(key);
 
           // Seed history immediately (REST) so chart renders instantly
-          await _seedHistoryIfNeeded(symbol, interval);
+          await _seedHistoryIfNeeded(symbol, interval, limit: limit);
 
           // Then connect websocket for live updates
           _reconnect();
@@ -59,7 +68,13 @@ class BinanceCandleService {
           _seedingKeys.remove(key);
 
           if (_activeKeys.isEmpty) {
+            // Cancel any pending reconnect before closing — prevents a stale
+            // timer from reopening the socket after the caller resubscribes.
+            _intentionalClose = true;
+            _reconnectTimer?.cancel();
+            _reconnectTimer = null;
             _disconnect();
+            _intentionalClose = false;
           } else {
             _reconnect();
           }
@@ -72,17 +87,23 @@ class BinanceCandleService {
     return _controllers[key]!.stream;
   }
 
-  Future<void> _seedHistoryIfNeeded(String symbol, String interval) async {
+  Future<void> _seedHistoryIfNeeded(
+    String symbol,
+    String interval, {
+    int limit = 365,
+  }) async {
     final key = '$symbol-$interval';
     if (_seedingKeys.contains(key)) return;
     _seedingKeys.add(key);
+
+    final fetchLimit = limit.clamp(1, _maxCandles);
 
     try {
       final mapped = _symbolMapping[symbol];
       if (mapped == null) return;
 
       final uri = Uri.parse(
-        '$_restBaseUrl?symbol=$mapped&interval=$interval&limit=$_maxCandles',
+        '$_restBaseUrl?symbol=$mapped&interval=$interval&limit=$fetchLimit',
       );
       _log('Seeding candles via REST: $uri');
 
@@ -123,7 +144,7 @@ class BinanceCandleService {
       if (candles.isEmpty) return;
 
       // Save + emit immediately
-      _candleHistory[key] = candles.take(_maxCandles).toList();
+      _candleHistory[key] = candles.take(fetchLimit).toList();
       _controllers[key]?.add(List<Candle>.from(_candleHistory[key]!));
 
       _log('Seeded ${candles.length} candles for $symbol $interval');
@@ -135,7 +156,11 @@ class BinanceCandleService {
   }
 
   void _reconnect() {
+    _intentionalClose = true;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
     _disconnect();
+    _intentionalClose = false;
     _connect();
   }
 
@@ -171,6 +196,15 @@ class BinanceCandleService {
 
       _log('Connected. Streaming: $streams');
 
+      // In web_socket_channel ≥ 3.x the TCP/DNS handshake error is surfaced
+      // on the `ready` Future, not on the stream — this is the line that was
+      // causing the "Unhandled Exception: WebSocketChannelException: SocketException"
+      // crash when Binance's hostname could not be resolved.
+      _channel!.ready.catchError((Object e) {
+        _log('WS ready error (connection failed): $e');
+        if (!_intentionalClose) _scheduleReconnect();
+      });
+
       _channel!.stream.listen(
         (message) {
           try {
@@ -179,8 +213,11 @@ class BinanceCandleService {
             _log('WS parse error: $e');
           }
         },
-        onError: (_) => _scheduleReconnect(),
-        onDone: () => _scheduleReconnect(),
+        onError: (Object e) {
+          _log('WS stream error: $e');
+          if (!_intentionalClose) _scheduleReconnect();
+        },
+        onDone: () { if (!_intentionalClose) _scheduleReconnect(); },
         cancelOnError: false,
       );
     } catch (e) {

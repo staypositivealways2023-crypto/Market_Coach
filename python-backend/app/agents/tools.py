@@ -5,6 +5,9 @@ Phase 3 additions:
   get_deep_fundamentals   -- DCF intrinsic value, quality scoring (FundamentalsAgent)
   calculate_risk_metrics  -- ATR position sizing, stop/take-profit (RiskAgent)
   get_finbert_sentiment   -- Explicit FinBERT article-level scores (SentimentAgent)
+
+Phase 4 additions:
+  get_probabilistic_data  -- Monte Carlo GBM + Bayesian price target (QuantAgent)
 """
 
 import asyncio
@@ -479,3 +482,62 @@ def recall_user_context(query: str) -> str:
         return json.dumps({"uid": uid, "memories": memories})
     except Exception as e:
         return json.dumps({"uid": uid, "memories": [], "error": str(e)})
+
+
+# Phase 4: Probabilistic Data Tool (QuantAgent)
+
+@tool("get_probabilistic_data")
+def get_probabilistic_data(symbol: str) -> str:
+    """
+    Run Monte Carlo GBM simulation and Bayesian price-target update for a symbol.
+    Returns probabilistic price targets (p10/p25/p50/p75/p90 percentile fan),
+    Value-at-Risk (VaR 95), Conditional VaR (CVaR 95), black-swan flag,
+    and a Bayesian posterior mean with 90 percent credible interval.
+    Use this to produce quantitative conviction metrics and tail-risk commentary.
+    """
+    from app.services.monte_carlo_service import MonteCarloService
+    from app.services.bayesian_service import BayesianService
+
+    sym       = symbol.strip().upper()
+    mc_svc    = MonteCarloService()
+    bayes_svc = BayesianService()
+
+    async def _fetch():
+        mc_task    = mc_svc.simulate(sym, horizon_days=21, num_simulations=1000)
+        bayes_task = bayes_svc.update_price_target(
+            sym, analyst_target=0.0, analyst_confidence=1.0, horizon_days=21
+        )
+        results = await asyncio.gather(mc_task, bayes_task, return_exceptions=True)
+        return results[0], results[1]
+
+    mc_res, bayes_res = _run(_fetch())
+
+    result: dict = {"symbol": sym}
+
+    if isinstance(mc_res, Exception) or (isinstance(mc_res, dict) and "error" in mc_res):
+        result["monte_carlo_error"] = str(mc_res)
+    else:
+        result["monte_carlo"] = {
+            "current_price":    mc_res.get("current_price"),
+            "expected_price":   mc_res.get("expected_price"),
+            "percentiles":      mc_res.get("percentiles", {}),
+            "prob_profit":      mc_res.get("prob_profit"),
+            "prob_loss_10pct":  mc_res.get("prob_loss_10pct"),
+            "var_95":           mc_res.get("var_95"),
+            "cvar_95":          mc_res.get("cvar_95"),
+            "black_swan_prone": mc_res.get("black_swan_prone", False),
+            "excess_kurtosis":  mc_res.get("excess_kurtosis"),
+            "annualised_vol":   mc_res.get("annualised_vol"),
+        }
+        if not isinstance(bayes_res, Exception) and "error" not in (bayes_res or {}):
+            result["bayesian"] = {
+                "posterior_mean":       bayes_res.get("posterior_mean"),
+                "posterior_std":        bayes_res.get("posterior_std"),
+                "credible_interval_90": bayes_res.get("credible_interval_90"),
+                "data_implied_target":  bayes_res.get("data_implied_target"),
+                "annualised_vol":       bayes_res.get("annualised_vol"),
+            }
+        else:
+            result["bayesian_error"] = str(bayes_res)
+
+    return json.dumps(result, default=str)

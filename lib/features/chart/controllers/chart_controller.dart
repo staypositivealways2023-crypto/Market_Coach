@@ -29,10 +29,25 @@ class ChartController extends ChangeNotifier {
   ChartType get chartType => _chartType;
 
   void setCandles(List<Candle> candles) {
+    final oldLength = _candles.length;
+    final hadUserViewport = _candles.isNotEmpty &&
+        (_viewportEnd - oldLength).abs() > 0.01;
+    final oldStart = _viewportStart;
+    final oldEnd = _viewportEnd;
     _candles = candles;
-    // Default viewport: last 80 candles
-    _viewportEnd = candles.length.toDouble();
-    _viewportStart = max(0.0, _viewportEnd - 80.0);
+
+    if (candles.isEmpty) {
+      _viewportStart = 0;
+      _viewportEnd = 0;
+    } else if (hadUserViewport) {
+      final width = (oldEnd - oldStart).clamp(10.0, candles.length.toDouble());
+      _viewportStart = oldStart.clamp(0.0, max(0.0, candles.length - width)).toDouble();
+      _viewportEnd = _viewportStart + width;
+    } else {
+      // Default viewport: last 80 candles.
+      _viewportEnd = candles.length.toDouble();
+      _viewportStart = max(0.0, _viewportEnd - 80.0);
+    }
     _selectedCandleIndex = null;
     patternHitTargets = [];
     notifyListeners();

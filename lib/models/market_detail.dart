@@ -2,6 +2,31 @@ import 'package:flutter/material.dart';
 
 /// Models for data returned by the Python backend Phase 2 endpoints
 
+// ── Safe JSON helpers ────────────────────────────────────────────────────────
+// These tolerate the backend returning numbers as strings (e.g. Binance fields)
+// or returning null/missing fields without throwing.
+
+double? _toDouble(dynamic v) {
+  if (v == null) return null;
+  if (v is num) return v.toDouble();
+  if (v is String) return double.tryParse(v);
+  return null;
+}
+
+int? _toInt(dynamic v) {
+  if (v == null) return null;
+  if (v is int) return v;
+  if (v is num) return v.toInt();
+  if (v is String) {
+    // Handle fractional strings like "12345.678" (Binance coin volume)
+    final d = double.tryParse(v);
+    return d?.toInt();
+  }
+  return null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 class MarketRange {
   final String symbol;
   final double? currentPrice;
@@ -30,16 +55,24 @@ class MarketRange {
   factory MarketRange.fromJson(Map<String, dynamic> json) {
     return MarketRange(
       symbol:        json['symbol'] as String? ?? '',
-      currentPrice:  (json['current_price'] as num?)?.toDouble(),
-      dayHigh:       (json['day_high'] as num?)?.toDouble(),
-      dayLow:        (json['day_low'] as num?)?.toDouble(),
-      open:          (json['open'] as num?)?.toDouble(),
-      previousClose: (json['previous_close'] as num?)?.toDouble(),
-      volume:        (json['volume'] as num?)?.toInt(),
-      marketCap:     (json['market_cap'] as num?)?.toDouble(),
-      yearHigh:      (json['year_high'] as num?)?.toDouble(),
-      yearLow:       (json['year_low'] as num?)?.toDouble(),
+      currentPrice:  _toDouble(json['current_price']),
+      dayHigh:       _toDouble(json['day_high']),
+      dayLow:        _toDouble(json['day_low']),
+      open:          _toDouble(json['open']),
+      previousClose: _toDouble(json['previous_close']),
+      volume:        _toInt(json['volume']),
+      marketCap:     _toDouble(json['market_cap']),
+      yearHigh:      _toDouble(json['year_high']),
+      yearLow:       _toDouble(json['year_low']),
     );
+  }
+
+  /// Turnover (price × volume) — used as fallback when market cap is unavailable.
+  double? get turnover {
+    final p = currentPrice;
+    final v = volume;
+    if (p != null && v != null && v > 0) return p * v;
+    return null;
   }
 }
 

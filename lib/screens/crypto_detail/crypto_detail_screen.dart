@@ -403,6 +403,7 @@ class _CryptoDetailScreenState extends ConsumerState<CryptoDetailScreen> {
             : TvChartWidget(
                 candles: _candles,
                 chartType: _chartType,
+                timeframe: _timeframe,
                 height: 320,
               ),
 

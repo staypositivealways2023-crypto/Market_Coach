@@ -22,18 +22,13 @@ logger = logging.getLogger(__name__)
 
 
 def _route_after_verification(state: AnalystState) -> str:
-    """Conditional edge: decide what happens after verification."""
+    """Conditional edge: decide what happens after verification.
+
+    The verification node is now the single authority on empty reasoning_answer —
+    it hard-fails before any intent bypass so that case always routes through
+    retry/error here rather than slipping past as a spurious pass.
+    """
     if state.get("verification_passed"):
-        # Defense-in-depth: even if verification passed, refuse to route to synthesis
-        # when reasoning_answer is empty.  This closes the hallucination window that
-        # occurs when the verification bypass auto-passed an empty answer.
-        reasoning = state.get("reasoning_answer") or ""
-        if not reasoning.strip():
-            logger.error(
-                "[graph] verification passed but reasoning_answer is empty — "
-                "routing to error_node to prevent synthesis hallucination"
-            )
-            return "error"
         logger.info("[graph] verification PASSED — routing to synthesis")
         return "synthesis"
 

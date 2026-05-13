@@ -168,7 +168,18 @@ async def get_price_range(symbol: str):
         day_low   = quote.low  if quote else None
         year_high = year_range.get("year_high")
         year_low  = year_range.get("year_low")
-        candles   = []  # not fetched for crypto
+
+        # Fallback: if quote didn't supply intraday high/low (e.g. yfinance
+        # fallback path), derive them from the most recent daily candle.
+        if day_high is None or day_low is None:
+            candles = await data_fetcher.get_candles(sym, interval="1d", limit=2)
+        else:
+            candles = []
+
+        if candles and (day_high is None or day_low is None):
+            last = candles[-1]
+            day_high = day_high or last.high
+            day_low  = day_low  or last.low
     else:
         # Stock path: existing candle-based logic unchanged
         quote, candles = await asyncio.gather(
@@ -355,63 +366,54 @@ async def get_economic_calendar(days_ahead: int = Query(14, ge=1, le=30)):
 
 # ── Stock Screener ────────────────────────────────────────────────────────────
 
-_SCREENER_UNIVERSE = [
-    "AAPL","MSFT","NVDA","GOOGL","AMZN","META","TSLA","BRK-B",
-    "JPM","V","JNJ","UNH","XOM","PG","MA","HD","CVX","MRK",
-    "ABBV","LLY","AVGO","COST","PEP","KO","TMO","WMT","BAC",
-    "DIS","CSCO","ADBE","ACN","CRM","NFLX","INTC","AMD","QCOM",
-    "BTC","ETH","BNB","SOL","ADA","DOT","AVAX",
-]
+from app.services.screener_service import run_screener
 
 
 @router.get("/screener")
 async def get_screener(
-    min_change: float  = Query(None, description="Min daily change % (e.g. 2.0)"),
-    max_change: float  = Query(None, description="Max daily change % (e.g. -2.0)"),
-    asset_type: str    = Query("all", description="all|stock|crypto"),
-    limit:      int    = Query(20, ge=1, le=50),
+    min_change:     Optional[float] = Query(None, description="Min daily change % (e.g. 2.0)"),
+    max_change:     Optional[float] = Query(None, description="Max daily change % (e.g. -2.0)"),
+    asset_type:     str             = Query("all",            description="all|stock|crypto"),
+    sector:         Optional[str]   = Query(None,             description="Tech|Finance|Healthcare|Energy|Consumer|ETF|Crypto"),
+    signal:         Optional[str]   = Query(None,             description="OVERSOLD|OVERBOUGHT|NEUTRAL"),
+    min_volume:     Optional[float] = Query(None,             description="Min daily volume"),
+    min_market_cap: Optional[float] = Query(None,             description="Min market cap (USD)"),
+    max_market_cap: Optional[float] = Query(None,             description="Max market cap (USD)"),
+    sort_by:        str             = Query("change_percent", description="change_percent|volume|market_cap|rsi"),
+    limit:          int             = Query(20, ge=1, le=50),
 ):
     """
-    Simple screener — filter universe by daily % change.
-    Returns top movers matching the criteria.
+    Multi-factor screener — filters by daily change, volume, market cap, sector,
+    and RSI-based signal (OVERSOLD / OVERBOUGHT / NEUTRAL).
+
+    RSI is computed per surviving symbol after the fast price/volume filters run,
+    so the candle-fetch step only touches the filtered subset.
+    Response is cached 5 minutes (RSI cache) + 2 minutes (result cache).
     """
-    cache_key = f"screener:{min_change}:{max_change}:{asset_type}:{limit}"
+    cache_key = (
+        f"screener2:{asset_type}:{sector}:{signal}:{min_change}:{max_change}:"
+        f"{min_volume}:{min_market_cap}:{max_market_cap}:{sort_by}:{limit}"
+    )
     cached = cache_manager.get(cache_key)
     if cached:
         return cached
 
-    symbols = _SCREENER_UNIVERSE
-    if asset_type == "stock":
-        symbols = [s for s in symbols if not _is_crypto_symbol(s)]
-    elif asset_type == "crypto":
-        symbols = [s for s in symbols if _is_crypto_symbol(s)]
+    results = await run_screener(
+        asset_type=asset_type,
+        sector=sector,
+        min_change=min_change,
+        max_change=max_change,
+        min_volume=min_volume,
+        min_market_cap=min_market_cap,
+        max_market_cap=max_market_cap,
+        signal=signal,
+        sort_by=sort_by,
+        limit=limit,
+    )
 
-    quotes = await data_fetcher.get_quotes_batch(symbols[:40])  # cap to avoid overload
-
-    results = []
-    for q in quotes:
-        if q.change_percent is None:
-            continue
-        if min_change is not None and q.change_percent < min_change:
-            continue
-        if max_change is not None and q.change_percent > max_change:
-            continue
-        results.append({
-            "symbol":         q.symbol,
-            "price":          q.price,
-            "change_percent": q.change_percent,
-            "change":         q.change,
-            "volume":         q.volume,
-            "market_cap":     q.market_cap,
-            "asset_type":     "crypto" if _is_crypto_symbol(q.symbol) else "stock",
-        })
-
-    # Sort by absolute change desc
-    results.sort(key=lambda x: abs(x["change_percent"] or 0), reverse=True)
-    results = results[:limit]
-
-    cache_manager.set(cache_key, results, ttl=120)  # 2 min
-    return {"count": len(results), "results": results}
+    payload = {"count": len(results), "results": results}
+    cache_manager.set(cache_key, payload, ttl=120)  # 2-min result cache
+    return payload
 
 
 # ── Order Book ────────────────────────────────────────────────────────────────
@@ -497,6 +499,195 @@ async def get_orderbook(
         "timestamp_ms":     ts,
     }
 
+
     ttl = 3 if _is_crypto_symbol(sym) else 15  # crypto: 3s, stocks: 15s
     cache_manager.set(cache_key, result, ttl=ttl)
     return result
+
+
+# ── Fear & Greed Index ────────────────────────────────────────────────────────
+
+import math as _math
+import pandas as _pd
+from ta.momentum import RSIIndicator as _RSIIndicator
+
+@router.get("/fear-greed")
+async def get_fear_greed():
+    """
+    Composite Fear & Greed index (0-100).
+
+    Three components, equal weight:
+      * VIX component  -- inverted VIX level (VIX 10->100pts, VIX 40->0pts)
+      * Momentum       -- SPY RSI-14
+      * Market position -- SPY price vs 52-week range (0-100%)
+
+    Labels: 0-20 Extreme Fear, 20-40 Fear, 40-60 Neutral, 60-80 Greed, 80-100 Extreme Greed
+    Cached 5 minutes.
+    """
+    cache_key = "fear_greed:v1"
+    cached = cache_manager.get(cache_key)
+    if cached:
+        return cached
+
+    vix_quote, spy_candles = await asyncio.gather(
+        data_fetcher.get_quote("VIX"),
+        data_fetcher.get_candles("SPY", interval="1d", limit=252),
+        return_exceptions=True,
+    )
+
+    components: dict = {}
+
+    # VIX component
+    vix_score: Optional[float] = None
+    if isinstance(vix_quote, Quote) and vix_quote.price is not None:
+        vix = float(vix_quote.price)
+        vix_score = max(0.0, min(100.0, 100.0 - (vix - 10.0) * (100.0 / 30.0)))
+        components["vix"] = {"value": round(vix, 2), "score": round(vix_score, 1)}
+
+    # RSI component (SPY RSI-14)
+    rsi_score: Optional[float] = None
+    if isinstance(spy_candles, list) and len(spy_candles) >= 15:
+        closes = _pd.Series([float(c.close) for c in spy_candles], dtype=float)
+        rsi_val = _RSIIndicator(close=closes, window=14).rsi().iloc[-1]
+        if not _math.isnan(rsi_val):
+            rsi_score = float(rsi_val)
+            components["momentum_rsi"] = {"value": round(rsi_score, 1), "score": round(rsi_score, 1)}
+
+    # Market position -- SPY vs 52-week range
+    position_score: Optional[float] = None
+    if isinstance(spy_candles, list) and len(spy_candles) >= 20:
+        hi52 = max(c.high for c in spy_candles)
+        lo52 = min(c.low  for c in spy_candles)
+        current = float(spy_candles[-1].close)
+        if hi52 > lo52:
+            position_score = (current - lo52) / (hi52 - lo52) * 100.0
+            components["market_position"] = {
+                "value": round(current, 2),
+                "year_high": round(hi52, 2),
+                "year_low": round(lo52, 2),
+                "score": round(position_score, 1),
+            }
+
+    scores = [s for s in [vix_score, rsi_score, position_score] if s is not None]
+    composite = round(sum(scores) / len(scores), 1) if scores else 50.0
+
+    def _label(s: float) -> str:
+        if s < 20: return "Extreme Fear"
+        if s < 40: return "Fear"
+        if s < 60: return "Neutral"
+        if s < 80: return "Greed"
+        return "Extreme Greed"
+
+    payload = {
+        "score":      composite,
+        "label":      _label(composite),
+        "components": components,
+        "fetched_at": datetime.utcnow().isoformat(),
+    }
+    cache_manager.set(cache_key, payload, ttl=300)
+    return payload
+
+
+# ── Technical Alerts ──────────────────────────────────────────────────────────
+
+@router.get("/technical-alerts")
+async def get_technical_alerts(
+    symbols: str = Query(
+        "AAPL,MSFT,NVDA,GOOGL,AMZN,META,TSLA,NFLX,AMD,INTC,QCOM,AVGO,BTC,ETH,SOL,XRP",
+        description="Comma-separated symbols to scan",
+    ),
+):
+    """
+    Scan symbols for triggered RSI and volume-spike alerts.
+
+    Conditions:
+      * RSI < 30  -> OVERSOLD
+      * RSI > 70  -> OVERBOUGHT
+      * Volume today > 2x 20-day avg -> VOLUME_SPIKE
+
+    Cached 5 minutes.
+    """
+    sym_list = [s.strip().upper() for s in symbols.split(",") if s.strip()][:20]
+    cache_key = f"tech_alerts:{','.join(sorted(sym_list))}"
+    cached = cache_manager.get(cache_key)
+    if cached:
+        return cached
+
+    RSI_PERIOD   = 14
+    CANDLE_LIMIT = 30
+
+    async def _scan(sym: str) -> list:
+        alerts = []
+        try:
+            candle_symbol = _to_yfinance_symbol(sym) if _is_crypto_symbol(sym) else sym
+            quote, candles = await asyncio.gather(
+                data_fetcher.get_quote(sym),
+                data_fetcher.get_candles(candle_symbol, interval="1d", limit=CANDLE_LIMIT),
+                return_exceptions=True,
+            )
+            if not isinstance(candles, list) or len(candles) < RSI_PERIOD + 2:
+                return alerts
+
+            closes  = _pd.Series([float(c.close) for c in candles], dtype=float)
+            volumes = [float(c.volume) for c in candles if c.volume]
+
+            rsi_series = _RSIIndicator(close=closes, window=RSI_PERIOD).rsi()
+            rsi_val = float(rsi_series.iloc[-1]) if not _math.isnan(rsi_series.iloc[-1]) else None
+
+            if rsi_val is not None:
+                if rsi_val < 30:
+                    alerts.append({
+                        "symbol":    sym,
+                        "type":      "OVERSOLD",
+                        "condition": f"RSI {rsi_val:.1f} < 30",
+                        "severity":  "high" if rsi_val < 25 else "medium",
+                        "rsi":       round(rsi_val, 1),
+                        "price":     float(candles[-1].close),
+                    })
+                elif rsi_val > 70:
+                    alerts.append({
+                        "symbol":    sym,
+                        "type":      "OVERBOUGHT",
+                        "condition": f"RSI {rsi_val:.1f} > 70",
+                        "severity":  "high" if rsi_val > 80 else "medium",
+                        "rsi":       round(rsi_val, 1),
+                        "price":     float(candles[-1].close),
+                    })
+
+            if len(volumes) >= 21:
+                today_vol  = volumes[-1]
+                avg_vol_20 = sum(volumes[-21:-1]) / 20
+                if avg_vol_20 > 0 and today_vol > 2 * avg_vol_20:
+                    mult = today_vol / avg_vol_20
+                    alerts.append({
+                        "symbol":     sym,
+                        "type":       "VOLUME_SPIKE",
+                        "condition":  f"Volume {mult:.1f}x 20-day avg",
+                        "severity":   "high" if mult > 3 else "medium",
+                        "volume":     int(today_vol),
+                        "avg_volume": int(avg_vol_20),
+                        "multiplier": round(mult, 2),
+                        "price":      float(candles[-1].close),
+                    })
+        except Exception as e:
+            logger.warning(f"[tech-alerts] scan failed for {sym}: {e}")
+        return alerts
+
+    results_nested = await asyncio.gather(*[_scan(s) for s in sym_list], return_exceptions=True)
+
+    all_alerts = []
+    for item in results_nested:
+        if isinstance(item, list):
+            all_alerts.extend(item)
+
+    severity_order = {"high": 0, "medium": 1}
+    all_alerts.sort(key=lambda a: (severity_order.get(a["severity"], 2), a["symbol"]))
+
+    payload = {
+        "count":      len(all_alerts),
+        "scanned":    len(sym_list),
+        "alerts":     all_alerts,
+        "fetched_at": datetime.utcnow().isoformat(),
+    }
+    cache_manager.set(cache_key, payload, ttl=300)
+    return payload

@@ -1,6 +1,7 @@
 // ignore_for_file: library_private_types_in_public_api
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -54,6 +55,14 @@ import '../../../models/analyst_response.dart';
 import '../../../services/analyst_graph_service.dart';
 import '../../../widgets/cot_thinking_card.dart';
 import 'package:audioplayers/audioplayers.dart';
+// Phase 4 — Probabilistic Engine
+import '../../../models/probabilistic_data.dart';
+import '../../../widgets/probabilistic_card.dart';
+// Phase 8 — Subscription gating + usage analytics
+import '../../../providers/subscription_provider.dart';
+import '../../../providers/usage_analytics_provider.dart';
+import '../../../services/usage_analytics_service.dart';
+import '../../../widgets/subscription_gate.dart';
 
 /// Drop-in replacement for StockDetailScreenEnhanced using native CustomPainter charts.
 class AssetChartScreen extends ConsumerStatefulWidget {
@@ -86,7 +95,18 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
   // Phase 5 — backend WS price stream
   StreamSubscription<PriceTick>? _priceStreamSub;
 
+  // ── Candles ────────────────────────────────────────────────────────────────
+  // _candles    — display slice shown by the chart (e.g. 7 bars for "1W")
+  // _allCandles — warmup + display (indicator computation runs on this)
+  // Indicators are computed once when candles change and cached here so
+  // build() never recomputes them on every frame.
+  static const int _kWarmupBars = 50; // extra bars fetched purely for indicator warmup
+
   List<Candle> _candles = [];
+  List<Candle> _allCandles = [];   // warmup + display
+  List<double?> _rsiValues  = [];  // aligned to _candles
+  Map<String, List<double?>> _macdData = {};  // aligned to _candles
+
   Quote? _liveQuote;
   // Phase 5 — backend CMF / money flow data
   MoneyFlowData? _moneyFlowData;
@@ -124,6 +144,14 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
   // Portfolio
   bool _inPortfolio = false;
 
+  // Chart gesture lock — prevents the parent CustomScrollView from stealing
+  // horizontal pan events while the user is interacting with the chart.
+  bool _chartInteracting = false;
+  final ScrollController _technicalScrollController = ScrollController();
+
+  // ── Phase 4: Probabilistic Engine ─────────────────────────────────────────
+  ProbabilisticData? _probabilisticData;
+
   // ── Phase 8: Analyst Graph (DeepSeek-R1 + LangGraph) ──────────────────────
   final _analystService = AnalystGraphService();
   AnalystResponse? _analystResult;
@@ -154,6 +182,7 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
         _fetchSignalAnalysis();
         _checkPortfolio();
         _fetchMacroOverview();
+        _fetchProbabilistic();
       }
     });
   }
@@ -255,37 +284,151 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
     if (mounted) setState(() => _inPortfolio = h != null);
   }
 
+  /// Maps the chart timeframe to a backend-compatible candle interval.
+  /// The signal engine uses the same resolution the user is viewing so
+  /// indicators and scenarios are never stale relative to the chart.
+  String _backendInterval() {
+    if (isCryptoSymbol(widget.stock.ticker)) {
+      // Crypto: map short-term frames to minute/hour intervals
+      switch (_timeframe) {
+        case '1m':  return '1m';
+        case '5m':  return '5m';
+        case '15m': return '15m';
+        case '30m': return '30m';
+        case '1h':  return '1h';
+        case '2h':  return '2h';
+        case '4h':  return '4h';
+        case '12h': return '12h';
+        case '1D':  return '15m';  // 96 15-min bars = 1 day view
+        case '1W':  return '4h';   // 42 4h bars = 1 week view
+        case '4W':  return '4h';   // 168 4h bars = 4 week view
+        case '1M':  return '1d';
+        case '3M':  return '1d';
+        case '6M':  return '1d';
+        case '1Y':  return '1d';
+        case '5Y':  return '1w';
+        default:    return '1d';
+      }
+    } else {
+      // Stocks: Alpha Vantage/Yahoo intervals
+      switch (_timeframe) {
+        case '1m':  return '1m';
+        case '5m':  return '5m';
+        case '15m': return '15m';
+        case '30m': return '30m';
+        case '1h':  return '1h';
+        case '4h':  return '4h';
+        case '1W': case '4W': case '1M': case '3M': case '6M': return '1d';
+        case '1Y': case '5Y': return '1wk';
+        default:    return '1d';
+      }
+    }
+  }
+
   Future<void> _fetchSignalAnalysis() async {
     if (!mounted) return;
     setState(() { _signalLoading = true; _signalAnalysis = null; });
-    final interval = isCryptoSymbol(widget.stock.ticker) ? '1h' : '1d';
-    final result = await _backendService.analyseStock(widget.stock.ticker, interval: interval);
+    final interval = _backendInterval();
+    if (kDebugMode) {
+      debugPrint('[AssetChart] fetchSignalAnalysis: ${widget.stock.ticker} '
+          'chart_tf=$_timeframe backend_interval=$interval');
+    }
+    final result = await _backendService.analyseStock(
+        widget.stock.ticker, interval: interval);
     if (mounted) setState(() { _signalAnalysis = result; _signalLoading = false; });
   }
 
-  String _binanceInterval(String tf) {
-    const map = {
-      '1m': '1m', '5m': '5m', '15m': '15m', '30m': '30m',
-      '1h': '1h', '2h': '2h', '4h': '4h', '12h': '12h',
-      '1D': '1d', '1W': '1w', '4W': '1d', '1M': '1M',
-      '3M': '1d', '6M': '1d', '1Y': '1w', '5Y': '1w',
+  Future<void> _fetchProbabilistic() async {
+    if (!mounted) return;
+    try {
+      final raw = await _backendService.getProbabilistic(widget.stock.ticker);
+      if (raw != null && mounted) {
+        setState(() => _probabilisticData = ProbabilisticData.fromJson(raw));
+        ref.read(usageAnalyticsProvider)?.logFeatureUsed(UsageFeature.probabilistic);
+      }
+    } catch (_) {
+      // Non-fatal — card simply stays hidden
+    }
+  }
+
+  // Returns (binanceInterval, fetchLimit, displayBars) for crypto timeframes.
+  // fetchLimit = displayBars + _kWarmupBars so indicators have enough history.
+  ({String interval, int display}) _cryptoCandleParams() {
+    switch (_timeframe) {
+      case '1m':  return (interval: '1m',  display: 120);
+      case '5m':  return (interval: '5m',  display: 288);
+      case '15m': return (interval: '15m', display: 192);
+      case '30m': return (interval: '30m', display: 96);
+      case '1h':  return (interval: '1h',  display: 168);
+      case '2h':  return (interval: '2h',  display: 168);
+      case '4h':  return (interval: '4h',  display: 180);
+      case '12h': return (interval: '12h', display: 60);
+      // Date-range views: use daily/weekly candles with a sensible bar count
+      case '1D':  return (interval: '15m', display: 96);   // 24h at 15m = 96 bars (denser)
+      case '1W':  return (interval: '4h',  display: 42);   // 7d of 4h
+      case '4W':  return (interval: '4h',  display: 168);  // 28d of 4h
+      case '1M':  return (interval: '1d',  display: 30);
+      case '3M':  return (interval: '1d',  display: 90);
+      case '6M':  return (interval: '1d',  display: 180);
+      case '1Y':  return (interval: '1d',  display: 365);
+      case '5Y':  return (interval: '1w',  display: 260);
+      default:    return (interval: '1d',  display: 365);
+    }
+  }
+
+  // ── Indicator computation ─────────────────────────────────────────────────
+  /// Recompute RSI + MACD from [all] candles (warmup + display) and cache
+  /// only the display-aligned slice.  Call this whenever _candles changes.
+  void _computeIndicators(List<Candle> all, List<Candle> display) {
+    if (all.isEmpty) {
+      _allCandles = [];
+      _candles    = display;
+      _rsiValues  = [];
+      _macdData   = {};
+      return;
+    }
+    final fullRsi  = TechnicalAnalysisService.calculateRSIHistory(all);
+    final fullMacd = TechnicalAnalysisService.calculateMACDHistory(all);
+
+    // Slice to the last display.length values so indexes align 1-to-1.
+    final trim = all.length - display.length;
+    _allCandles = all;
+    _candles    = display;
+    _rsiValues  = trim > 0 ? fullRsi.sublist(trim)  : fullRsi;
+    final macdLine = fullMacd['macd']      ?? [];
+    final sigLine  = fullMacd['signal']    ?? [];
+    final hist     = fullMacd['histogram'] ?? [];
+    _macdData = {
+      'macd':      trim > 0 && macdLine.length > trim ? macdLine.sublist(trim)  : macdLine,
+      'signal':    trim > 0 && sigLine.length  > trim ? sigLine.sublist(trim)   : sigLine,
+      'histogram': trim > 0 && hist.length     > trim ? hist.sublist(trim)      : hist,
     };
-    return map[tf] ?? '1d';
   }
 
   void _subscribeToCandles() {
     _candleSubscription?.cancel();
+    final p = _cryptoCandleParams();
+    final fetchLimit = p.display + _kWarmupBars;
     _candleSubscription = _candleService
-        .streamCandles(widget.stock.ticker, interval: _binanceInterval(_timeframe))
+        .streamCandles(
+          widget.stock.ticker,
+          interval: p.interval,
+          limit: fetchLimit,
+        )
         .listen(
       (candles) {
         if (mounted) {
+          // Slice: show only the last display bars in chart; run indicators
+          // on the full warmup+display set so RSI/MACD values are valid.
+          final display = candles.length > p.display
+              ? candles.sublist(candles.length - p.display)
+              : candles;
+          _computeIndicators(candles, display);
           setState(() {
-            _candles = candles;
             _hasError = false;
             _errorMessage = null;
           });
-          _chartController.setCandles(candles);
+          _chartController.setCandles(_candles);
         }
       },
       onError: (_) {
@@ -304,48 +447,80 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
     );
   }
 
-  Future<void> _fetchStockCandles() async {
-    setState(() { _isLoading = true; _hasError = false; _candles = []; });
-
-    String interval; int limit; String yfRange;
+  // Returns (interval, displayBars, yfRange).
+  // displayBars is what the chart should show; we fetch displayBars + _kWarmupBars
+  // so indicators always have enough history to produce valid output.
+  ({String interval, int display, String yfRange}) _stockCandleParams() {
     switch (_timeframe) {
-      case '1m':  interval = '1m';   limit = 120;  yfRange = '1d';   break;
-      case '5m':  interval = '5m';   limit = 288;  yfRange = '1d';   break;
-      case '15m': interval = '15m';  limit = 192;  yfRange = '2d';   break;
-      case '30m': interval = '30m';  limit = 96;   yfRange = '2d';   break;
-      case '1h':  interval = '1h';   limit = 168;  yfRange = '7d';   break;
-      case '2h':  interval = '2h';   limit = 168;  yfRange = '14d';  break;
-      case '4h':  interval = '4h';   limit = 180;  yfRange = '30d';  break;
-      case '12h': interval = '12h';  limit = 180;  yfRange = '90d';  break;
-      case '1W':  interval = '1d';   limit = 7;    yfRange = '5d';   break;
-      case '4W':  interval = '1d';   limit = 28;   yfRange = '1mo';  break;
-      case '1M':  interval = '1d';   limit = 30;   yfRange = '1mo';  break;
-      case '3M':  interval = '1d';   limit = 90;   yfRange = '3mo';  break;
-      case '6M':  interval = '1d';   limit = 180;  yfRange = '6mo';  break;
-      case '1Y':  interval = '1wk';  limit = 52;   yfRange = '1y';   break;
-      case '5Y':  interval = '1wk';  limit = 260;  yfRange = '5y';   break;
-      default:    interval = '1d';   limit = 365;  yfRange = '1y';   break;
+      case '1m':  return (interval: '1m',  display: 120, yfRange: '1d');
+      case '5m':  return (interval: '5m',  display: 288, yfRange: '1d');
+      case '15m': return (interval: '15m', display: 192, yfRange: '2d');
+      case '30m': return (interval: '30m', display: 96,  yfRange: '2d');
+      case '1h':  return (interval: '1h',  display: 168, yfRange: '7d');
+      case '2h':  return (interval: '2h',  display: 168, yfRange: '14d');
+      case '4h':  return (interval: '4h',  display: 180, yfRange: '30d');
+      case '12h': return (interval: '12h', display: 180, yfRange: '90d');
+      // Short daily views: must fetch enough for MACD(26,9) = 34 bars minimum
+      case '1W':  return (interval: '1d',  display: 7,   yfRange: '3mo');
+      case '4W':  return (interval: '1d',  display: 28,  yfRange: '3mo');
+      case '1M':  return (interval: '1d',  display: 30,  yfRange: '3mo');
+      case '3M':  return (interval: '1d',  display: 90,  yfRange: '6mo');
+      case '6M':  return (interval: '1d',  display: 180, yfRange: '1y');
+      case '1Y':  return (interval: '1wk', display: 52,  yfRange: '2y');
+      case '5Y':  return (interval: '1wk', display: 260, yfRange: '5y');
+      default:    return (interval: '1d',  display: 365, yfRange: '1y');
+    }
+  }
+
+  Future<void> _fetchStockCandles() async {
+    setState(() { _isLoading = true; _hasError = false; _candles = []; _rsiValues = []; _macdData = {}; });
+
+    final p = _stockCandleParams();
+    final fetchLimit = p.display + _kWarmupBars; // extra bars for indicator warmup
+
+    if (kDebugMode) {
+      debugPrint('[AssetChart] ${widget.stock.ticker} tf=${_timeframe} '
+          'interval=${p.interval} display=${p.display} fetch=$fetchLimit');
     }
 
-    List<Candle> candles = [];
+    List<Candle> all = [];
+    final raw = await _backendService.getCandles(
+        widget.stock.ticker, interval: p.interval, limit: fetchLimit);
+    if (raw.isNotEmpty) all = raw.map((r) => Candle.fromMap(r)).toList();
 
-    final raw = await _backendService.getCandles(widget.stock.ticker, interval: interval, limit: limit);
-    if (raw.isNotEmpty) candles = raw.map((r) => Candle.fromMap(r)).toList();
-
-    if (candles.isEmpty) {
+    if (all.isEmpty) {
       final yf = YahooFinanceCandleService();
-      candles = await yf.fetchCandles(widget.stock.ticker, interval: interval, range: yfRange);
+      all = await yf.fetchCandles(widget.stock.ticker,
+          interval: p.interval, range: p.yfRange);
     }
 
-    if (mounted) {
-      setState(() {
-        _candles = candles;
-        _isLoading = false;
-        _hasError = candles.isEmpty;
-        if (candles.isEmpty) _errorMessage = 'No chart data for ${widget.stock.ticker}';
-      });
-      if (candles.isNotEmpty) _chartController.setCandles(candles);
+    if (kDebugMode) {
+      debugPrint('[AssetChart] ${widget.stock.ticker} fetched=${all.length} '
+          'candles (warmup+display). display slice=${p.display}');
     }
+
+    if (!mounted) return;
+
+    if (all.isEmpty) {
+      setState(() {
+        _candles = [];
+        _isLoading = false;
+        _hasError = true;
+        _errorMessage = 'No chart data for ${widget.stock.ticker}';
+      });
+      return;
+    }
+
+    // Slice: show only the last display bars in the chart; compute indicators
+    // on the full (warmup+display) set so RSI/MACD have valid values.
+    final display = all.length > p.display ? all.sublist(all.length - p.display) : all;
+    _computeIndicators(all, display);
+
+    setState(() {
+      _isLoading = false;
+      _hasError = false;
+    });
+    _chartController.setCandles(_candles);
   }
 
   void _onTimeframeChanged(String tf) {
@@ -355,6 +530,9 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
     } else {
       _fetchStockCandles();
     }
+    // Re-run signal analysis for the new interval so AI commentary matches
+    // the resolution the user is now viewing.
+    _fetchSignalAnalysis();
   }
 
   Future<void> _toggleWatchlist() async {
@@ -380,7 +558,66 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
     }
   }
 
-  OverlayData _buildOverlays() {
+  /// Detects RSI and MACD crossover events and returns a deduplicated list of
+  /// [SignalMarker]s for the chart painter.  A minimum 5-candle cooldown prevents
+  /// clustering when multiple signals fire close together.
+  List<SignalMarker> _computeSignalMarkers(
+    List<double?> rsiValues,
+    List<double?> macdLine,
+    List<double?> signalLine,
+  ) {
+    if (_candles.isEmpty) return const [];
+    final markers = <SignalMarker>[];
+    int lastBuyIdx  = -99;
+    int lastSellIdx = -99;
+    const cooldown  = 5;
+
+    for (int i = 1; i < _candles.length; i++) {
+      final rsiPrev = i - 1 < rsiValues.length ? rsiValues[i - 1] : null;
+      final rsiCurr = i     < rsiValues.length ? rsiValues[i]     : null;
+      final macdPrev   = i - 1 < macdLine.length   ? macdLine[i - 1]   : null;
+      final macdCurr   = i     < macdLine.length    ? macdLine[i]       : null;
+      final sigPrev    = i - 1 < signalLine.length  ? signalLine[i - 1] : null;
+      final sigCurr    = i     < signalLine.length  ? signalLine[i]     : null;
+
+      // ── Buy triggers ──────────────────────────────────────────────
+      // RSI cross up through 30 (oversold recovery)
+      final rsiOversoldCross = rsiPrev != null && rsiCurr != null &&
+          rsiPrev < 30 && rsiCurr >= 30;
+      // MACD bullish cross
+      final macdBullCross = macdPrev != null && macdCurr != null &&
+          sigPrev != null && sigCurr != null &&
+          macdPrev < sigPrev && macdCurr >= sigCurr;
+
+      if ((rsiOversoldCross || macdBullCross) && i - lastBuyIdx >= cooldown) {
+        final strength = rsiOversoldCross && macdBullCross ? 1.0 : 0.65;
+        markers.add(SignalMarker(candleIndex: i, isBuy: true, strength: strength));
+        lastBuyIdx = i;
+      }
+
+      // ── Sell triggers ─────────────────────────────────────────────
+      // RSI cross down through 70 (overbought reversal)
+      final rsiOverboughtCross = rsiPrev != null && rsiCurr != null &&
+          rsiPrev > 70 && rsiCurr <= 70;
+      // MACD bearish cross
+      final macdBearCross = macdPrev != null && macdCurr != null &&
+          sigPrev != null && sigCurr != null &&
+          macdPrev > sigPrev && macdCurr <= sigCurr;
+
+      if ((rsiOverboughtCross || macdBearCross) && i - lastSellIdx >= cooldown) {
+        final strength = rsiOverboughtCross && macdBearCross ? 1.0 : 0.65;
+        markers.add(SignalMarker(candleIndex: i, isBuy: false, strength: strength));
+        lastSellIdx = i;
+      }
+    }
+    return markers;
+  }
+
+  OverlayData _buildOverlays({
+    List<double?> rsiValues = const [],
+    List<double?> macdLine  = const [],
+    List<double?> signalLine = const [],
+  }) {
     if (_candles.isEmpty) return const OverlayData();
 
     final maLines = <MALine>[];
@@ -421,6 +658,43 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
 
     final currentPriceLine = _liveQuote?.price ?? widget.stock.price;
 
+    // ── AI trade-plan levels from RiskAgent ──────────────────────────────────
+    final tradeLevels = <TradeLevel>[];
+    final pred = _signalAnalysis?.prediction;
+    if (pred != null) {
+      // Stop loss — always shown, full opacity
+      tradeLevels.add(TradeLevel(
+        price: pred.stopLossSuggestion,
+        color: const Color(0xFFFF4D6A),
+        label: 'SL',
+        alpha: 1.0,
+      ));
+      // Base target — primary AI projection
+      tradeLevels.add(TradeLevel(
+        price: pred.priceTargetBase,
+        color: const Color(0xFF12A28C),
+        label: 'Target',
+        alpha: 1.0,
+      ));
+      // Bull / Bear cases — dimmed so they don't dominate
+      if (pred.priceTargetHigh != pred.priceTargetBase) {
+        tradeLevels.add(TradeLevel(
+          price: pred.priceTargetHigh,
+          color: const Color(0xFF00C896),
+          label: 'Bull',
+          alpha: 0.55,
+        ));
+      }
+      if (pred.priceTargetLow != pred.priceTargetBase) {
+        tradeLevels.add(TradeLevel(
+          price: pred.priceTargetLow,
+          color: const Color(0xFFFFB300),
+          label: 'Bear',
+          alpha: 0.55,
+        ));
+      }
+    }
+
     return OverlayData(
       maLines: maLines,
       bollinger: bollinger,
@@ -428,6 +702,8 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
       patterns: _signalAnalysis?.patterns,
       vwapLine: vwapLine,
       currentPriceLine: currentPriceLine,
+      signalMarkers: _computeSignalMarkers(rsiValues, macdLine, signalLine),
+      tradeLevels: tradeLevels,
     );
   }
 
@@ -902,6 +1178,7 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
 
   @override
   void dispose() {
+    _technicalScrollController.dispose();
     _tabController.dispose();
     _candleSubscription?.cancel();
     _quoteSubscription?.cancel();
@@ -978,9 +1255,10 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
 
     final displayPrice = _liveQuote?.price ?? widget.stock.price;
     final displayChange = _liveQuote?.changePercent ?? widget.stock.changePercent;
-    // Compute indicator data once for sub-panels
-    final rsiValues = _candles.isNotEmpty ? TechnicalAnalysisService.calculateRSIHistory(_candles) : <double?>[];
-    final macdData = _candles.isNotEmpty ? TechnicalAnalysisService.calculateMACDHistory(_candles) : <String, List<double?>>{};
+    // Use cached indicator values (computed in _computeIndicators, not here).
+    // This avoids expensive O(N) recomputation on every frame.
+    final rsiValues = _rsiValues;
+    final macdData  = _macdData;
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -1097,6 +1375,7 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
           Expanded(
             child: TabBarView(
               controller: _tabController,
+              physics: const NeverScrollableScrollPhysics(),
               children: [
                 _buildOverviewTab(isGuest, theme, colorScheme, analysisAsync),
                 _buildTechnicalTab(isGuest, rsiValues, macdData),
@@ -1129,18 +1408,19 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
       slivers: [
         const SliverToBoxAdapter(child: SizedBox(height: 12)),
 
-        // Price range bar (open/high/low/close)
-        if (_marketRange != null)
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: PriceHeroWidget(
-                stock: widget.stock,
-                liveQuote: _liveQuote,
-                marketRange: _marketRange,
-              ),
+        // Price range bar (open/high/low/close).
+        // Always rendered — PriceHeroWidget shows "—" placeholders while
+        // _marketRange is loading, so the card never disappears mid-session.
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: PriceHeroWidget(
+              stock: widget.stock,
+              liveQuote: _liveQuote,
+              marketRange: _marketRange,
             ),
           ),
+        ),
 
         // Signal score bar (compact)
         SliverToBoxAdapter(
@@ -1211,6 +1491,20 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
             ),
           ),
 
+        // Probabilistic Engine card (Phase 4 / gated Phase 8)
+        if (!isGuest && _probabilisticData != null)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              child: SubscriptionGate(
+                feature: 'Probabilistic Engine',
+                description:
+                    'Monte Carlo price fan, Value-at-Risk, and Bayesian price targets.',
+                child: ProbabilisticCard(data: _probabilisticData!),
+              ), // SubscriptionGate
+            ),
+          ),
+
         const SliverToBoxAdapter(child: SizedBox(height: 16)),
         SliverToBoxAdapter(
           child: Padding(
@@ -1231,7 +1525,10 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
     Map<String, List<double?>> macdData,
   ) {
     return CustomScrollView(
-      physics: const BouncingScrollPhysics(),
+      controller: _technicalScrollController,
+      physics: _chartInteracting
+          ? const NeverScrollableScrollPhysics()
+          : const BouncingScrollPhysics(),
       slivers: [
         // Chart toolbar row (timeframe + type + gear icon)
         SliverToBoxAdapter(
@@ -1285,7 +1582,11 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
                     : MarketChart(
                         key: ValueKey('${widget.stock.ticker}_$_timeframe'),
                         controller: _chartController,
-                        overlays: _buildOverlays(),
+                        overlays: _buildOverlays(
+                          rsiValues:   rsiValues,
+                          macdLine:    macdData['macd']   ?? const [],
+                          signalLine:  macdData['signal'] ?? const [],
+                        ),
                         height: _chartHeight,
                         onPatternTap: _showChartPatternSheet,
                         rsiValues: rsiValues,
@@ -1294,6 +1595,8 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
                         histogram: macdData['histogram'] ?? [],
                         showRSI: _showRSI,
                         showMACD: _showMACD,
+                        onInteractionChanged: (active) =>
+                            setState(() => _chartInteracting = active),
                       ),
           ),
         ),
@@ -2877,7 +3180,7 @@ class _DeanCoachCard extends StatelessWidget {
 
   const _DeanCoachCard({
     required this.coachText,
-    required this.audioUrl,
+    this.audioUrl,
     required this.audioPlaying,
     required this.analystService,
     this.onAudioTap,

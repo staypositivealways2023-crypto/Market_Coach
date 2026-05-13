@@ -136,8 +136,21 @@ class MarketDataFetcher:
         stock_syms  = [s for s in uncached if not _is_crypto_symbol(s)]
 
         # ── Binance batch for crypto ─────────────────────────────────────────
+        # Hard timeout of 5 s: if Binance is unreachable the batch fails fast
+        # and crypto symbols fall through to the individual yfinance fallback,
+        # which must complete before Flutter's 15 s HTTP timeout fires.
         if crypto_syms:
-            binance_batch = await self._fetch_binance_quotes_batch(crypto_syms)
+            try:
+                binance_batch = await asyncio.wait_for(
+                    self._fetch_binance_quotes_batch(crypto_syms),
+                    timeout=5.0,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    f"[quotes] Binance batch timed out for {crypto_syms} — "
+                    "falling back to individual yfinance"
+                )
+                binance_batch = {}
             for sym, q in binance_batch.items():
                 results[sym] = q
                 cache_manager.set(f"quote:{sym}", q.model_dump(), ttl=settings.QUOTE_CACHE_TTL)
@@ -253,7 +266,8 @@ class MarketDataFetcher:
                 price=price,
                 change=float(data.get("priceChange") or 0),
                 change_percent=float(data.get("priceChangePercent") or 0),
-                volume=int(float(data.get("volume") or 0)),  # Binance volume is fractional BTC
+                # quoteVolume = USD-denominated volume; much more useful than base-asset volume
+                volume=int(float(data.get("quoteVolume") or 0)),
                 high=float(data.get("highPrice") or 0) or None,
                 low=float(data.get("lowPrice") or 0) or None,
                 open=float(data.get("openPrice") or 0) or None,
@@ -280,16 +294,26 @@ class MarketDataFetcher:
             if not sym_map:
                 return {}
 
+            # Binance requires the symbols param to be a URL-encoded JSON array.
+            # Using aiohttp params dict ensures proper percent-encoding of [ ] " chars.
             symbols_json = json.dumps(list(sym_map.keys()))
-            url = f"https://api.binance.com/api/v3/ticker/24hr?symbols={symbols_json}"
 
             async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                async with session.get(
+                    "https://api.binance.com/api/v3/ticker/24hr",
+                    params={"symbols": symbols_json},
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as resp:
                     if resp.status != 200:
                         body = await resp.text()
                         logger.warning(f"[binance] batch HTTP {resp.status}: {body[:120]}")
-                        return {}
+                        # Fall back to individual calls so at least some quotes land
+                        return await self._fetch_binance_individual_fallback(sym_map)
                     data = await resp.json()
+
+            if not isinstance(data, list):
+                logger.warning(f"[binance] batch unexpected response type {type(data)}")
+                return await self._fetch_binance_individual_fallback(sym_map)
 
             results: Dict[str, Quote] = {}
             for item in data:
@@ -305,7 +329,7 @@ class MarketDataFetcher:
                     price=price,
                     change=float(item.get("priceChange") or 0),
                     change_percent=float(item.get("priceChangePercent") or 0),
-                    volume=int(float(item.get("volume") or 0)),  # Binance volume is fractional
+                    volume=int(float(item.get("quoteVolume") or 0)),  # quoteVolume = USD-denominated
                     high=float(item.get("highPrice") or 0) or None,
                     low=float(item.get("lowPrice") or 0) or None,
                     open=float(item.get("openPrice") or 0) or None,
@@ -318,6 +342,18 @@ class MarketDataFetcher:
         except Exception as e:
             logger.warning(f"[binance] batch error: {e}")
             return {}
+
+    async def _fetch_binance_individual_fallback(self, sym_map: Dict[str, str]) -> Dict[str, Quote]:
+        """Per-symbol Binance fallback when the batch call fails."""
+        results: Dict[str, Quote] = {}
+        for binance_sym, our_sym in sym_map.items():
+            try:
+                quote = await self._fetch_binance_quote(our_sym)
+                if quote:
+                    results[our_sym] = quote
+            except Exception:
+                pass
+        return results
 
     # ===== Finnhub Methods =====
 
@@ -500,12 +536,16 @@ class MarketDataFetcher:
                     "1m":  "1d",
                     "5m":  "5d",
                     "15m": "5d",
+                    "30m": "5d",   # Yahoo supports 30m up to 60 days; 5d is safe
                     "1h":  "1mo",
+                    "2h":  "3mo",
                     "4h":  "3mo",
                     "1d":  "2y",
                     "1wk": "5y",
                 }
-                period = period_map.get(interval, "2y")
+                # Normalise unsupported intervals; fall back to "1y" not "2y"
+                # (avoids "No data found" errors for short intraday frames).
+                period = period_map.get(interval, "1y")
                 yf_symbol = _to_yfinance_symbol(symbol)
                 ticker = yf.Ticker(yf_symbol)
                 hist = ticker.history(period=period, interval=interval)
@@ -539,8 +579,7 @@ class MarketDataFetcher:
     async def _fetch_yfinance_info(self, symbol: str) -> Optional[StockInfo]:
         """Fetch stock info from yfinance"""
         try:
-            ticker = yf.Ticker(symbol)
-            info = ticker.info
+            info = await asyncio.to_thread(lambda: yf.Ticker(symbol).info)
 
             if not info:
                 return None
