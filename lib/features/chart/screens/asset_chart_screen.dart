@@ -64,6 +64,219 @@ import '../../../providers/usage_analytics_provider.dart';
 import '../../../services/usage_analytics_service.dart';
 import '../../../widgets/subscription_gate.dart';
 
+class ChartIntervalConfig {
+  final String uiInterval;
+  final String backendInterval;
+  final String cryptoInterval;
+  final int fetchLimit;
+  final int defaultVisibleBars;
+  final bool scrollEnabled;
+  final bool zoomEnabled;
+  final bool supported;
+  final String yahooRange;
+
+  const ChartIntervalConfig({
+    required this.uiInterval,
+    required this.backendInterval,
+    required this.cryptoInterval,
+    required this.fetchLimit,
+    required this.defaultVisibleBars,
+    required this.scrollEnabled,
+    required this.zoomEnabled,
+    required this.supported,
+    required this.yahooRange,
+  });
+}
+
+class _CandleCacheEntry {
+  final List<Candle> candles;
+  final DateTime fetchedAt;
+
+  const _CandleCacheEntry({
+    required this.candles,
+    required this.fetchedAt,
+  });
+}
+
+const List<ChartIntervalConfig> _stockIntervalConfigs = [
+  ChartIntervalConfig(
+    uiInterval: '1m',
+    backendInterval: '1m',
+    cryptoInterval: '1m',
+    fetchLimit: 500,
+    defaultVisibleBars: 90,
+    scrollEnabled: true,
+    zoomEnabled: true,
+    supported: true,
+    yahooRange: '7d',
+  ),
+  ChartIntervalConfig(
+    uiInterval: '5m',
+    backendInterval: '5m',
+    cryptoInterval: '5m',
+    fetchLimit: 500,
+    defaultVisibleBars: 90,
+    scrollEnabled: true,
+    zoomEnabled: true,
+    supported: true,
+    yahooRange: '10d',
+  ),
+  ChartIntervalConfig(
+    uiInterval: '15m',
+    backendInterval: '15m',
+    cryptoInterval: '15m',
+    fetchLimit: 500,
+    defaultVisibleBars: 90,
+    scrollEnabled: true,
+    zoomEnabled: true,
+    supported: true,
+    yahooRange: '60d',
+  ),
+  ChartIntervalConfig(
+    uiInterval: '30m',
+    backendInterval: '30m',
+    cryptoInterval: '30m',
+    fetchLimit: 500,
+    defaultVisibleBars: 90,
+    scrollEnabled: true,
+    zoomEnabled: true,
+    supported: true,
+    yahooRange: '60d',
+  ),
+  ChartIntervalConfig(
+    uiInterval: '1h',
+    backendInterval: '1h',
+    cryptoInterval: '1h',
+    fetchLimit: 500,
+    defaultVisibleBars: 90,
+    scrollEnabled: true,
+    zoomEnabled: true,
+    supported: true,
+    yahooRange: '3mo',
+  ),
+  ChartIntervalConfig(
+    uiInterval: '2h',
+    backendInterval: '2h',
+    cryptoInterval: '2h',
+    fetchLimit: 500,
+    defaultVisibleBars: 90,
+    scrollEnabled: true,
+    zoomEnabled: true,
+    supported: true,
+    yahooRange: '3mo',
+  ),
+  ChartIntervalConfig(
+    uiInterval: '4h',
+    backendInterval: '4h',
+    cryptoInterval: '4h',
+    fetchLimit: 500,
+    defaultVisibleBars: 90,
+    scrollEnabled: true,
+    zoomEnabled: true,
+    supported: true,
+    yahooRange: '6mo',
+  ),
+  ChartIntervalConfig(
+    uiInterval: '12h',
+    backendInterval: '12h',
+    cryptoInterval: '12h',
+    fetchLimit: 500,
+    defaultVisibleBars: 90,
+    scrollEnabled: true,
+    zoomEnabled: true,
+    supported: true,
+    yahooRange: '1y',
+  ),
+  ChartIntervalConfig(
+    uiInterval: '1D',
+    backendInterval: '1d',
+    cryptoInterval: '1d',
+    fetchLimit: 500,
+    defaultVisibleBars: 90,
+    scrollEnabled: true,
+    zoomEnabled: true,
+    supported: true,
+    yahooRange: '2y',
+  ),
+  ChartIntervalConfig(
+    uiInterval: '1W',
+    backendInterval: '1wk',
+    cryptoInterval: '1wk',
+    fetchLimit: 300,
+    defaultVisibleBars: 90,
+    scrollEnabled: true,
+    zoomEnabled: true,
+    supported: true,
+    yahooRange: '5y',
+  ),
+  ChartIntervalConfig(
+    uiInterval: '4W',
+    backendInterval: '1mo',
+    cryptoInterval: '1mo',
+    fetchLimit: 240,
+    defaultVisibleBars: 80,
+    scrollEnabled: true,
+    zoomEnabled: true,
+    supported: true,
+    yahooRange: '10y',
+  ),
+  ChartIntervalConfig(
+    uiInterval: '1M',
+    backendInterval: '1d',
+    cryptoInterval: '1d',
+    fetchLimit: 500,
+    defaultVisibleBars: 90,
+    scrollEnabled: true,
+    zoomEnabled: true,
+    supported: true,
+    yahooRange: '2y',
+  ),
+  ChartIntervalConfig(
+    uiInterval: '3M',
+    backendInterval: '1d',
+    cryptoInterval: '1d',
+    fetchLimit: 500,
+    defaultVisibleBars: 90,
+    scrollEnabled: true,
+    zoomEnabled: true,
+    supported: true,
+    yahooRange: '2y',
+  ),
+  ChartIntervalConfig(
+    uiInterval: '6M',
+    backendInterval: '1d',
+    cryptoInterval: '1d',
+    fetchLimit: 500,
+    defaultVisibleBars: 90,
+    scrollEnabled: true,
+    zoomEnabled: true,
+    supported: true,
+    yahooRange: '2y',
+  ),
+  ChartIntervalConfig(
+    uiInterval: '1Y',
+    backendInterval: '1wk',
+    cryptoInterval: '1d',
+    fetchLimit: 500,
+    defaultVisibleBars: 90,
+    scrollEnabled: true,
+    zoomEnabled: true,
+    supported: true,
+    yahooRange: '5y',
+  ),
+  ChartIntervalConfig(
+    uiInterval: '5Y',
+    backendInterval: '1wk',
+    cryptoInterval: '1w',
+    fetchLimit: 500,
+    defaultVisibleBars: 90,
+    scrollEnabled: true,
+    zoomEnabled: true,
+    supported: true,
+    yahooRange: '10y',
+  ),
+];
+
 /// Drop-in replacement for StockDetailScreenEnhanced using native CustomPainter charts.
 class AssetChartScreen extends ConsumerStatefulWidget {
   final StockSummary stock;
@@ -73,7 +286,7 @@ class AssetChartScreen extends ConsumerStatefulWidget {
   const AssetChartScreen({
     super.key,
     required this.stock,
-    this.initialShowRSI = true,   // RSI visible by default
+    this.initialShowRSI = true, // RSI visible by default
     this.initialShowMACD = false,
   });
 
@@ -83,6 +296,9 @@ class AssetChartScreen extends ConsumerStatefulWidget {
 
 class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
     with TickerProviderStateMixin {
+  static final Map<String, _CandleCacheEntry> _stockCandleCache = {};
+  static const bool _logBuildLifecycle = false;
+
   late TabController _tabController;
   final _candleService = BinanceCandleService();
   final _quoteService = BinanceQuoteService();
@@ -96,16 +312,12 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
   StreamSubscription<PriceTick>? _priceStreamSub;
 
   // ── Candles ────────────────────────────────────────────────────────────────
-  // _candles    — display slice shown by the chart (e.g. 7 bars for "1W")
-  // _allCandles — warmup + display (indicator computation runs on this)
+  // _candles is the full fetched dataset; the controller owns the visible range.
   // Indicators are computed once when candles change and cached here so
   // build() never recomputes them on every frame.
-  static const int _kWarmupBars = 50; // extra bars fetched purely for indicator warmup
-
   List<Candle> _candles = [];
-  List<Candle> _allCandles = [];   // warmup + display
-  List<double?> _rsiValues  = [];  // aligned to _candles
-  Map<String, List<double?>> _macdData = {};  // aligned to _candles
+  List<double?> _rsiValues = [];
+  Map<String, List<double?>> _macdData = {};
 
   Quote? _liveQuote;
   // Phase 5 — backend CMF / money flow data
@@ -117,6 +329,13 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
   // Chart controls
   ChartType _chartType = ChartType.candlestick;
   String _timeframe = '1D';
+  int _candleRequestSeq = 0;
+  int _signalRequestSeq = 0;
+  bool _isFetchingCandles = false;
+  String? _activeFetchKey;
+  String? _loadedCandleKey;
+  String? _activeCryptoCandleKey;
+  String? _lastAppliedCandleSignature;
   late bool _showRSI;
   late bool _showMACD;
 
@@ -167,9 +386,105 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
     return 340;
   }
 
+  ChartIntervalConfig get _intervalConfig {
+    return _stockIntervalConfigs.firstWhere(
+      (config) => config.uiInterval == _timeframe && config.supported,
+      orElse: () => _stockIntervalConfigs.firstWhere(
+        (config) => config.uiInterval == '1D',
+      ),
+    );
+  }
+
+  String _stockCandleCacheKey(ChartIntervalConfig config) {
+    return '${widget.stock.ticker.toUpperCase()}:${config.backendInterval}:${config.fetchLimit}';
+  }
+
+  Duration _cacheTtlFor(ChartIntervalConfig config) {
+    switch (config.backendInterval) {
+      case '1m':
+      case '5m':
+      case '15m':
+      case '30m':
+        return const Duration(seconds: 45);
+      case '1h':
+      case '2h':
+      case '4h':
+      case '12h':
+        return const Duration(minutes: 3);
+      default:
+        return const Duration(minutes: 30);
+    }
+  }
+
+  bool _isFresh(_CandleCacheEntry entry, ChartIntervalConfig config) {
+    return DateTime.now().difference(entry.fetchedAt) <= _cacheTtlFor(config);
+  }
+
+  String _candleSignature(List<Candle> candles) {
+    if (candles.isEmpty) return 'empty';
+    final first = candles.first.time.millisecondsSinceEpoch;
+    final last = candles.last.time.millisecondsSinceEpoch;
+    final close = candles.last.close.toStringAsFixed(6);
+    return '${candles.length}:$first:$last:$close';
+  }
+
+  void _applyCandles(
+    List<Candle> candles,
+    ChartIntervalConfig config, {
+    required bool resetViewport,
+    required String source,
+    required int elapsedMs,
+  }) {
+    final cacheKey = _stockCandleCacheKey(config);
+    final signature = '$cacheKey:${_candleSignature(candles)}';
+    if (_lastAppliedCandleSignature == signature && !resetViewport) {
+      if (kDebugMode) {
+        debugPrint(
+          '[ChartFetchTrigger] reason=duplicate_apply_skipped key=$cacheKey',
+        );
+      }
+      return;
+    }
+    _lastAppliedCandleSignature = signature;
+    _loadedCandleKey = cacheKey;
+    _computeIndicators(candles);
+    setState(() {
+      _isLoading = false;
+      _hasError = false;
+      _errorMessage = null;
+    });
+    _chartController.setDefaultVisibleCandles(config.defaultVisibleBars);
+    _chartController.setCandles(_candles, resetViewport: resetViewport);
+    if (kDebugMode) {
+      final rsiPoints = _rsiValues.whereType<double>().length;
+      final macdPoints = (_macdData['macd'] ?? const <double?>[])
+          .whereType<double>()
+          .length;
+      final vwapPoints = TechnicalAnalysisService.calculateVWAP(_candles)
+          .whereType<double>()
+          .length;
+      debugPrint(
+        '[CandleFetch] symbol=${widget.stock.ticker} interval=${config.backendInterval} '
+        'requested=${config.fetchLimit} returned=${candles.length} source=$source elapsedMs=$elapsedMs',
+      );
+      debugPrint(
+        '[ChartRender] fullCandles=${_candles.length} visibleBars=${config.defaultVisibleBars} '
+        'canPanLeft=${_chartController.canPanLeft} '
+        'rightPaddingBars=${_chartController.rightPaddingBarsForCurrentViewport().round()}',
+      );
+      debugPrint(
+        '[IndicatorCalc] fullCandles=${_candles.length} rsiPoints=$rsiPoints '
+        'macdPoints=$macdPoints vwapPoints=$vwapPoints',
+      );
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+    if (kDebugMode) {
+      debugPrint('[ChartLifecycle] initState symbol=${widget.stock.ticker}');
+    }
     _tabController = TabController(length: 6, vsync: this);
     _showRSI = widget.initialShowRSI;
     _showMACD = widget.initialShowMACD;
@@ -187,12 +502,41 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
     });
   }
 
-  void _loadData() {
+  @override
+  void didUpdateWidget(covariant AssetChartScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (kDebugMode) {
+      debugPrint(
+        '[ChartLifecycle] didUpdateWidget old=${oldWidget.stock.ticker} new=${widget.stock.ticker}',
+      );
+    }
+    if (oldWidget.stock.ticker == widget.stock.ticker) return;
+
+    _candleRequestSeq++;
+    _signalRequestSeq++;
+    _activeFetchKey = null;
+    _loadedCandleKey = null;
+    _activeCryptoCandleKey = null;
+    _lastAppliedCandleSignature = null;
+    _candleSubscription?.cancel();
+    _quoteSubscription?.cancel();
+    _priceStreamSub?.cancel();
+    _stockQuoteTimer?.cancel();
+    _loadData(reason: 'symbol_change');
+  }
+
+  void _loadData({String reason = 'init'}) {
     if (isCryptoSymbol(widget.stock.ticker)) {
-      _subscribeToCandles();
+      if (kDebugMode) {
+        debugPrint('[FetchCallSite] source=$reason target=crypto_stream');
+      }
+      _subscribeToCandles(reason: reason);
       _subscribeToQuotes();
     } else {
-      _fetchStockCandles();
+      if (kDebugMode) {
+        debugPrint('[FetchCallSite] source=$reason target=stock_candles');
+      }
+      unawaited(_fetchStockCandles(reason: reason));
     }
     _fetchMarketRange();
     if (!widget.stock.isCrypto) {
@@ -212,26 +556,32 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
     _priceStreamSub = ref
         // ignore: deprecated_member_use
         .read(priceStreamProvider(widget.stock.ticker).stream)
-        .listen((tick) {
-      if (!mounted) return;
-      // Only update if the tick represents a meaningful price change.
-      if (tick.price > 0 &&
-          (_liveQuote == null ||
-              (tick.price - _liveQuote!.price).abs() /
-                      (_liveQuote!.price > 0 ? _liveQuote!.price : 1) >
-                  0.00001)) {
-        setState(() => _liveQuote = Quote(
-              symbol: widget.stock.ticker,
-              price: tick.price,
-              changePercent: tick.changePct,
-            ));
-      }
-    }, onError: (_) {/* stream closed — degrade silently */});
+        .listen(
+          (tick) {
+            if (!mounted) return;
+            // Only update if the tick represents a meaningful price change.
+            if (tick.price > 0 &&
+                (_liveQuote == null ||
+                    (tick.price - _liveQuote!.price).abs() /
+                            (_liveQuote!.price > 0 ? _liveQuote!.price : 1) >
+                        0.00001)) {
+              setState(
+                () => _liveQuote = Quote(
+                  symbol: widget.stock.ticker,
+                  price: tick.price,
+                  changePercent: tick.changePct,
+                ),
+              );
+            }
+          },
+          onError: (_) {
+            /* stream closed — degrade silently */
+          },
+        );
   }
 
   Future<void> _fetchMoneyFlow() async {
-    final data = await ref
-        .read(moneyFlowProvider(widget.stock.ticker).future);
+    final data = await ref.read(moneyFlowProvider(widget.stock.ticker).future);
     if (mounted && data != null) {
       setState(() => _moneyFlowData = data);
     }
@@ -250,7 +600,10 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
   void _startStockQuotePolling() {
     _stockQuoteTimer?.cancel();
     _pollStockQuote(); // immediate first fetch
-    _stockQuoteTimer = Timer.periodic(const Duration(seconds: 30), (_) => _pollStockQuote());
+    _stockQuoteTimer = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => _pollStockQuote(),
+    );
   }
 
   Future<void> _pollStockQuote() async {
@@ -261,16 +614,17 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
         final price = (data['price'] as num?)?.toDouble();
         final changePct = (data['change_percent'] as num?)?.toDouble();
         if (price != null) {
-          setState(() => _liveQuote = Quote(
-            symbol: widget.stock.ticker,
-            price: price,
-            changePercent: changePct ?? 0.0,
-          ));
+          setState(
+            () => _liveQuote = Quote(
+              symbol: widget.stock.ticker,
+              price: price,
+              changePercent: changePct ?? 0.0,
+            ),
+          );
         }
       }
     } catch (_) {}
   }
-
 
   Future<void> _fetchMacroOverview() async {
     final data = await _backendService.getMacroOverview();
@@ -288,54 +642,51 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
   /// The signal engine uses the same resolution the user is viewing so
   /// indicators and scenarios are never stale relative to the chart.
   String _backendInterval() {
-    if (isCryptoSymbol(widget.stock.ticker)) {
-      // Crypto: map short-term frames to minute/hour intervals
-      switch (_timeframe) {
-        case '1m':  return '1m';
-        case '5m':  return '5m';
-        case '15m': return '15m';
-        case '30m': return '30m';
-        case '1h':  return '1h';
-        case '2h':  return '2h';
-        case '4h':  return '4h';
-        case '12h': return '12h';
-        case '1D':  return '15m';  // 96 15-min bars = 1 day view
-        case '1W':  return '4h';   // 42 4h bars = 1 week view
-        case '4W':  return '4h';   // 168 4h bars = 4 week view
-        case '1M':  return '1d';
-        case '3M':  return '1d';
-        case '6M':  return '1d';
-        case '1Y':  return '1d';
-        case '5Y':  return '1w';
-        default:    return '1d';
-      }
-    } else {
-      // Stocks: Alpha Vantage/Yahoo intervals
-      switch (_timeframe) {
-        case '1m':  return '1m';
-        case '5m':  return '5m';
-        case '15m': return '15m';
-        case '30m': return '30m';
-        case '1h':  return '1h';
-        case '4h':  return '4h';
-        case '1W': case '4W': case '1M': case '3M': case '6M': return '1d';
-        case '1Y': case '5Y': return '1wk';
-        default:    return '1d';
-      }
-    }
+    final config = _intervalConfig;
+    return isCryptoSymbol(widget.stock.ticker)
+        ? config.cryptoInterval
+        : config.backendInterval;
   }
 
-  Future<void> _fetchSignalAnalysis() async {
+  bool get _stockSignalUnsupported => !_intervalConfig.supported;
+
+  Future<void> _fetchSignalAnalysis({bool keepPrevious = false}) async {
     if (!mounted) return;
-    setState(() { _signalLoading = true; _signalAnalysis = null; });
+    final requestId = ++_signalRequestSeq;
+    if (_stockSignalUnsupported) {
+      setState(() {
+        _signalLoading = false;
+        if (!keepPrevious) _signalAnalysis = null;
+      });
+      if (kDebugMode) {
+        debugPrint(
+          '[AssetChart] signal analysis skipped: ${widget.stock.ticker} '
+          'chart_tf=$_timeframe unsupported for stock signal overlays',
+        );
+      }
+      return;
+    }
+    setState(() {
+      _signalLoading = true;
+      if (!keepPrevious) _signalAnalysis = null;
+    });
     final interval = _backendInterval();
     if (kDebugMode) {
-      debugPrint('[AssetChart] fetchSignalAnalysis: ${widget.stock.ticker} '
-          'chart_tf=$_timeframe backend_interval=$interval');
+      debugPrint(
+        '[AssetChart] fetchSignalAnalysis: ${widget.stock.ticker} '
+        'chart_tf=$_timeframe backend_interval=$interval',
+      );
     }
     final result = await _backendService.analyseStock(
-        widget.stock.ticker, interval: interval);
-    if (mounted) setState(() { _signalAnalysis = result; _signalLoading = false; });
+      widget.stock.ticker,
+      interval: interval,
+    );
+    if (mounted && requestId == _signalRequestSeq) {
+      setState(() {
+        _signalAnalysis = result;
+        _signalLoading = false;
+      });
+    }
   }
 
   Future<void> _fetchProbabilistic() async {
@@ -344,7 +695,9 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
       final raw = await _backendService.getProbabilistic(widget.stock.ticker);
       if (raw != null && mounted) {
         setState(() => _probabilisticData = ProbabilisticData.fromJson(raw));
-        ref.read(usageAnalyticsProvider)?.logFeatureUsed(UsageFeature.probabilistic);
+        ref
+            .read(usageAnalyticsProvider)
+            ?.logFeatureUsed(UsageFeature.probabilistic);
       }
     } catch (_) {
       // Non-fatal — card simply stays hidden
@@ -352,187 +705,265 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
   }
 
   // Returns (binanceInterval, fetchLimit, displayBars) for crypto timeframes.
-  // fetchLimit = displayBars + _kWarmupBars so indicators have enough history.
-  ({String interval, int display}) _cryptoCandleParams() {
-    switch (_timeframe) {
-      case '1m':  return (interval: '1m',  display: 120);
-      case '5m':  return (interval: '5m',  display: 288);
-      case '15m': return (interval: '15m', display: 192);
-      case '30m': return (interval: '30m', display: 96);
-      case '1h':  return (interval: '1h',  display: 168);
-      case '2h':  return (interval: '2h',  display: 168);
-      case '4h':  return (interval: '4h',  display: 180);
-      case '12h': return (interval: '12h', display: 60);
-      // Date-range views: use daily/weekly candles with a sensible bar count
-      case '1D':  return (interval: '15m', display: 96);   // 24h at 15m = 96 bars (denser)
-      case '1W':  return (interval: '4h',  display: 42);   // 7d of 4h
-      case '4W':  return (interval: '4h',  display: 168);  // 28d of 4h
-      case '1M':  return (interval: '1d',  display: 30);
-      case '3M':  return (interval: '1d',  display: 90);
-      case '6M':  return (interval: '1d',  display: 180);
-      case '1Y':  return (interval: '1d',  display: 365);
-      case '5Y':  return (interval: '1w',  display: 260);
-      default:    return (interval: '1d',  display: 365);
-    }
-  }
-
   // ── Indicator computation ─────────────────────────────────────────────────
-  /// Recompute RSI + MACD from [all] candles (warmup + display) and cache
-  /// only the display-aligned slice.  Call this whenever _candles changes.
-  void _computeIndicators(List<Candle> all, List<Candle> display) {
-    if (all.isEmpty) {
-      _allCandles = [];
-      _candles    = display;
-      _rsiValues  = [];
-      _macdData   = {};
+  /// Recompute RSI + MACD from the full fetched candle list.
+  void _computeIndicators(List<Candle> candles) {
+    if (candles.isEmpty) {
+      _candles = [];
+      _rsiValues = [];
+      _macdData = {};
       return;
     }
-    final fullRsi  = TechnicalAnalysisService.calculateRSIHistory(all);
-    final fullMacd = TechnicalAnalysisService.calculateMACDHistory(all);
-
-    // Slice to the last display.length values so indexes align 1-to-1.
-    final trim = all.length - display.length;
-    _allCandles = all;
-    _candles    = display;
-    _rsiValues  = trim > 0 ? fullRsi.sublist(trim)  : fullRsi;
-    final macdLine = fullMacd['macd']      ?? [];
-    final sigLine  = fullMacd['signal']    ?? [];
-    final hist     = fullMacd['histogram'] ?? [];
-    _macdData = {
-      'macd':      trim > 0 && macdLine.length > trim ? macdLine.sublist(trim)  : macdLine,
-      'signal':    trim > 0 && sigLine.length  > trim ? sigLine.sublist(trim)   : sigLine,
-      'histogram': trim > 0 && hist.length     > trim ? hist.sublist(trim)      : hist,
-    };
+    _candles = candles;
+    _rsiValues = TechnicalAnalysisService.calculateRSIHistory(candles);
+    _macdData = TechnicalAnalysisService.calculateMACDHistory(candles);
   }
 
-  void _subscribeToCandles() {
+  void _subscribeToCandles({String reason = 'timeframe_change'}) {
+    final p = _intervalConfig;
+    final streamKey =
+        '${widget.stock.ticker.toUpperCase()}:${p.cryptoInterval}:${p.fetchLimit}';
+    if (_activeCryptoCandleKey == streamKey) {
+      if (kDebugMode) {
+        debugPrint(
+          '[ChartFetchTrigger] reason=crypto_stream_active_skip key=$streamKey',
+        );
+      }
+      return;
+    }
+
     _candleSubscription?.cancel();
-    final p = _cryptoCandleParams();
-    final fetchLimit = p.display + _kWarmupBars;
+    _activeCryptoCandleKey = streamKey;
+    final requestId = ++_candleRequestSeq;
+    if (kDebugMode) {
+      debugPrint(
+        '[ChartFetchTrigger] reason=$reason symbol=${widget.stock.ticker} interval=${p.cryptoInterval}',
+      );
+    }
+    var hasRendered = false;
     _candleSubscription = _candleService
         .streamCandles(
           widget.stock.ticker,
-          interval: p.interval,
-          limit: fetchLimit,
+          interval: p.cryptoInterval,
+          limit: p.fetchLimit,
         )
         .listen(
-      (candles) {
-        if (mounted) {
-          // Slice: show only the last display bars in chart; run indicators
-          // on the full warmup+display set so RSI/MACD values are valid.
-          final display = candles.length > p.display
-              ? candles.sublist(candles.length - p.display)
-              : candles;
-          _computeIndicators(candles, display);
-          setState(() {
-            _hasError = false;
-            _errorMessage = null;
-          });
-          _chartController.setCandles(_candles);
-        }
-      },
-      onError: (_) {
-        if (mounted) setState(() { _hasError = true; _errorMessage = 'Failed to load chart data.'; });
-      },
-    );
+          (candles) {
+            if (!mounted || requestId != _candleRequestSeq) return;
+            _applyCandles(
+              candles,
+              p,
+              resetViewport: !hasRendered,
+              source: 'binance',
+              elapsedMs: 0,
+            );
+            if (!hasRendered) {
+              hasRendered = true;
+              unawaited(_fetchSignalAnalysis(keepPrevious: true));
+            }
+          },
+          onError: (_) {
+            if (mounted)
+              setState(() {
+                _hasError = true;
+                _errorMessage = 'Failed to load chart data.';
+              });
+            if (_activeCryptoCandleKey == streamKey) {
+              _activeCryptoCandleKey = null;
+            }
+          },
+        );
   }
 
   void _subscribeToQuotes() {
     _quoteSubscription?.cancel();
-    _quoteSubscription = _quoteService.streamQuotes({widget.stock.ticker}).listen(
-      (quotes) {
-        if (mounted) setState(() => _liveQuote = quotes[widget.stock.ticker]);
-      },
-      onError: (e) => debugPrint('Quote stream error: $e'),
-    );
+    _quoteSubscription = _quoteService
+        .streamQuotes({widget.stock.ticker})
+        .listen((quotes) {
+          if (!mounted) return;
+          final next = quotes[widget.stock.ticker];
+          if (next == null) return;
+          final current = _liveQuote;
+          if (current != null) {
+            final priceBase = current.price > 0 ? current.price : 1;
+            final priceChanged =
+                (next.price - current.price).abs() / priceBase > 0.00001;
+            final changePctChanged =
+                (next.changePercent - current.changePercent).abs() > 0.001;
+            if (!priceChanged && !changePctChanged) return;
+          }
+          setState(() => _liveQuote = next);
+        }, onError: (e) => debugPrint('Quote stream error: $e'));
   }
 
-  // Returns (interval, displayBars, yfRange).
-  // displayBars is what the chart should show; we fetch displayBars + _kWarmupBars
-  // so indicators always have enough history to produce valid output.
-  ({String interval, int display, String yfRange}) _stockCandleParams() {
-    switch (_timeframe) {
-      case '1m':  return (interval: '1m',  display: 120, yfRange: '1d');
-      case '5m':  return (interval: '5m',  display: 288, yfRange: '1d');
-      case '15m': return (interval: '15m', display: 192, yfRange: '2d');
-      case '30m': return (interval: '30m', display: 96,  yfRange: '2d');
-      case '1h':  return (interval: '1h',  display: 168, yfRange: '7d');
-      case '2h':  return (interval: '2h',  display: 168, yfRange: '14d');
-      case '4h':  return (interval: '4h',  display: 180, yfRange: '30d');
-      case '12h': return (interval: '12h', display: 180, yfRange: '90d');
-      // Short daily views: must fetch enough for MACD(26,9) = 34 bars minimum
-      case '1W':  return (interval: '1d',  display: 7,   yfRange: '3mo');
-      case '4W':  return (interval: '1d',  display: 28,  yfRange: '3mo');
-      case '1M':  return (interval: '1d',  display: 30,  yfRange: '3mo');
-      case '3M':  return (interval: '1d',  display: 90,  yfRange: '6mo');
-      case '6M':  return (interval: '1d',  display: 180, yfRange: '1y');
-      case '1Y':  return (interval: '1wk', display: 52,  yfRange: '2y');
-      case '5Y':  return (interval: '1wk', display: 260, yfRange: '5y');
-      default:    return (interval: '1d',  display: 365, yfRange: '1y');
+  Future<void> _fetchStockCandles({String reason = 'timeframe_change'}) async {
+    final p = _intervalConfig;
+    final cacheKey = _stockCandleCacheKey(p);
+    final loadedKey = _loadedCandleKey;
+    final cached = _stockCandleCache[cacheKey];
+    final cacheHit = cached != null;
+    final cacheFresh = cached != null && _isFresh(cached, p);
+
+    if (_isFetchingCandles && _activeFetchKey == cacheKey) {
+      if (kDebugMode) {
+        debugPrint(
+          '[ChartFetchTrigger] reason=duplicate_fetch_skipped symbol=${widget.stock.ticker} interval=${p.backendInterval}',
+        );
+      }
+      return;
     }
-  }
 
-  Future<void> _fetchStockCandles() async {
-    setState(() { _isLoading = true; _hasError = false; _candles = []; _rsiValues = []; _macdData = {}; });
+    if (loadedKey == cacheKey && cacheFresh) {
+      if (kDebugMode) {
+        debugPrint(
+          '[ChartFetchTrigger] reason=cache_valid_skip symbol=${widget.stock.ticker} interval=${p.backendInterval}',
+        );
+      }
+      return;
+    }
 
-    final p = _stockCandleParams();
-    final fetchLimit = p.display + _kWarmupBars; // extra bars for indicator warmup
+    final requestId = ++_candleRequestSeq;
+    _isFetchingCandles = true;
+    _activeFetchKey = cacheKey;
+
+    final triggerReason = loadedKey == cacheKey && cached != null && !cacheFresh
+        ? 'cache_expired'
+        : reason;
 
     if (kDebugMode) {
-      debugPrint('[AssetChart] ${widget.stock.ticker} tf=${_timeframe} '
-          'interval=${p.interval} display=${p.display} fetch=$fetchLimit');
+      debugPrint(
+        '[ChartFetchTrigger] reason=$triggerReason symbol=${widget.stock.ticker} interval=${p.backendInterval}',
+      );
+      debugPrint(
+        '[ChartTap] tf=$_timeframe interval=${p.backendInterval} cacheHit=$cacheHit',
+      );
     }
 
+    if (cached != null) {
+      _applyCandles(
+        cached.candles,
+        p,
+        resetViewport: true,
+        source: 'cache',
+        elapsedMs: 0,
+      );
+      unawaited(_fetchSignalAnalysis(keepPrevious: true));
+      if (cacheFresh) {
+        _isFetchingCandles = false;
+        _activeFetchKey = null;
+        return;
+      }
+    }
+
+    setState(() {
+      _isLoading = true;
+      _hasError = false;
+    });
+
+    if (kDebugMode) {
+      debugPrint(
+        '[AssetChart] ${widget.stock.ticker} tf=${_timeframe} '
+        'interval=${p.backendInterval} visible=${p.defaultVisibleBars} fetch=${p.fetchLimit}',
+      );
+    }
+
+    final stopwatch = Stopwatch()..start();
     List<Candle> all = [];
-    final raw = await _backendService.getCandles(
-        widget.stock.ticker, interval: p.interval, limit: fetchLimit);
-    if (raw.isNotEmpty) all = raw.map((r) => Candle.fromMap(r)).toList();
+    var source = 'backend';
+    try {
+      final raw = await _backendService.getCandles(
+        widget.stock.ticker,
+        interval: p.backendInterval,
+        limit: p.fetchLimit,
+      );
+      if (raw.isNotEmpty) all = raw.map((r) => Candle.fromMap(r)).toList();
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint(
+          '[CandleFetch] symbol=${widget.stock.ticker} interval=${p.backendInterval} failed=$e',
+        );
+      }
+    }
+    stopwatch.stop();
 
-    if (all.isEmpty) {
-      final yf = YahooFinanceCandleService();
-      all = await yf.fetchCandles(widget.stock.ticker,
-          interval: p.interval, range: p.yfRange);
+    if (requestId != _candleRequestSeq || !mounted) {
+      if (_activeFetchKey == cacheKey) {
+        _isFetchingCandles = false;
+        _activeFetchKey = null;
+      }
+      return;
     }
 
     if (kDebugMode) {
-      debugPrint('[AssetChart] ${widget.stock.ticker} fetched=${all.length} '
-          'candles (warmup+display). display slice=${p.display}');
+      debugPrint(
+        '[AssetChart] ${widget.stock.ticker} fetched=${all.length} '
+        'candles. default visible=${p.defaultVisibleBars}',
+      );
     }
 
-    if (!mounted) return;
-
     if (all.isEmpty) {
+      if (cached != null) {
+        setState(() {
+          _isLoading = false;
+          _hasError = false;
+          _errorMessage = 'Could not refresh chart data. Showing cached candles.';
+        });
+        _isFetchingCandles = false;
+        _activeFetchKey = null;
+        return;
+      }
+      if (_candles.isNotEmpty) {
+        setState(() {
+          _isLoading = false;
+          _hasError = false;
+          _errorMessage = 'Could not refresh chart data. Showing previous candles.';
+        });
+        _isFetchingCandles = false;
+        _activeFetchKey = null;
+        return;
+      }
       setState(() {
-        _candles = [];
         _isLoading = false;
         _hasError = true;
         _errorMessage = 'No chart data for ${widget.stock.ticker}';
       });
+      _isFetchingCandles = false;
+      _activeFetchKey = null;
       return;
     }
 
-    // Slice: show only the last display bars in the chart; compute indicators
-    // on the full (warmup+display) set so RSI/MACD have valid values.
-    final display = all.length > p.display ? all.sublist(all.length - p.display) : all;
-    _computeIndicators(all, display);
-
-    setState(() {
-      _isLoading = false;
-      _hasError = false;
-    });
-    _chartController.setCandles(_candles);
+    _stockCandleCache[cacheKey] = _CandleCacheEntry(
+      candles: all,
+      fetchedAt: DateTime.now(),
+    );
+    _applyCandles(
+      all,
+      p,
+      resetViewport: true,
+      source: source,
+      elapsedMs: stopwatch.elapsedMilliseconds,
+    );
+    unawaited(_fetchSignalAnalysis(keepPrevious: true));
+    _isFetchingCandles = false;
+    _activeFetchKey = null;
   }
 
   void _onTimeframeChanged(String tf) {
+    if (tf == _timeframe) return;
+    _signalRequestSeq++;
     setState(() => _timeframe = tf);
     if (isCryptoSymbol(widget.stock.ticker)) {
-      _subscribeToCandles();
+      if (kDebugMode) {
+        debugPrint('[FetchCallSite] source=timeframe_change target=crypto_stream');
+      }
+      _subscribeToCandles(reason: 'timeframe_change');
     } else {
-      _fetchStockCandles();
+      if (kDebugMode) {
+        debugPrint('[FetchCallSite] source=timeframe_change target=stock_candles');
+      }
+      unawaited(_fetchStockCandles(reason: 'timeframe_change'));
     }
-    // Re-run signal analysis for the new interval so AI commentary matches
-    // the resolution the user is now viewing.
-    _fetchSignalAnalysis();
+    // Signal analysis is intentionally kicked off after candles render.
   }
 
   Future<void> _toggleWatchlist() async {
@@ -540,20 +971,26 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
     try {
       final nowInList = await service.toggleWatchlist(widget.stock.ticker);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(nowInList
-              ? '${widget.stock.ticker} added to watchlist'
-              : '${widget.stock.ticker} removed from watchlist'),
-          duration: const Duration(seconds: 1),
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              nowInList
+                  ? '${widget.stock.ticker} added to watchlist'
+                  : '${widget.stock.ticker} removed from watchlist',
+            ),
+            duration: const Duration(seconds: 1),
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Could not update watchlist'),
-          backgroundColor: Colors.redAccent,
-          duration: Duration(seconds: 2),
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not update watchlist'),
+            backgroundColor: Colors.redAccent,
+            duration: Duration(seconds: 2),
+          ),
+        );
       }
     }
   }
@@ -568,45 +1005,58 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
   ) {
     if (_candles.isEmpty) return const [];
     final markers = <SignalMarker>[];
-    int lastBuyIdx  = -99;
+    int lastBuyIdx = -99;
     int lastSellIdx = -99;
-    const cooldown  = 5;
+    const cooldown = 5;
 
     for (int i = 1; i < _candles.length; i++) {
       final rsiPrev = i - 1 < rsiValues.length ? rsiValues[i - 1] : null;
-      final rsiCurr = i     < rsiValues.length ? rsiValues[i]     : null;
-      final macdPrev   = i - 1 < macdLine.length   ? macdLine[i - 1]   : null;
-      final macdCurr   = i     < macdLine.length    ? macdLine[i]       : null;
-      final sigPrev    = i - 1 < signalLine.length  ? signalLine[i - 1] : null;
-      final sigCurr    = i     < signalLine.length  ? signalLine[i]     : null;
+      final rsiCurr = i < rsiValues.length ? rsiValues[i] : null;
+      final macdPrev = i - 1 < macdLine.length ? macdLine[i - 1] : null;
+      final macdCurr = i < macdLine.length ? macdLine[i] : null;
+      final sigPrev = i - 1 < signalLine.length ? signalLine[i - 1] : null;
+      final sigCurr = i < signalLine.length ? signalLine[i] : null;
 
       // ── Buy triggers ──────────────────────────────────────────────
       // RSI cross up through 30 (oversold recovery)
-      final rsiOversoldCross = rsiPrev != null && rsiCurr != null &&
-          rsiPrev < 30 && rsiCurr >= 30;
+      final rsiOversoldCross =
+          rsiPrev != null && rsiCurr != null && rsiPrev < 30 && rsiCurr >= 30;
       // MACD bullish cross
-      final macdBullCross = macdPrev != null && macdCurr != null &&
-          sigPrev != null && sigCurr != null &&
-          macdPrev < sigPrev && macdCurr >= sigCurr;
+      final macdBullCross =
+          macdPrev != null &&
+          macdCurr != null &&
+          sigPrev != null &&
+          sigCurr != null &&
+          macdPrev < sigPrev &&
+          macdCurr >= sigCurr;
 
       if ((rsiOversoldCross || macdBullCross) && i - lastBuyIdx >= cooldown) {
         final strength = rsiOversoldCross && macdBullCross ? 1.0 : 0.65;
-        markers.add(SignalMarker(candleIndex: i, isBuy: true, strength: strength));
+        markers.add(
+          SignalMarker(candleIndex: i, isBuy: true, strength: strength),
+        );
         lastBuyIdx = i;
       }
 
       // ── Sell triggers ─────────────────────────────────────────────
       // RSI cross down through 70 (overbought reversal)
-      final rsiOverboughtCross = rsiPrev != null && rsiCurr != null &&
-          rsiPrev > 70 && rsiCurr <= 70;
+      final rsiOverboughtCross =
+          rsiPrev != null && rsiCurr != null && rsiPrev > 70 && rsiCurr <= 70;
       // MACD bearish cross
-      final macdBearCross = macdPrev != null && macdCurr != null &&
-          sigPrev != null && sigCurr != null &&
-          macdPrev > sigPrev && macdCurr <= sigCurr;
+      final macdBearCross =
+          macdPrev != null &&
+          macdCurr != null &&
+          sigPrev != null &&
+          sigCurr != null &&
+          macdPrev > sigPrev &&
+          macdCurr <= sigCurr;
 
-      if ((rsiOverboughtCross || macdBearCross) && i - lastSellIdx >= cooldown) {
+      if ((rsiOverboughtCross || macdBearCross) &&
+          i - lastSellIdx >= cooldown) {
         final strength = rsiOverboughtCross && macdBearCross ? 1.0 : 0.65;
-        markers.add(SignalMarker(candleIndex: i, isBuy: false, strength: strength));
+        markers.add(
+          SignalMarker(candleIndex: i, isBuy: false, strength: strength),
+        );
         lastSellIdx = i;
       }
     }
@@ -615,46 +1065,96 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
 
   OverlayData _buildOverlays({
     List<double?> rsiValues = const [],
-    List<double?> macdLine  = const [],
+    List<double?> macdLine = const [],
     List<double?> signalLine = const [],
   }) {
     if (_candles.isEmpty) return const OverlayData();
 
     final maLines = <MALine>[];
     if (_maType == MAType.sma || _maType == MAType.both) {
-      maLines.add(MALine(values: TechnicalAnalysisService.calculateSMA(_candles, 20), color: const Color(0xFFFFEB3B), label: 'SMA20'));
-      maLines.add(MALine(values: TechnicalAnalysisService.calculateSMA(_candles, 50), color: const Color(0xFFFF9800), label: 'SMA50'));
-      maLines.add(MALine(values: TechnicalAnalysisService.calculateSMA(_candles, 200), color: const Color(0xFFE91E63), label: 'SMA200'));
+      maLines.add(
+        MALine(
+          values: TechnicalAnalysisService.calculateSMA(_candles, 20),
+          color: const Color(0xFFFFEB3B),
+          label: 'SMA20',
+        ),
+      );
+      maLines.add(
+        MALine(
+          values: TechnicalAnalysisService.calculateSMA(_candles, 50),
+          color: const Color(0xFFFF9800),
+          label: 'SMA50',
+        ),
+      );
+      maLines.add(
+        MALine(
+          values: TechnicalAnalysisService.calculateSMA(_candles, 200),
+          color: const Color(0xFFE91E63),
+          label: 'SMA200',
+        ),
+      );
     }
     if (_maType == MAType.ema || _maType == MAType.both) {
-      maLines.add(MALine(values: TechnicalAnalysisService.calculateEMA(_candles, 12), color: const Color(0xFF00BCD4), label: 'EMA12'));
-      maLines.add(MALine(values: TechnicalAnalysisService.calculateEMA(_candles, 26), color: const Color(0xFF9C27B0), label: 'EMA26'));
-      maLines.add(MALine(values: TechnicalAnalysisService.calculateEMA(_candles, 50), color: const Color(0xFF4CAF50), label: 'EMA50'));
+      maLines.add(
+        MALine(
+          values: TechnicalAnalysisService.calculateEMA(_candles, 12),
+          color: const Color(0xFF00BCD4),
+          label: 'EMA12',
+        ),
+      );
+      maLines.add(
+        MALine(
+          values: TechnicalAnalysisService.calculateEMA(_candles, 26),
+          color: const Color(0xFF9C27B0),
+          label: 'EMA26',
+        ),
+      );
+      maLines.add(
+        MALine(
+          values: TechnicalAnalysisService.calculateEMA(_candles, 50),
+          color: const Color(0xFF4CAF50),
+          label: 'EMA50',
+        ),
+      );
     }
 
     BollingerData? bollinger;
     if (_showBollingerBands) {
-      final bb = TechnicalAnalysisService.calculateBollingerBands(_candles, period: 20, stdDev: 2.0);
-      bollinger = BollingerData(upper: bb['upper']!, lower: bb['lower']!, middle: bb['middle']!);
+      final bb = TechnicalAnalysisService.calculateBollingerBands(
+        _candles,
+        period: 20,
+        stdDev: 2.0,
+      );
+      bollinger = BollingerData(
+        upper: bb['upper']!,
+        lower: bb['lower']!,
+        middle: bb['middle']!,
+      );
     }
 
     final srLines = <SRLine>[];
     if (_srType == SRType.simple) {
       final support = TechnicalAnalysisService.calculateSupport(_candles);
       final resistance = TechnicalAnalysisService.calculateResistance(_candles);
-      srLines.add(SRLine(price: support, color: Colors.green, label: 'Support'));
-      srLines.add(SRLine(price: resistance, color: Colors.red, label: 'Resist'));
+      srLines.add(
+        SRLine(price: support, color: Colors.green, label: 'Support'),
+      );
+      srLines.add(
+        SRLine(price: resistance, color: Colors.red, label: 'Resist'),
+      );
     } else if (_srType == SRType.pivot) {
       final pivots = TechnicalAnalysisService.calculatePivotPoints(_candles);
-      pivots.forEach((k, v) => srLines.add(SRLine(price: v, color: Colors.orange, label: k)));
+      pivots.forEach(
+        (k, v) => srLines.add(SRLine(price: v, color: Colors.orange, label: k)),
+      );
     } else if (_srType == SRType.fibonacci) {
       final fibs = TechnicalAnalysisService.calculateFibonacci(_candles);
-      fibs.forEach((k, v) => srLines.add(SRLine(price: v, color: Colors.purple, label: k)));
+      fibs.forEach(
+        (k, v) => srLines.add(SRLine(price: v, color: Colors.purple, label: k)),
+      );
     }
 
-    final vwapLine = _showVWAP
-        ? TechnicalAnalysisService.calculateVWAP(_candles)
-        : null;
+    final vwapLine = _showVWAP ? _validVwapLine() : null;
 
     final currentPriceLine = _liveQuote?.price ?? widget.stock.price;
 
@@ -662,36 +1162,50 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
     final tradeLevels = <TradeLevel>[];
     final pred = _signalAnalysis?.prediction;
     if (pred != null) {
-      // Stop loss — always shown, full opacity
-      tradeLevels.add(TradeLevel(
-        price: pred.stopLossSuggestion,
-        color: const Color(0xFFFF4D6A),
-        label: 'SL',
-        alpha: 1.0,
-      ));
-      // Base target — primary AI projection
-      tradeLevels.add(TradeLevel(
-        price: pred.priceTargetBase,
-        color: const Color(0xFF12A28C),
-        label: 'Target',
-        alpha: 1.0,
-      ));
-      // Bull / Bear cases — dimmed so they don't dominate
-      if (pred.priceTargetHigh != pred.priceTargetBase) {
-        tradeLevels.add(TradeLevel(
-          price: pred.priceTargetHigh,
-          color: const Color(0xFF00C896),
-          label: 'Bull',
-          alpha: 0.55,
-        ));
+      final crowded =
+          _chartController.viewportWidth > 70 ||
+          _timeframe == '1m' ||
+          _timeframe == '5m';
+      // Hide extra trade-plan labels on dense charts so candles stay readable.
+      if (!crowded) {
+        tradeLevels.add(
+          TradeLevel(
+            price: pred.stopLossSuggestion,
+            color: const Color(0xFFFF4D6A),
+            label: 'SL',
+            alpha: 0.8,
+          ),
+        );
       }
-      if (pred.priceTargetLow != pred.priceTargetBase) {
-        tradeLevels.add(TradeLevel(
-          price: pred.priceTargetLow,
-          color: const Color(0xFFFFB300),
-          label: 'Bear',
-          alpha: 0.55,
-        ));
+      // Base target — primary AI projection
+      tradeLevels.add(
+        TradeLevel(
+          price: pred.priceTargetBase,
+          color: const Color(0xFF12A28C),
+          label: 'Target',
+          alpha: 1.0,
+        ),
+      );
+      // Bull / Bear cases are dimmed and only shown when spacing allows.
+      if (!crowded && pred.priceTargetHigh != pred.priceTargetBase) {
+        tradeLevels.add(
+          TradeLevel(
+            price: pred.priceTargetHigh,
+            color: const Color(0xFF00C896),
+            label: 'Bull',
+            alpha: 0.55,
+          ),
+        );
+      }
+      if (!crowded && pred.priceTargetLow != pred.priceTargetBase) {
+        tradeLevels.add(
+          TradeLevel(
+            price: pred.priceTargetLow,
+            color: const Color(0xFFFFB300),
+            label: 'Bear',
+            alpha: 0.55,
+          ),
+        );
       }
     }
 
@@ -707,43 +1221,82 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
     );
   }
 
+  List<double?>? _validVwapLine() {
+    if (_candles.where((c) => c.volume > 0).length < 2) return null;
+    final line = TechnicalAnalysisService.calculateVWAP(_candles);
+    if (line.whereType<double>().length < 2) return null;
+    return line;
+  }
+
   void _showChartPatternSheet(dynamic pat) {
     final type = pat.type as String;
     final signal = pat.signal as String;
     final signalColor = signal == 'BULLISH'
         ? const Color(0xFF12A28C)
-        : signal == 'BEARISH' ? Colors.redAccent : Colors.white54;
+        : signal == 'BEARISH'
+        ? Colors.redAccent
+        : Colors.white54;
 
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF111925),
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (_) => Padding(
         padding: const EdgeInsets.fromLTRB(24, 20, 24, 36),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(children: [
-              Text(pat.displayName as String,
-                  style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: signalColor.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: signalColor.withValues(alpha: 0.4)),
+            Row(
+              children: [
+                Text(
+                  pat.displayName as String,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
-                child: Text(signal, style: TextStyle(color: signalColor, fontSize: 11, fontWeight: FontWeight.w700)),
-              ),
-            ]),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: signalColor.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: signalColor.withValues(alpha: 0.4),
+                    ),
+                  ),
+                  child: Text(
+                    signal,
+                    style: TextStyle(
+                      color: signalColor,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
             const SizedBox(height: 6),
-            Text('${((pat.confidence as double) * 100).toStringAsFixed(0)}% confidence',
-                style: const TextStyle(color: Colors.white38, fontSize: 12)),
+            Text(
+              '${((pat.confidence as double) * 100).toStringAsFixed(0)}% confidence',
+              style: const TextStyle(color: Colors.white38, fontSize: 12),
+            ),
             const SizedBox(height: 14),
-            Text(_patternEducationText(type),
-                style: const TextStyle(color: Colors.white70, fontSize: 14, height: 1.55)),
+            Text(
+              _patternEducationText(type),
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 14,
+                height: 1.55,
+              ),
+            ),
           ],
         ),
       ),
@@ -752,17 +1305,28 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
 
   static String _patternEducationText(String type) {
     const map = <String, String>{
-      'DOUBLE_TOP': 'Two peaks at roughly the same price — sellers rejected the same level twice. Usually signals a bearish reversal.',
-      'DOUBLE_BOTTOM': 'Two troughs at roughly the same price — buyers defended the same level twice. Usually signals a bullish reversal.',
-      'HEAD_SHOULDERS': 'Three peaks where the middle is the highest. Classic bearish reversal. Break below the neckline is the signal.',
-      'INV_HEAD_SHOULDERS': 'Three troughs where the middle is lowest. Classic bullish reversal. Break above the neckline confirms.',
-      'BULL_FLAG': 'Strong upward move (pole) followed by tight consolidation. Breakout above the flag top with volume surge is the entry signal.',
-      'BEAR_FLAG': 'Sharp downward move followed by brief consolidation. Breakdown below flag low confirms continuation.',
-      'DOJI': 'Open and close are almost the same price — neither buyers nor sellers won. Signals indecision.',
-      'HAMMER': 'A small body at the top with a long lower shadow. Potential bullish reversal when found at the bottom of downtrends.',
-      'BULLISH_ENGULFING': 'A bearish candle followed by a larger bullish candle. Buyers overwhelmed sellers.',
-      'BEARISH_ENGULFING': 'A bullish candle followed by a larger bearish candle. Sellers took complete control.',
-      'MORNING_STAR': 'Three-candle bullish reversal at the bottom of a downtrend.',
+      'DOUBLE_TOP':
+          'Two peaks at roughly the same price — sellers rejected the same level twice. Usually signals a bearish reversal.',
+      'DOUBLE_BOTTOM':
+          'Two troughs at roughly the same price — buyers defended the same level twice. Usually signals a bullish reversal.',
+      'HEAD_SHOULDERS':
+          'Three peaks where the middle is the highest. Classic bearish reversal. Break below the neckline is the signal.',
+      'INV_HEAD_SHOULDERS':
+          'Three troughs where the middle is lowest. Classic bullish reversal. Break above the neckline confirms.',
+      'BULL_FLAG':
+          'Strong upward move (pole) followed by tight consolidation. Breakout above the flag top with volume surge is the entry signal.',
+      'BEAR_FLAG':
+          'Sharp downward move followed by brief consolidation. Breakdown below flag low confirms continuation.',
+      'DOJI':
+          'Open and close are almost the same price — neither buyers nor sellers won. Signals indecision.',
+      'HAMMER':
+          'A small body at the top with a long lower shadow. Potential bullish reversal when found at the bottom of downtrends.',
+      'BULLISH_ENGULFING':
+          'A bearish candle followed by a larger bullish candle. Buyers overwhelmed sellers.',
+      'BEARISH_ENGULFING':
+          'A bullish candle followed by a larger bearish candle. Sellers took complete control.',
+      'MORNING_STAR':
+          'Three-candle bullish reversal at the bottom of a downtrend.',
       'EVENING_STAR': 'Three-candle bearish reversal at the top of an uptrend.',
     };
     return map[type] ?? 'Pattern detected based on price action analysis.';
@@ -772,22 +1336,39 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF111925),
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (ctx) => SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             const SizedBox(height: 8),
-            Container(width: 36, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
+            Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.white24,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
             const SizedBox(height: 8),
             AdvancedIndicatorSettings(
               movingAverageType: _maType,
               showBollingerBands: _showBollingerBands,
               supportResistanceType: _srType,
               subChartType: _subChartType,
-              onMATypeChanged: (v) { setState(() => _maType = v); Navigator.pop(ctx); },
-              onBollingerBandsChanged: (v) { setState(() => _showBollingerBands = v); },
-              onSRTypeChanged: (v) { setState(() => _srType = v); Navigator.pop(ctx); },
+              onMATypeChanged: (v) {
+                setState(() => _maType = v);
+                Navigator.pop(ctx);
+              },
+              onBollingerBandsChanged: (v) {
+                setState(() => _showBollingerBands = v);
+              },
+              onSRTypeChanged: (v) {
+                setState(() => _srType = v);
+                Navigator.pop(ctx);
+              },
               onSubChartChanged: (v) {
                 setState(() {
                   _subChartType = v;
@@ -800,18 +1381,36 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
             const SizedBox(height: 8),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(children: [
-                Expanded(child: TextButton.icon(
-                  icon: const Icon(Icons.help_outline, size: 18),
-                  label: const Text('Moving Averages'),
-                  onPressed: () { Navigator.pop(ctx); EducationalBottomSheet.show(context, EducationalContent.movingAverages); },
-                )),
-                Expanded(child: TextButton.icon(
-                  icon: const Icon(Icons.help_outline, size: 18),
-                  label: const Text('Support/Resistance'),
-                  onPressed: () { Navigator.pop(ctx); EducationalBottomSheet.show(context, EducationalContent.supportResistance); },
-                )),
-              ]),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextButton.icon(
+                      icon: const Icon(Icons.help_outline, size: 18),
+                      label: const Text('Moving Averages'),
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        EducationalBottomSheet.show(
+                          context,
+                          EducationalContent.movingAverages,
+                        );
+                      },
+                    ),
+                  ),
+                  Expanded(
+                    child: TextButton.icon(
+                      icon: const Icon(Icons.help_outline, size: 18),
+                      label: const Text('Support/Resistance'),
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        EducationalBottomSheet.show(
+                          context,
+                          EducationalContent.supportResistance,
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 16),
           ],
@@ -825,45 +1424,75 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
     if (service == null) return;
     final sharesCtrl = TextEditingController();
     final costCtrl = TextEditingController(
-        text: widget.stock.price > 0 ? widget.stock.price.toStringAsFixed(2) : '');
+      text: widget.stock.price > 0 ? widget.stock.price.toStringAsFixed(2) : '',
+    );
     bool saving = false;
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: const Color(0xFF111925),
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSheet) => Padding(
-          padding: EdgeInsets.fromLTRB(24, 20, 24, MediaQuery.of(ctx).viewInsets.bottom + 36),
+          padding: EdgeInsets.fromLTRB(
+            24,
+            20,
+            24,
+            MediaQuery.of(ctx).viewInsets.bottom + 36,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Add ${widget.stock.ticker} to Portfolio',
-                  style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w700)),
+              Text(
+                'Add ${widget.stock.ticker} to Portfolio',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
               const SizedBox(height: 20),
               TextField(
                 controller: sharesCtrl,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 style: const TextStyle(color: Colors.white),
                 decoration: const InputDecoration(
-                  labelText: 'Number of Shares', labelStyle: TextStyle(color: Colors.white54),
-                  enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
-                  focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Color(0xFF12A28C))),
-                  filled: true, fillColor: Color(0x08FFFFFF),
+                  labelText: 'Number of Shares',
+                  labelStyle: TextStyle(color: Colors.white54),
+                  enabledBorder: OutlineInputBorder(
+                    borderSide: BorderSide(color: Colors.white24),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderSide: BorderSide(color: Color(0xFF12A28C)),
+                  ),
+                  filled: true,
+                  fillColor: Color(0x08FFFFFF),
                 ),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: costCtrl,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 style: const TextStyle(color: Colors.white),
                 decoration: const InputDecoration(
-                  labelText: 'Avg Cost Per Share (\$)', labelStyle: TextStyle(color: Colors.white54),
-                  enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
-                  focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Color(0xFF12A28C))),
-                  filled: true, fillColor: Color(0x08FFFFFF),
+                  labelText: 'Avg Cost Per Share (\$)',
+                  labelStyle: TextStyle(color: Colors.white54),
+                  enabledBorder: OutlineInputBorder(
+                    borderSide: BorderSide(color: Colors.white24),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderSide: BorderSide(color: Color(0xFF12A28C)),
+                  ),
+                  filled: true,
+                  fillColor: Color(0x08FFFFFF),
                 ),
               ),
               const SizedBox(height: 24),
@@ -874,21 +1503,47 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     backgroundColor: const Color(0xFF12A28C),
                   ),
-                  onPressed: saving ? null : () async {
-                    final shares = double.tryParse(sharesCtrl.text.trim());
-                    final cost = double.tryParse(costCtrl.text.trim());
-                    if (shares == null || shares <= 0 || cost == null || cost <= 0) return;
-                    setSheet(() => saving = true);
-                    await service.upsert(Holding(
-                      symbol: widget.stock.ticker, name: widget.stock.name,
-                      shares: shares, avgCost: cost, addedAt: DateTime.now(),
-                    ));
-                    if (mounted) setState(() => _inPortfolio = true);
-                    if (ctx.mounted) Navigator.pop(ctx);
-                  },
+                  onPressed: saving
+                      ? null
+                      : () async {
+                          final shares = double.tryParse(
+                            sharesCtrl.text.trim(),
+                          );
+                          final cost = double.tryParse(costCtrl.text.trim());
+                          if (shares == null ||
+                              shares <= 0 ||
+                              cost == null ||
+                              cost <= 0)
+                            return;
+                          setSheet(() => saving = true);
+                          await service.upsert(
+                            Holding(
+                              symbol: widget.stock.ticker,
+                              name: widget.stock.name,
+                              shares: shares,
+                              avgCost: cost,
+                              addedAt: DateTime.now(),
+                            ),
+                          );
+                          if (mounted) setState(() => _inPortfolio = true);
+                          if (ctx.mounted) Navigator.pop(ctx);
+                        },
                   child: saving
-                      ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : const Text('Add to Portfolio', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text(
+                          'Add to Portfolio',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                 ),
               ),
             ],
@@ -901,7 +1556,9 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
   void _showPaperTradeSheet({bool startAsBuy = true}) {
     final service = ref.read(paperTradingServiceProvider);
     if (service == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sign in to use paper trading')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Sign in to use paper trading')),
+      );
       return;
     }
 
@@ -922,10 +1579,15 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
       context: context,
       isScrollControlled: true,
       backgroundColor: const Color(0xFF0D1520),
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSheet) {
-          void setInput(String v) { inputCtrl.text = v; setSheet(() => error = null); }
+          void setInput(String v) {
+            inputCtrl.text = v;
+            setSheet(() => error = null);
+          }
 
           return FutureBuilder<List<dynamic>>(
             future: Future.wait([
@@ -937,7 +1599,9 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
               final holding = snap.data?[1] as PaperHolding?;
 
               final rawVal = double.tryParse(inputCtrl.text.trim()) ?? 0;
-              final sharesEntered = byDollars ? (currentPrice > 0 ? rawVal / currentPrice : 0) : rawVal;
+              final sharesEntered = byDollars
+                  ? (currentPrice > 0 ? rawVal / currentPrice : 0)
+                  : rawVal;
               final dollarValue = byDollars ? rawVal : rawVal * currentPrice;
 
               double? grossPnl, taxEst, afterTaxEst;
@@ -950,38 +1614,100 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
               final accent = isBuy ? const Color(0xFF12A28C) : Colors.redAccent;
 
               return Padding(
-                padding: EdgeInsets.fromLTRB(20, 16, 20, MediaQuery.of(ctx).viewInsets.bottom + 32),
+                padding: EdgeInsets.fromLTRB(
+                  20,
+                  16,
+                  20,
+                  MediaQuery.of(ctx).viewInsets.bottom + 32,
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Center(child: Container(width: 36, height: 4,
-                        decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)))),
-                    const SizedBox(height: 16),
-                    Row(children: [
-                      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(widget.stock.ticker,
-                            style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
-                        Row(children: [
-                          Text('\$${currentPrice.toStringAsFixed(2)}',
-                              style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w600)),
-                          const SizedBox(width: 6),
-                          const Icon(Icons.circle, size: 7, color: Colors.greenAccent),
-                          const SizedBox(width: 3),
-                          const Text('LIVE', style: TextStyle(color: Colors.greenAccent, fontSize: 10, fontWeight: FontWeight.w700)),
-                        ]),
-                      ]),
-                      const Spacer(),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.07), borderRadius: BorderRadius.circular(8)),
-                        child: const Text('PAPER', style: TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.w800)),
+                    Center(
+                      child: Container(
+                        width: 36,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.white24,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
                       ),
-                    ]),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              widget.stock.ticker,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 20,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            Row(
+                              children: [
+                                Text(
+                                  '\$${currentPrice.toStringAsFixed(2)}',
+                                  style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                const Icon(
+                                  Icons.circle,
+                                  size: 7,
+                                  color: Colors.greenAccent,
+                                ),
+                                const SizedBox(width: 3),
+                                const Text(
+                                  'LIVE',
+                                  style: TextStyle(
+                                    color: Colors.greenAccent,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        const Spacer(),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.07),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Text(
+                            'PAPER',
+                            style: TextStyle(
+                              color: Colors.white38,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                     if (account == null) ...[
                       const SizedBox(height: 24),
-                      const Text('Activate Paper Trading first.\nGo to Portfolio → Paper Trading tab.',
-                          style: TextStyle(color: Colors.white54, fontSize: 14, height: 1.5)),
+                      const Text(
+                        'Activate Paper Trading first.\nGo to Portfolio → Paper Trading tab.',
+                        style: TextStyle(
+                          color: Colors.white54,
+                          fontSize: 14,
+                          height: 1.5,
+                        ),
+                      ),
                     ] else ...[
                       const SizedBox(height: 16),
                       Container(
@@ -989,90 +1715,190 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
                           color: Colors.white.withValues(alpha: 0.06),
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        child: Row(children: [
-                          _TradeTab('BUY', isBuy, const Color(0xFF12A28C), () =>
-                              setSheet(() { isBuy = true; error = null; inputCtrl.clear(); })),
-                          _TradeTab('SELL', !isBuy, Colors.redAccent, () =>
-                              setSheet(() { isBuy = false; error = null; inputCtrl.clear(); })),
-                        ]),
+                        child: Row(
+                          children: [
+                            _TradeTab(
+                              'BUY',
+                              isBuy,
+                              const Color(0xFF12A28C),
+                              () => setSheet(() {
+                                isBuy = true;
+                                error = null;
+                                inputCtrl.clear();
+                              }),
+                            ),
+                            _TradeTab(
+                              'SELL',
+                              !isBuy,
+                              Colors.redAccent,
+                              () => setSheet(() {
+                                isBuy = false;
+                                error = null;
+                                inputCtrl.clear();
+                              }),
+                            ),
+                          ],
+                        ),
                       ),
                       const SizedBox(height: 14),
                       if (isBuy)
                         _ContextBar(
                           label: 'Cash available',
                           value: '\$${account.cashBalance.toStringAsFixed(2)}',
-                          sub: 'Max ${(account.cashBalance / currentPrice).toStringAsFixed(4)} shares',
+                          sub:
+                              'Max ${(account.cashBalance / currentPrice).toStringAsFixed(4)} shares',
                         )
                       else if (holding != null)
                         _ContextBar(
                           label: 'Your position',
                           value: '${holding.shares.toStringAsFixed(4)} shares',
-                          sub: 'Avg \$${holding.avgCost.toStringAsFixed(2)} · ${holding.holdingDays ?? 0}d held',
+                          sub:
+                              'Avg \$${holding.avgCost.toStringAsFixed(2)} · ${holding.holdingDays ?? 0}d held',
                         )
                       else
-                        const _ContextBar(label: 'Position', value: 'None', sub: 'You have no shares to sell'),
+                        const _ContextBar(
+                          label: 'Position',
+                          value: 'None',
+                          sub: 'You have no shares to sell',
+                        ),
                       const SizedBox(height: 14),
-                      Row(children: [
-                        _ModeChip('By \$', byDollars, () => setSheet(() { byDollars = true; inputCtrl.clear(); error = null; })),
-                        const SizedBox(width: 8),
-                        _ModeChip('By Shares', !byDollars, () => setSheet(() { byDollars = false; inputCtrl.clear(); error = null; })),
-                        const Spacer(),
-                        if (!byDollars && rawVal > 0)
-                          Text('≈ \$${dollarValue.toStringAsFixed(2)}',
-                              style: const TextStyle(color: Colors.white38, fontSize: 12)),
-                        if (byDollars && rawVal > 0)
-                          Text('≈ ${sharesEntered.toStringAsFixed(4)} shares',
-                              style: const TextStyle(color: Colors.white38, fontSize: 12)),
-                      ]),
+                      Row(
+                        children: [
+                          _ModeChip(
+                            'By \$',
+                            byDollars,
+                            () => setSheet(() {
+                              byDollars = true;
+                              inputCtrl.clear();
+                              error = null;
+                            }),
+                          ),
+                          const SizedBox(width: 8),
+                          _ModeChip(
+                            'By Shares',
+                            !byDollars,
+                            () => setSheet(() {
+                              byDollars = false;
+                              inputCtrl.clear();
+                              error = null;
+                            }),
+                          ),
+                          const Spacer(),
+                          if (!byDollars && rawVal > 0)
+                            Text(
+                              '≈ \$${dollarValue.toStringAsFixed(2)}',
+                              style: const TextStyle(
+                                color: Colors.white38,
+                                fontSize: 12,
+                              ),
+                            ),
+                          if (byDollars && rawVal > 0)
+                            Text(
+                              '≈ ${sharesEntered.toStringAsFixed(4)} shares',
+                              style: const TextStyle(
+                                color: Colors.white38,
+                                fontSize: 12,
+                              ),
+                            ),
+                        ],
+                      ),
                       const SizedBox(height: 8),
                       TextField(
                         controller: inputCtrl,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w600),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w600,
+                        ),
                         autofocus: true,
                         onChanged: (_) => setSheet(() => error = null),
                         decoration: InputDecoration(
                           prefixText: byDollars ? '\$ ' : '',
-                          prefixStyle: const TextStyle(color: Colors.white54, fontSize: 20),
+                          prefixStyle: const TextStyle(
+                            color: Colors.white54,
+                            fontSize: 20,
+                          ),
                           suffixText: byDollars ? '' : ' shares',
-                          suffixStyle: const TextStyle(color: Colors.white38, fontSize: 14),
+                          suffixStyle: const TextStyle(
+                            color: Colors.white38,
+                            fontSize: 14,
+                          ),
                           hintText: byDollars ? '0.00' : '0.0000',
-                          hintStyle: const TextStyle(color: Colors.white24, fontSize: 20),
+                          hintStyle: const TextStyle(
+                            color: Colors.white24,
+                            fontSize: 20,
+                          ),
                           enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(color: accent.withValues(alpha: 0.3))),
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(
+                              color: accent.withValues(alpha: 0.3),
+                            ),
+                          ),
                           focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(color: accent, width: 2)),
-                          filled: true, fillColor: Colors.white.withValues(alpha: 0.05),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: accent, width: 2),
+                          ),
+                          filled: true,
+                          fillColor: Colors.white.withValues(alpha: 0.05),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 14,
+                          ),
                         ),
                       ),
                       const SizedBox(height: 10),
                       if (isBuy)
-                        Row(children: [
-                          for (final amt in [100, 500, 1000, 5000]) ...[
-                            _QuickBtn('\$$amt', () => setInput(byDollars ? '$amt' : (amt / currentPrice).toStringAsFixed(4))),
-                            const SizedBox(width: 6),
-                          ],
-                          _QuickBtn('Max', () {
-                            final max = account.cashBalance;
-                            setInput(byDollars ? max.toStringAsFixed(2) : (max / currentPrice).toStringAsFixed(4));
-                          }),
-                        ])
-                      else if (holding != null)
-                        Row(children: [
-                          for (final pct in [25, 50, 75]) ...[
-                            _QuickBtn('$pct%', () {
-                              final s = holding.shares * pct / 100;
-                              setInput(byDollars ? (s * currentPrice).toStringAsFixed(2) : s.toStringAsFixed(4));
+                        Row(
+                          children: [
+                            for (final amt in [100, 500, 1000, 5000]) ...[
+                              _QuickBtn(
+                                '\$$amt',
+                                () => setInput(
+                                  byDollars
+                                      ? '$amt'
+                                      : (amt / currentPrice).toStringAsFixed(4),
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                            ],
+                            _QuickBtn('Max', () {
+                              final max = account.cashBalance;
+                              setInput(
+                                byDollars
+                                    ? max.toStringAsFixed(2)
+                                    : (max / currentPrice).toStringAsFixed(4),
+                              );
                             }),
-                            const SizedBox(width: 6),
                           ],
-                          _QuickBtn('All', () => setInput(byDollars
-                              ? (holding.shares * currentPrice).toStringAsFixed(2)
-                              : holding.shares.toStringAsFixed(4))),
-                        ]),
+                        )
+                      else if (holding != null)
+                        Row(
+                          children: [
+                            for (final pct in [25, 50, 75]) ...[
+                              _QuickBtn('$pct%', () {
+                                final s = holding.shares * pct / 100;
+                                setInput(
+                                  byDollars
+                                      ? (s * currentPrice).toStringAsFixed(2)
+                                      : s.toStringAsFixed(4),
+                                );
+                              }),
+                              const SizedBox(width: 6),
+                            ],
+                            _QuickBtn(
+                              'All',
+                              () => setInput(
+                                byDollars
+                                    ? (holding.shares * currentPrice)
+                                          .toStringAsFixed(2)
+                                    : holding.shares.toStringAsFixed(4),
+                              ),
+                            ),
+                          ],
+                        ),
                       if (!isBuy && sharesEntered > 0 && holding != null) ...[
                         const SizedBox(height: 12),
                         Container(
@@ -1082,32 +1908,61 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(color: Colors.white12),
                           ),
-                          child: Column(children: [
-                            Row(children: [
-                              const Icon(Icons.receipt_long, size: 13, color: Colors.white38),
-                              const SizedBox(width: 5),
-                              Text(
-                                '${holding.isShortTerm ? 'Short' : 'Long'}-term gains · ${(holding.taxRate * 100).toStringAsFixed(0)}% tax',
-                                style: const TextStyle(color: Colors.white38, fontSize: 11),
+                          child: Column(
+                            children: [
+                              Row(
+                                children: [
+                                  const Icon(
+                                    Icons.receipt_long,
+                                    size: 13,
+                                    color: Colors.white38,
+                                  ),
+                                  const SizedBox(width: 5),
+                                  Text(
+                                    '${holding.isShortTerm ? 'Short' : 'Long'}-term gains · ${(holding.taxRate * 100).toStringAsFixed(0)}% tax',
+                                    style: const TextStyle(
+                                      color: Colors.white38,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ]),
-                            const SizedBox(height: 8),
-                            _SheetTaxRow('Gross P&L',
+                              const SizedBox(height: 8),
+                              _SheetTaxRow(
+                                'Gross P&L',
                                 '${(grossPnl ?? 0) >= 0 ? '+' : ''}\$${(grossPnl ?? 0).toStringAsFixed(2)}',
-                                (grossPnl ?? 0) >= 0 ? const Color(0xFF12A28C) : Colors.redAccent),
-                            const SizedBox(height: 4),
-                            _SheetTaxRow('Tax', '-\$${(taxEst ?? 0).toStringAsFixed(2)}', Colors.orange),
-                            const Divider(height: 10, color: Colors.white12),
-                            _SheetTaxRow('After-Tax',
+                                (grossPnl ?? 0) >= 0
+                                    ? const Color(0xFF12A28C)
+                                    : Colors.redAccent,
+                              ),
+                              const SizedBox(height: 4),
+                              _SheetTaxRow(
+                                'Tax',
+                                '-\$${(taxEst ?? 0).toStringAsFixed(2)}',
+                                Colors.orange,
+                              ),
+                              const Divider(height: 10, color: Colors.white12),
+                              _SheetTaxRow(
+                                'After-Tax',
                                 '${(afterTaxEst ?? 0) >= 0 ? '+' : ''}\$${(afterTaxEst ?? 0).toStringAsFixed(2)}',
-                                (afterTaxEst ?? 0) >= 0 ? const Color(0xFF12A28C) : Colors.redAccent,
-                                bold: true),
-                          ]),
+                                (afterTaxEst ?? 0) >= 0
+                                    ? const Color(0xFF12A28C)
+                                    : Colors.redAccent,
+                                bold: true,
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                       if (error != null) ...[
                         const SizedBox(height: 8),
-                        Text(error!, style: const TextStyle(color: Colors.redAccent, fontSize: 12)),
+                        Text(
+                          error!,
+                          style: const TextStyle(
+                            color: Colors.redAccent,
+                            fontSize: 12,
+                          ),
+                        ),
                       ],
                       const SizedBox(height: 16),
                       SizedBox(
@@ -1116,40 +1971,84 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
                           style: ElevatedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 16),
                             backgroundColor: accent,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
                             elevation: 0,
                           ),
-                          onPressed: saving ? null : () async {
-                            final shares = parsedShares(inputCtrl.text);
-                            if (shares <= 0) {
-                              setSheet(() => error = 'Enter an amount to ${isBuy ? 'buy' : 'sell'}');
-                              return;
-                            }
-                            setSheet(() { saving = true; error = null; });
-                            final svc = ref.read(paperTradingServiceProvider)!;
-                            final err = isBuy
-                                ? await svc.buy(widget.stock.ticker, widget.stock.name, shares, currentPrice)
-                                : await svc.sell(widget.stock.ticker, widget.stock.name, shares, currentPrice);
-                            if (err != null) {
-                              setSheet(() { saving = false; error = err; });
-                            } else {
-                              if (ctx.mounted) Navigator.pop(ctx);
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                                  content: Text(isBuy
-                                      ? 'Bought ${shares.toStringAsFixed(4)} ${widget.stock.ticker} for \$${dollarValue.toStringAsFixed(2)}'
-                                      : 'Sold ${shares.toStringAsFixed(4)} ${widget.stock.ticker}'),
-                                  backgroundColor: accent,
-                                ));
-                              }
-                            }
-                          },
+                          onPressed: saving
+                              ? null
+                              : () async {
+                                  final shares = parsedShares(inputCtrl.text);
+                                  if (shares <= 0) {
+                                    setSheet(
+                                      () => error =
+                                          'Enter an amount to ${isBuy ? 'buy' : 'sell'}',
+                                    );
+                                    return;
+                                  }
+                                  setSheet(() {
+                                    saving = true;
+                                    error = null;
+                                  });
+                                  final svc = ref.read(
+                                    paperTradingServiceProvider,
+                                  )!;
+                                  final err = isBuy
+                                      ? await svc.buy(
+                                          widget.stock.ticker,
+                                          widget.stock.name,
+                                          shares,
+                                          currentPrice,
+                                        )
+                                      : await svc.sell(
+                                          widget.stock.ticker,
+                                          widget.stock.name,
+                                          shares,
+                                          currentPrice,
+                                        );
+                                  if (err != null) {
+                                    setSheet(() {
+                                      saving = false;
+                                      error = err;
+                                    });
+                                  } else {
+                                    if (ctx.mounted) Navigator.pop(ctx);
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            isBuy
+                                                ? 'Bought ${shares.toStringAsFixed(4)} ${widget.stock.ticker} for \$${dollarValue.toStringAsFixed(2)}'
+                                                : 'Sold ${shares.toStringAsFixed(4)} ${widget.stock.ticker}',
+                                          ),
+                                          backgroundColor: accent,
+                                        ),
+                                      );
+                                    }
+                                  }
+                                },
                           child: saving
-                              ? const SizedBox(height: 22, width: 22,
-                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                              ? const SizedBox(
+                                  height: 22,
+                                  width: 22,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
                               : Text(
-                                  isBuy ? 'Buy ${widget.stock.ticker}' : 'Sell ${widget.stock.ticker}',
-                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16)),
+                                  isBuy
+                                      ? 'Buy ${widget.stock.ticker}'
+                                      : 'Sell ${widget.stock.ticker}',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 16,
+                                  ),
+                                ),
                         ),
                       ),
                     ],
@@ -1178,6 +2077,9 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
 
   @override
   void dispose() {
+    if (kDebugMode) {
+      debugPrint('[ChartLifecycle] dispose symbol=${widget.stock.ticker}');
+    }
     _technicalScrollController.dispose();
     _tabController.dispose();
     _candleSubscription?.cancel();
@@ -1202,7 +2104,9 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
     });
 
     final query = AnalystGraphService.defaultQueryFor(
-        widget.stock.ticker, 'technical');
+      widget.stock.ticker,
+      'technical',
+    );
     final userId = ref.read(userIdProvider);
     final result = await _analystService.analyze(
       message: query,
@@ -1239,6 +2143,9 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
 
   @override
   Widget build(BuildContext context) {
+    if (kDebugMode && _logBuildLifecycle) {
+      debugPrint('[ChartLifecycle] build symbol=${widget.stock.ticker}');
+    }
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
@@ -1251,14 +2158,17 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
     final isGuest = currentUser == null || currentUser.isAnonymous;
 
     // Live watchlist state — streams from Firestore for guests it's always false.
-    final isWatchlisted = ref.watch(isInWatchlistProvider(widget.stock.ticker)).valueOrNull ?? false;
+    final isWatchlisted =
+        ref.watch(isInWatchlistProvider(widget.stock.ticker)).valueOrNull ??
+        false;
 
     final displayPrice = _liveQuote?.price ?? widget.stock.price;
-    final displayChange = _liveQuote?.changePercent ?? widget.stock.changePercent;
+    final displayChange =
+        _liveQuote?.changePercent ?? widget.stock.changePercent;
     // Use cached indicator values (computed in _computeIndicators, not here).
     // This avoids expensive O(N) recomputation on every frame.
     final rsiValues = _rsiValues;
-    final macdData  = _macdData;
+    final macdData = _macdData;
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -1267,16 +2177,24 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
         centerTitle: false,
         actions: [
           IconButton(
-            icon: Icon(_inPortfolio ? Icons.pie_chart : Icons.pie_chart_outline,
-                color: _inPortfolio ? colorScheme.primary : Colors.white70),
+            icon: Icon(
+              _inPortfolio ? Icons.pie_chart : Icons.pie_chart_outline,
+              color: _inPortfolio ? colorScheme.primary : Colors.white70,
+            ),
             onPressed: _showAddToPortfolioSheet,
-            tooltip: _inPortfolio ? 'In portfolio — tap to edit' : 'Add to portfolio',
+            tooltip: _inPortfolio
+                ? 'In portfolio — tap to edit'
+                : 'Add to portfolio',
           ),
           IconButton(
-            icon: Icon(isWatchlisted ? Icons.bookmark : Icons.bookmark_border,
-                color: isWatchlisted ? colorScheme.primary : Colors.white70),
+            icon: Icon(
+              isWatchlisted ? Icons.bookmark : Icons.bookmark_border,
+              color: isWatchlisted ? colorScheme.primary : Colors.white70,
+            ),
             onPressed: _toggleWatchlist,
-            tooltip: isWatchlisted ? 'Remove from watchlist' : 'Add to watchlist',
+            tooltip: isWatchlisted
+                ? 'Remove from watchlist'
+                : 'Add to watchlist',
           ),
           const SizedBox(width: 8),
         ],
@@ -1286,39 +2204,81 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
           decoration: BoxDecoration(
             color: const Color(0xFF0D131A),
-            border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.07))),
+            border: Border(
+              top: BorderSide(color: Colors.white.withValues(alpha: 0.07)),
+            ),
           ),
-          child: Row(children: [
-            Expanded(child: ElevatedButton(
-              onPressed: () => _showPaperTradeSheet(startAsBuy: true),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF12A28C),
-                padding: const EdgeInsets.symmetric(vertical: 15),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                elevation: 0,
+          child: Row(
+            children: [
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: () => _showPaperTradeSheet(startAsBuy: true),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF12A28C),
+                    padding: const EdgeInsets.symmetric(vertical: 15),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'BUY',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      Text(
+                        '\$${(_liveQuote?.price ?? widget.stock.price).toStringAsFixed(2)}',
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                const Text('BUY', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800)),
-                Text('\$${(_liveQuote?.price ?? widget.stock.price).toStringAsFixed(2)}',
-                    style: const TextStyle(color: Colors.white70, fontSize: 11)),
-              ]),
-            )),
-            const SizedBox(width: 12),
-            Expanded(child: ElevatedButton(
-              onPressed: () => _showPaperTradeSheet(startAsBuy: false),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.redAccent,
-                padding: const EdgeInsets.symmetric(vertical: 15),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                elevation: 0,
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: () => _showPaperTradeSheet(startAsBuy: false),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.redAccent,
+                    padding: const EdgeInsets.symmetric(vertical: 15),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'SELL',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      Text(
+                        '\$${(_liveQuote?.price ?? widget.stock.price).toStringAsFixed(2)}',
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                const Text('SELL', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800)),
-                Text('\$${(_liveQuote?.price ?? widget.stock.price).toStringAsFixed(2)}',
-                    style: const TextStyle(color: Colors.white70, fontSize: 11)),
-              ]),
-            )),
-          ]),
+            ],
+          ),
         ),
       ),
       body: Column(
@@ -1336,12 +2296,16 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
             Container(
               color: const Color(0xFF0D131A),
               padding: const EdgeInsets.only(left: 16, bottom: 6),
-              child: const Row(children: [
-                Icon(Icons.access_time, size: 10, color: Color(0xFF8A95A3)),
-                SizedBox(width: 3),
-                Text('Market data ~15 min delayed',
-                    style: TextStyle(color: Color(0xFF8A95A3), fontSize: 9.5)),
-              ]),
+              child: const Row(
+                children: [
+                  Icon(Icons.access_time, size: 10, color: Color(0xFF8A95A3)),
+                  SizedBox(width: 3),
+                  Text(
+                    'Market data ~15 min delayed',
+                    style: TextStyle(color: Color(0xFF8A95A3), fontSize: 9.5),
+                  ),
+                ],
+              ),
             ),
 
           // ── Tab bar ───────────────────────────────────────────────────────
@@ -1354,9 +2318,13 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
               labelColor: const Color(0xFF12A28C),
               unselectedLabelColor: const Color(0xFF8A95A3),
               labelStyle: const TextStyle(
-                  fontSize: 12.5, fontWeight: FontWeight.w600),
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+              ),
               unselectedLabelStyle: const TextStyle(
-                  fontSize: 12.5, fontWeight: FontWeight.w500),
+                fontSize: 12.5,
+                fontWeight: FontWeight.w500,
+              ),
               indicatorColor: const Color(0xFF12A28C),
               indicatorWeight: 2,
               dividerColor: Colors.white10,
@@ -1366,7 +2334,7 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
                 Tab(text: 'Fundamental'),
                 Tab(text: 'Flow'),
                 Tab(text: 'Macro'),
-                Tab(text: 'Analyst'),   // Phase 8 — DeepSeek-R1 deep analysis
+                Tab(text: 'Analyst'), // Phase 8 — DeepSeek-R1 deep analysis
               ],
             ),
           ),
@@ -1379,10 +2347,15 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
               children: [
                 _buildOverviewTab(isGuest, theme, colorScheme, analysisAsync),
                 _buildTechnicalTab(isGuest, rsiValues, macdData),
-                _buildFundamentalTab(isGuest, theme, colorScheme, analysisAsync),
+                _buildFundamentalTab(
+                  isGuest,
+                  theme,
+                  colorScheme,
+                  analysisAsync,
+                ),
                 _buildFlowTab(),
                 _buildMacroTab(isGuest),
-                _buildAnalystTab(isGuest),  // Phase 8
+                _buildAnalystTab(isGuest), // Phase 8
               ],
             ),
           ),
@@ -1426,7 +2399,8 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
         SliverToBoxAdapter(
           child: GuestGate(
             feature: 'AI signal analysis',
-            message: 'Create a free account to unlock AI-powered signal analysis, '
+            message:
+                'Create a free account to unlock AI-powered signal analysis, '
                 'Bull/Base/Bear scenarios, price targets, and coaching nudges.',
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
@@ -1469,12 +2443,16 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
                 onLearnMore: _signalAnalysis?.coachingLessonId != null
                     ? () {
                         final lesson = LessonRegistry.byId(
-                            _signalAnalysis!.coachingLessonId!);
+                          _signalAnalysis!.coachingLessonId!,
+                        );
                         if (lesson != null && context.mounted) {
-                          Navigator.of(context).push(MaterialPageRoute(
-                            builder: (_) => GuidedLessonScreen(lesson: lesson),
-                            fullscreenDialog: true,
-                          ));
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  GuidedLessonScreen(lesson: lesson),
+                              fullscreenDialog: true,
+                            ),
+                          );
                         }
                       }
                     : null,
@@ -1487,7 +2465,9 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-              child: _CorrelationCard(correlation: _signalAnalysis!.correlation!),
+              child: _CorrelationCard(
+                correlation: _signalAnalysis!.correlation!,
+              ),
             ),
           ),
 
@@ -1535,39 +2515,45 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
           child: Container(
             color: const Color(0xFF0D1117),
             padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-            child: Row(children: [
-              Expanded(
-                child: TimeframeSelector(
-                  selectedTimeframe: _timeframe,
-                  onChanged: _onTimeframeChanged,
-                  isCrypto: isCryptoSymbol(widget.stock.ticker),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TimeframeSelector(
+                    selectedTimeframe: _timeframe,
+                    onChanged: _onTimeframeChanged,
+                    isCrypto: isCryptoSymbol(widget.stock.ticker),
+                    supportedTimeframes: _stockIntervalConfigs
+                        .where((config) => config.supported)
+                        .map((config) => config.uiInterval)
+                        .toList(growable: false),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              ChartToolbar(
-                chartType: _chartType,
-                onChartTypeChanged: (t) {
-                  setState(() {
-                    _chartType = t;
-                    _chartController.setChartType(t);
-                  });
-                },
-                onSettingsTap: _showIndicatorSettings,
-                onZoomReset: () => _chartController.resetZoom(),
-                showVWAP: _showVWAP,
-                onVwapToggle: () => setState(() => _showVWAP = !_showVWAP),
-                onDeepAiTap: isGuest
-                    ? null
-                    : () async {
-                        final result = await showCrewAnalysisSheet(
-                          context,
-                          symbol: widget.stock.ticker,
-                          userLevel: 'intermediate',
-                        );
-                        if (result != null && mounted) _fetchSignalAnalysis();
-                      },
-              ),
-            ]),
+                const SizedBox(width: 8),
+                ChartToolbar(
+                  chartType: _chartType,
+                  onChartTypeChanged: (t) {
+                    setState(() {
+                      _chartType = t;
+                      _chartController.setChartType(t);
+                    });
+                  },
+                  onSettingsTap: _showIndicatorSettings,
+                  onZoomReset: () => _chartController.resetZoom(),
+                  showVWAP: _showVWAP,
+                  onVwapToggle: () => setState(() => _showVWAP = !_showVWAP),
+                  onDeepAiTap: isGuest
+                      ? null
+                      : () async {
+                          final result = await showCrewAnalysisSheet(
+                            context,
+                            symbol: widget.stock.ticker,
+                            userLevel: 'intermediate',
+                          );
+                          if (result != null && mounted) _fetchSignalAnalysis();
+                        },
+                ),
+              ],
+            ),
           ),
         ),
 
@@ -1577,27 +2563,27 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
             color: const Color(0xFF0D1117),
             child: _hasError
                 ? _buildErrorChart()
-                : (_isLoading || _candles.isEmpty)
-                    ? _buildLoadingChart()
-                    : MarketChart(
-                        key: ValueKey('${widget.stock.ticker}_$_timeframe'),
-                        controller: _chartController,
-                        overlays: _buildOverlays(
-                          rsiValues:   rsiValues,
-                          macdLine:    macdData['macd']   ?? const [],
-                          signalLine:  macdData['signal'] ?? const [],
-                        ),
-                        height: _chartHeight,
-                        onPatternTap: _showChartPatternSheet,
-                        rsiValues: rsiValues,
-                        macdLine: macdData['macd'] ?? [],
-                        signalLine: macdData['signal'] ?? [],
-                        histogram: macdData['histogram'] ?? [],
-                        showRSI: _showRSI,
-                        showMACD: _showMACD,
-                        onInteractionChanged: (active) =>
-                            setState(() => _chartInteracting = active),
-                      ),
+                : (_isLoading && _candles.isEmpty) || _candles.isEmpty
+                ? _buildLoadingChart()
+                : MarketChart(
+                    key: ValueKey('${widget.stock.ticker}_$_timeframe'),
+                    controller: _chartController,
+                    overlays: _buildOverlays(
+                      rsiValues: rsiValues,
+                      macdLine: macdData['macd'] ?? const [],
+                      signalLine: macdData['signal'] ?? const [],
+                    ),
+                    height: _chartHeight,
+                    onPatternTap: _showChartPatternSheet,
+                    rsiValues: rsiValues,
+                    macdLine: macdData['macd'] ?? [],
+                    signalLine: macdData['signal'] ?? [],
+                    histogram: macdData['histogram'] ?? [],
+                    showRSI: _showRSI,
+                    showMACD: _showMACD,
+                    onInteractionChanged: (active) =>
+                        setState(() => _chartInteracting = active),
+                  ),
           ),
         ),
 
@@ -1607,25 +2593,30 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
             child: Container(
               color: const Color(0xFF0D1117),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: Row(children: [
-                _IndicatorToggle(
+              child: Row(
+                children: [
+                  _IndicatorToggle(
                     label: 'RSI',
                     active: _showRSI,
                     color: const Color(0xFF4CAF50),
-                    onTap: () => setState(() => _showRSI = !_showRSI)),
-                const SizedBox(width: 8),
-                _IndicatorToggle(
+                    onTap: () => setState(() => _showRSI = !_showRSI),
+                  ),
+                  const SizedBox(width: 8),
+                  _IndicatorToggle(
                     label: 'MACD',
                     active: _showMACD,
                     color: const Color(0xFFFFEB3B),
-                    onTap: () => setState(() => _showMACD = !_showMACD)),
-                const SizedBox(width: 8),
-                _IndicatorToggle(
+                    onTap: () => setState(() => _showMACD = !_showMACD),
+                  ),
+                  const SizedBox(width: 8),
+                  _IndicatorToggle(
                     label: 'VWAP',
                     active: _showVWAP,
                     color: const Color(0xFF2196F3),
-                    onTap: () => setState(() => _showVWAP = !_showVWAP)),
-              ]),
+                    onTap: () => setState(() => _showVWAP = !_showVWAP),
+                  ),
+                ],
+              ),
             ),
           ),
 
@@ -1636,8 +2627,10 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child:
-                  CoachingTip(message: _getChartCoachingTip(), icon: Icons.lightbulb_outline),
+              child: CoachingTip(
+                message: _getChartCoachingTip(),
+                icon: Icons.lightbulb_outline,
+              ),
             ),
           ),
 
@@ -1656,7 +2649,8 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
               child: _TechnicalHighlightsSection(
-                  highlights: widget.stock.technicalHighlights!),
+                highlights: widget.stock.technicalHighlights!,
+              ),
             ),
           ),
 
@@ -1679,7 +2673,9 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
         const SliverToBoxAdapter(child: SizedBox(height: 12)),
 
         // Quick stat chips (P/E, EPS, ROE …)
-        if (_fundamentals != null && !widget.stock.isCrypto && _fundamentals!.hasRatios)
+        if (_fundamentals != null &&
+            !widget.stock.isCrypto &&
+            _fundamentals!.hasRatios)
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -1712,72 +2708,97 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
             child: !_analysisRequested
                 ? _AnalyseCTACard(
-                    onTap: () => setState(() => _analysisRequested = true))
+                    onTap: () => setState(() => _analysisRequested = true),
+                  )
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(children: [
-                        Icon(Icons.auto_awesome,
-                            color: colorScheme.primary, size: 18),
-                        const SizedBox(width: 8),
-                        Text('AI Analysis',
-                            style: theme.textTheme.titleMedium
-                                ?.copyWith(fontWeight: FontWeight.w700)),
-                        const Spacer(),
-                        IconButton(
-                          icon: const Icon(Icons.refresh, size: 18),
-                          color: colorScheme.primary,
-                          onPressed: () => ref
-                              .invalidate(aiAnalysisProvider(widget.stock.ticker)),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.close, size: 18),
-                          color: Colors.white54,
-                          onPressed: () =>
-                              setState(() => _analysisRequested = false),
-                        ),
-                      ]),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.auto_awesome,
+                            color: colorScheme.primary,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'AI Analysis',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const Spacer(),
+                          IconButton(
+                            icon: const Icon(Icons.refresh, size: 18),
+                            color: colorScheme.primary,
+                            onPressed: () => ref.invalidate(
+                              aiAnalysisProvider(widget.stock.ticker),
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close, size: 18),
+                            color: Colors.white54,
+                            onPressed: () =>
+                                setState(() => _analysisRequested = false),
+                          ),
+                        ],
+                      ),
                       const SizedBox(height: 10),
                       if (analysisAsync != null)
                         analysisAsync.when(
                           loading: () => GlassCard(
                             padding: const EdgeInsets.symmetric(vertical: 36),
-                            child: Column(children: [
-                              CircularProgressIndicator(
-                                  color: colorScheme.primary),
-                              const SizedBox(height: 14),
-                              Text(
+                            child: Column(
+                              children: [
+                                CircularProgressIndicator(
+                                  color: colorScheme.primary,
+                                ),
+                                const SizedBox(height: 14),
+                                Text(
                                   'Claude is analysing ${widget.stock.ticker}…',
-                                  style: theme.textTheme.bodyMedium
-                                      ?.copyWith(color: Colors.white70)),
-                            ]),
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: Colors.white70,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                           error: (err, _) => GlassCard(
                             color: Colors.red.withValues(alpha: 0.08),
                             padding: const EdgeInsets.all(20),
-                            child: Column(children: [
-                              const Icon(Icons.error_outline,
-                                  color: Colors.redAccent, size: 36),
-                              const SizedBox(height: 10),
-                              Text(
-                                  err
-                                      .toString()
-                                      .replaceFirst('Exception: ', ''),
-                                  style: theme.textTheme.bodyMedium
-                                      ?.copyWith(color: Colors.white70)),
-                              const SizedBox(height: 14),
-                              ElevatedButton.icon(
-                                icon: const Icon(Icons.refresh),
-                                label: const Text('Retry'),
-                                onPressed: () => ref.invalidate(
-                                    aiAnalysisProvider(widget.stock.ticker)),
-                              ),
-                            ]),
+                            child: Column(
+                              children: [
+                                const Icon(
+                                  Icons.error_outline,
+                                  color: Colors.redAccent,
+                                  size: 36,
+                                ),
+                                const SizedBox(height: 10),
+                                Text(
+                                  err.toString().replaceFirst(
+                                    'Exception: ',
+                                    '',
+                                  ),
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: Colors.white70,
+                                  ),
+                                ),
+                                const SizedBox(height: 14),
+                                ElevatedButton.icon(
+                                  icon: const Icon(Icons.refresh),
+                                  label: const Text('Retry'),
+                                  onPressed: () => ref.invalidate(
+                                    aiAnalysisProvider(widget.stock.ticker),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                           data: (analysis) => EnhancedAnalysisDisplay(
                             analysis: analysis,
                             onRefresh: () => ref.invalidate(
-                                aiAnalysisProvider(widget.stock.ticker)),
+                              aiAnalysisProvider(widget.stock.ticker),
+                            ),
                           ),
                         ),
                     ],
@@ -1854,7 +2875,8 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
   // ── Tab 4: Macro ────────────────────────────────────────────────────────
   // FRED macro environment, inflation/rates context, macro flags.
   Widget _buildMacroTab(bool isGuest) {
-    final hasMacro = _macroOverview != null ||
+    final hasMacro =
+        _macroOverview != null ||
         (_signalAnalysis?.correlation?.macroFlags.isNotEmpty ?? false);
 
     if (isGuest) {
@@ -1874,12 +2896,17 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(32),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Icon(Icons.public_off, color: Color(0xFF8A95A3), size: 36),
-            SizedBox(height: 12),
-            Text('Macro data loading…',
-                style: TextStyle(color: Color(0xFF8A95A3), fontSize: 14)),
-          ]),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.public_off, color: Color(0xFF8A95A3), size: 36),
+              SizedBox(height: 12),
+              Text(
+                'Macro data loading…',
+                style: TextStyle(color: Color(0xFF8A95A3), fontSize: 14),
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -1912,7 +2939,12 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
       children: [
         const CircularProgressIndicator(),
         const SizedBox(height: 16),
-        Text('Loading chart data...', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white70)),
+        Text(
+          'Loading chart data...',
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: Colors.white70),
+        ),
       ],
     ),
   );
@@ -1923,18 +2955,39 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
     child: Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Icon(Icons.error_outline, size: 64, color: Colors.redAccent.withValues(alpha: 0.7)),
+        Icon(
+          Icons.error_outline,
+          size: 64,
+          color: Colors.redAccent.withValues(alpha: 0.7),
+        ),
         const SizedBox(height: 16),
-        Text(_errorMessage ?? 'Failed to load chart',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white70)),
+        Text(
+          _errorMessage ?? 'Failed to load chart',
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: Colors.white70),
+        ),
         const SizedBox(height: 16),
         ElevatedButton.icon(
           icon: const Icon(Icons.refresh),
           label: const Text('Retry'),
           onPressed: () {
-            setState(() { _hasError = false; _errorMessage = null; });
-            if (isCryptoSymbol(widget.stock.ticker)) { _subscribeToCandles(); }
-            else { _fetchStockCandles(); }
+            setState(() {
+              _hasError = false;
+              _errorMessage = null;
+            });
+            if (isCryptoSymbol(widget.stock.ticker)) {
+              if (kDebugMode) {
+                debugPrint('[FetchCallSite] source=manual_refresh target=crypto_stream');
+              }
+              _activeCryptoCandleKey = null;
+              _subscribeToCandles(reason: 'manual_refresh');
+            } else {
+              if (kDebugMode) {
+                debugPrint('[FetchCallSite] source=manual_refresh target=stock_candles');
+              }
+              unawaited(_fetchStockCandles(reason: 'manual_refresh'));
+            }
           },
         ),
       ],
@@ -1957,15 +3010,20 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
               Text(
                 'Deep Analysis requires an account',
                 style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600),
+                  color: Colors.white70,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
                 textAlign: TextAlign.center,
               ),
               SizedBox(height: 8),
               Text(
                 'Sign up for free to run the full\nDeepSeek-R1 + Claude analyst pipeline.',
-                style: TextStyle(color: Colors.white38, fontSize: 13, height: 1.5),
+                style: TextStyle(
+                  color: Colors.white38,
+                  fontSize: 13,
+                  height: 1.5,
+                ),
                 textAlign: TextAlign.center,
               ),
             ],
@@ -2020,7 +3078,8 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
                 child: _VerificationWarningBanner(
-                    claims: _analystResult!.flaggedClaims),
+                  claims: _analystResult!.flaggedClaims,
+                ),
               ),
             ),
 
@@ -2060,7 +3119,8 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: _AnalystScenarioSection(
-                    scenarios: _analystResult!.scenarioCards!),
+                  scenarios: _analystResult!.scenarioCards!,
+                ),
               ),
             ),
 
@@ -2071,10 +3131,15 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: TextButton.icon(
-                icon: const Icon(Icons.refresh, size: 16,
-                    color: Color(0xFF12A28C)),
-                label: const Text('Run again',
-                    style: TextStyle(color: Color(0xFF12A28C), fontSize: 13)),
+                icon: const Icon(
+                  Icons.refresh,
+                  size: 16,
+                  color: Color(0xFF12A28C),
+                ),
+                label: const Text(
+                  'Run again',
+                  style: TextStyle(color: Color(0xFF12A28C), fontSize: 13),
+                ),
                 onPressed: _runDeepAnalysis,
               ),
             ),
@@ -2085,7 +3150,6 @@ class _AssetChartScreenState extends ConsumerState<AssetChartScreen>
       ],
     );
   }
-
 }
 
 // ─── Private helper widgets ──────────────────────────────────────────────────
@@ -2096,7 +3160,12 @@ class _IndicatorToggle extends StatelessWidget {
   final bool active;
   final Color color;
   final VoidCallback onTap;
-  const _IndicatorToggle({required this.label, required this.active, required this.color, required this.onTap});
+  const _IndicatorToggle({
+    required this.label,
+    required this.active,
+    required this.color,
+    required this.onTap,
+  });
   @override
   Widget build(BuildContext context) => GestureDetector(
     onTap: onTap,
@@ -2105,10 +3174,18 @@ class _IndicatorToggle extends StatelessWidget {
       decoration: BoxDecoration(
         color: active ? color.withValues(alpha: 0.15) : Colors.white10,
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: active ? color.withValues(alpha: 0.5) : Colors.white12),
+        border: Border.all(
+          color: active ? color.withValues(alpha: 0.5) : Colors.white12,
+        ),
       ),
-      child: Text(label, style: TextStyle(
-          color: active ? color : Colors.white38, fontSize: 12, fontWeight: FontWeight.w600)),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: active ? color : Colors.white38,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
     ),
   );
 }
@@ -2130,8 +3207,14 @@ class _TradeTab extends StatelessWidget {
           borderRadius: BorderRadius.circular(10),
         ),
         alignment: Alignment.center,
-        child: Text(label, style: TextStyle(
-            color: selected ? color : Colors.white38, fontWeight: FontWeight.w700, fontSize: 14)),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? color : Colors.white38,
+            fontWeight: FontWeight.w700,
+            fontSize: 14,
+          ),
+        ),
       ),
     ),
   );
@@ -2142,21 +3225,46 @@ class _SheetTaxRow extends StatelessWidget {
   final String value;
   final Color valueColor;
   final bool bold;
-  const _SheetTaxRow(this.label, this.value, this.valueColor, {this.bold = false});
+  const _SheetTaxRow(
+    this.label,
+    this.value,
+    this.valueColor, {
+    this.bold = false,
+  });
   @override
-  Widget build(BuildContext context) => Row(children: [
-    Expanded(child: Text(label, style: TextStyle(
-        color: Colors.white54, fontSize: 12, fontWeight: bold ? FontWeight.w700 : FontWeight.normal))),
-    Text(value, style: TextStyle(
-        color: valueColor, fontSize: 12, fontWeight: bold ? FontWeight.w700 : FontWeight.w600)),
-  ]);
+  Widget build(BuildContext context) => Row(
+    children: [
+      Expanded(
+        child: Text(
+          label,
+          style: TextStyle(
+            color: Colors.white54,
+            fontSize: 12,
+            fontWeight: bold ? FontWeight.w700 : FontWeight.normal,
+          ),
+        ),
+      ),
+      Text(
+        value,
+        style: TextStyle(
+          color: valueColor,
+          fontSize: 12,
+          fontWeight: bold ? FontWeight.w700 : FontWeight.w600,
+        ),
+      ),
+    ],
+  );
 }
 
 class _ContextBar extends StatelessWidget {
   final String label;
   final String value;
   final String sub;
-  const _ContextBar({required this.label, required this.value, required this.sub});
+  const _ContextBar({
+    required this.label,
+    required this.value,
+    required this.sub,
+  });
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -2164,12 +3272,24 @@ class _ContextBar extends StatelessWidget {
       color: Colors.white.withValues(alpha: 0.04),
       borderRadius: BorderRadius.circular(10),
     ),
-    child: Row(children: [
-      Text('$label  ', style: const TextStyle(color: Colors.white38, fontSize: 12)),
-      Text(value, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
-      const Spacer(),
-      Text(sub, style: const TextStyle(color: Colors.white38, fontSize: 11)),
-    ]),
+    child: Row(
+      children: [
+        Text(
+          '$label  ',
+          style: const TextStyle(color: Colors.white38, fontSize: 12),
+        ),
+        Text(
+          value,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const Spacer(),
+        Text(sub, style: const TextStyle(color: Colors.white38, fontSize: 11)),
+      ],
+    ),
   );
 }
 
@@ -2184,12 +3304,20 @@ class _ModeChip extends StatelessWidget {
     child: Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: selected ? Colors.white.withValues(alpha: 0.12) : Colors.transparent,
+        color: selected
+            ? Colors.white.withValues(alpha: 0.12)
+            : Colors.transparent,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: selected ? Colors.white38 : Colors.white12),
       ),
-      child: Text(label, style: TextStyle(
-          color: selected ? Colors.white : Colors.white38, fontSize: 12, fontWeight: FontWeight.w600)),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: selected ? Colors.white : Colors.white38,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
     ),
   );
 }
@@ -2207,7 +3335,14 @@ class _QuickBtn extends StatelessWidget {
         color: Colors.white.withValues(alpha: 0.07),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600)),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Colors.white70,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
     ),
   );
 }
@@ -2221,48 +3356,80 @@ class _AnalyseCTACard extends StatelessWidget {
     final colorScheme = theme.colorScheme;
     return GlassCard(
       padding: const EdgeInsets.all(20),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: colorScheme.primary.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(Icons.auto_awesome, color: colorScheme.primary, size: 24),
-          ),
-          const SizedBox(width: 14),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Analyse This Chart with AI',
-                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 4),
-            Text('Get Claude\'s take on sentiment, price targets, risk & key factors',
-                style: theme.textTheme.bodySmall?.copyWith(color: Colors.white60)),
-          ])),
-        ]),
-        const SizedBox(height: 18),
-        SizedBox(
-          width: double.infinity,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(colors: [colorScheme.primary, colorScheme.primary.withValues(alpha: 0.75)]),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.transparent,
-                shadowColor: Colors.transparent,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: colorScheme.primary.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  Icons.auto_awesome,
+                  color: colorScheme.primary,
+                  size: 24,
+                ),
               ),
-              onPressed: onTap,
-              icon: const Icon(Icons.psychology_outlined, size: 20),
-              label: const Text('Analyse Now', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Analyse This Chart with AI',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Get Claude\'s take on sentiment, price targets, risk & key factors',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: Colors.white60,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          SizedBox(
+            width: double.infinity,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    colorScheme.primary,
+                    colorScheme.primary.withValues(alpha: 0.75),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  shadowColor: Colors.transparent,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                onPressed: onTap,
+                icon: const Icon(Icons.psychology_outlined, size: 20),
+                label: const Text(
+                  'Analyse Now',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                ),
+              ),
             ),
           ),
-        ),
-      ]),
+        ],
+      ),
     );
   }
 }
@@ -2280,12 +3447,21 @@ class CoachingTip extends StatelessWidget {
     return GlassCard(
       color: theme.colorScheme.primary.withValues(alpha: 0.08),
       padding: const EdgeInsets.all(16),
-      child: Row(children: [
-        Icon(icon, color: theme.colorScheme.primary, size: 20),
-        const SizedBox(width: 12),
-        Expanded(child: Text(message,
-            style: theme.textTheme.bodySmall?.copyWith(color: Colors.white.withValues(alpha: 0.9), height: 1.5))),
-      ]),
+      child: Row(
+        children: [
+          Icon(icon, color: theme.colorScheme.primary, size: 20),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              message,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: Colors.white.withValues(alpha: 0.9),
+                height: 1.5,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -2297,17 +3473,37 @@ class _EducationalDisclaimer extends StatelessWidget {
     return GlassCard(
       color: Colors.orange.withValues(alpha: 0.1),
       padding: const EdgeInsets.all(16),
-      child: Row(children: [
-        const Icon(Icons.school_outlined, color: Colors.orangeAccent, size: 24),
-        const SizedBox(width: 12),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Educational Resource',
-              style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold, color: Colors.orangeAccent)),
-          const SizedBox(height: 4),
-          Text('This information is for learning purposes only. Not financial advice.',
-              style: theme.textTheme.bodySmall?.copyWith(color: Colors.white.withValues(alpha: 0.9))),
-        ])),
-      ]),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.school_outlined,
+            color: Colors.orangeAccent,
+            size: 24,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Educational Resource',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.orangeAccent,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'This information is for learning purposes only. Not financial advice.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: Colors.white.withValues(alpha: 0.9),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -2320,29 +3516,59 @@ class _TechnicalHighlightsSection extends StatelessWidget {
     final theme = Theme.of(context);
     return GlassCard(
       padding: const EdgeInsets.all(20),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Icon(Icons.lightbulb_outline, color: theme.colorScheme.primary, size: 24),
-          const SizedBox(width: 12),
-          Text('Technical Insights',
-              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
-        ]),
-        const SizedBox(height: 16),
-        ...highlights.map((h) => Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Container(width: 6, height: 6,
-                  decoration: BoxDecoration(color: theme.colorScheme.primary, shape: BoxShape.circle)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.lightbulb_outline,
+                color: theme.colorScheme.primary,
+                size: 24,
+              ),
+              const SizedBox(width: 12),
+              Text(
+                'Technical Insights',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          ...highlights.map(
+            (h) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      h,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: Colors.white.withValues(alpha: 0.9),
+                        height: 1.5,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(width: 12),
-            Expanded(child: Text(h,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                    color: Colors.white.withValues(alpha: 0.9), height: 1.5))),
-          ]),
-        )),
-      ]),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -2363,8 +3589,9 @@ class _DecisionStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isPositive = changePercent >= 0;
-    final changeColor =
-        isPositive ? const Color(0xFF2ECC9A) : const Color(0xFFFF5C5C);
+    final changeColor = isPositive
+        ? const Color(0xFF2ECC9A)
+        : const Color(0xFFFF5C5C);
     final changeSign = isPositive ? '+' : '';
 
     // Derive signal display values
@@ -2386,7 +3613,11 @@ class _DecisionStrip extends StatelessWidget {
             children: [
               // Price
               Text(
-                '\$${price.toStringAsFixed(price >= 1000 ? 2 : price >= 10 ? 2 : 4)}',
+                '\$${price.toStringAsFixed(price >= 1000
+                    ? 2
+                    : price >= 10
+                    ? 2
+                    : 4)}',
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 28,
@@ -2397,8 +3628,7 @@ class _DecisionStrip extends StatelessWidget {
               const SizedBox(width: 10),
               // % change badge
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
                   color: changeColor.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(6),
@@ -2425,8 +3655,10 @@ class _DecisionStrip extends StatelessWidget {
                 )
               else
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 11,
+                    vertical: 5,
+                  ),
                   decoration: BoxDecoration(
                     color: pillBg,
                     borderRadius: BorderRadius.circular(20),
@@ -2482,8 +3714,11 @@ class _DecisionStrip extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.lightbulb_outline,
-                    size: 13, color: Color(0xFF8A95A3)),
+                const Icon(
+                  Icons.lightbulb_outline,
+                  size: 13,
+                  color: Color(0xFF8A95A3),
+                ),
                 const SizedBox(width: 5),
                 Expanded(
                   child: Text(
@@ -2543,7 +3778,11 @@ class _SignalBadge extends StatelessWidget {
   final SignalAnalysis? signalAnalysis;
   final bool isLoading;
   final VoidCallback onRefresh;
-  const _SignalBadge({required this.signalAnalysis, required this.isLoading, required this.onRefresh});
+  const _SignalBadge({
+    required this.signalAnalysis,
+    required this.isLoading,
+    required this.onRefresh,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -2551,16 +3790,29 @@ class _SignalBadge extends StatelessWidget {
     if (signalAnalysis == null) {
       return GlassCard(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        child: Row(children: [
-          const Icon(Icons.wifi_off, color: Colors.white24, size: 16),
-          const SizedBox(width: 8),
-          const Expanded(child: Text('Signal Engine unavailable',
-              style: TextStyle(color: Colors.white38, fontSize: 11))),
-          GestureDetector(
-            onTap: onRefresh,
-            child: const Text('Retry', style: TextStyle(color: Color(0xFF12A28C), fontSize: 11, fontWeight: FontWeight.w600)),
-          ),
-        ]),
+        child: Row(
+          children: [
+            const Icon(Icons.wifi_off, color: Colors.white24, size: 16),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text(
+                'Signal Engine unavailable',
+                style: TextStyle(color: Colors.white38, fontSize: 11),
+              ),
+            ),
+            GestureDetector(
+              onTap: onRefresh,
+              child: const Text(
+                'Retry',
+                style: TextStyle(
+                  color: Color(0xFF12A28C),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
       );
     }
 
@@ -2568,52 +3820,96 @@ class _SignalBadge extends StatelessWidget {
     final label = sa.signalLabel;
     final score = sa.compositeScore;
     final (labelColor, labelBg) = _labelColors(label);
-    final scoreBarColor = score >= 0 ? const Color(0xFF12A28C) : Colors.redAccent;
+    final scoreBarColor = score >= 0
+        ? const Color(0xFF12A28C)
+        : Colors.redAccent;
 
     return GlassCard(
       padding: const EdgeInsets.all(14),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(color: labelBg, borderRadius: BorderRadius.circular(20)),
-            child: Text(signalDisplayLabel(label),
-                style: TextStyle(color: labelColor, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
-          ),
-          const SizedBox(width: 10),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Score: ${score >= 0 ? "+" : ""}${score.toStringAsFixed(2)}',
-                style: const TextStyle(color: Colors.white54, fontSize: 11)),
-            const SizedBox(height: 4),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(3),
-              child: LinearProgressIndicator(
-                value: (score + 1.0) / 2.0,
-                backgroundColor: Colors.white12,
-                valueColor: AlwaysStoppedAnimation(scoreBarColor),
-                minHeight: 5,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: labelBg,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  signalDisplayLabel(label),
+                  style: TextStyle(
+                    color: labelColor,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.5,
+                  ),
+                ),
               ),
-            ),
-          ])),
-          GestureDetector(onTap: onRefresh, child: const Icon(Icons.refresh, size: 16, color: Colors.white24)),
-        ]),
-        if (sa.signals.candlestick.pattern != null || sa.signals.indicators.rsiValue != null) ...[
-          const SizedBox(height: 10),
-          const Divider(height: 1, color: Colors.white12),
-          const SizedBox(height: 8),
-          Row(children: [
-            if (sa.signals.candlestick.pattern != null) ...[
-              const Text('🕯', style: TextStyle(fontSize: 12)),
-              const SizedBox(width: 4),
-              Text(sa.signals.candlestick.pattern!,
-                  style: const TextStyle(color: Colors.white70, fontSize: 11)),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Score: ${score >= 0 ? "+" : ""}${score.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        color: Colors.white54,
+                        fontSize: 11,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(3),
+                      child: LinearProgressIndicator(
+                        value: (score + 1.0) / 2.0,
+                        backgroundColor: Colors.white12,
+                        valueColor: AlwaysStoppedAnimation(scoreBarColor),
+                        minHeight: 5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              GestureDetector(
+                onTap: onRefresh,
+                child: const Icon(
+                  Icons.refresh,
+                  size: 16,
+                  color: Colors.white24,
+                ),
+              ),
             ],
-            Text('RSI ${sa.signals.indicators.rsiValue?.toStringAsFixed(1) ?? '--'}',
-                style: const TextStyle(color: Colors.white38, fontSize: 11)),
-          ]),
+          ),
+          if (sa.signals.candlestick.pattern != null ||
+              sa.signals.indicators.rsiValue != null) ...[
+            const SizedBox(height: 10),
+            const Divider(height: 1, color: Colors.white12),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                if (sa.signals.candlestick.pattern != null) ...[
+                  const Text('🕯', style: TextStyle(fontSize: 12)),
+                  const SizedBox(width: 4),
+                  Text(
+                    sa.signals.candlestick.pattern!,
+                    style: const TextStyle(color: Colors.white70, fontSize: 11),
+                  ),
+                  const SizedBox(width: 12),
+                ],
+                Text(
+                  'RSI ${sa.signals.indicators.rsiValue?.toStringAsFixed(1) ?? '--'}',
+                  style: const TextStyle(color: Colors.white38, fontSize: 11),
+                ),
+              ],
+            ),
+          ],
         ],
-      ]),
+      ),
     );
   }
 
@@ -2622,12 +3918,15 @@ class _SignalBadge extends StatelessWidget {
     if (lower.contains('strong_buy') || lower.contains('strong buy')) {
       return (const Color(0xFF12A28C), const Color(0x2012A28C));
     }
-    if (lower.contains('buy')) return (Colors.greenAccent, const Color(0x2000E676));
+    if (lower.contains('buy'))
+      return (Colors.greenAccent, const Color(0x2000E676));
     if (lower.contains('strong_sell') || lower.contains('strong sell')) {
       return (Colors.red, const Color(0x20F44336));
     }
-    if (lower.contains('sell')) return (Colors.redAccent, const Color(0x20EF5350));
-    if (lower.contains('neutral')) return (const Color(0xFFF5A623), const Color(0x26F5A623));
+    if (lower.contains('sell'))
+      return (Colors.redAccent, const Color(0x20EF5350));
+    if (lower.contains('neutral'))
+      return (const Color(0xFFF5A623), const Color(0x26F5A623));
     return (Colors.white70, Colors.white10);
   }
 }
@@ -2638,18 +3937,41 @@ class _SignalSkeleton extends StatelessWidget {
   Widget build(BuildContext context) {
     return GlassCard(
       padding: const EdgeInsets.all(14),
-      child: Row(children: [
-        Container(width: 80, height: 24, decoration: BoxDecoration(
-          color: Colors.white12, borderRadius: BorderRadius.circular(12))),
-        const SizedBox(width: 12),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Container(height: 8, decoration: BoxDecoration(
-              color: Colors.white12, borderRadius: BorderRadius.circular(4))),
-          const SizedBox(height: 6),
-          Container(height: 5, decoration: BoxDecoration(
-              color: Colors.white10, borderRadius: BorderRadius.circular(4))),
-        ])),
-      ]),
+      child: Row(
+        children: [
+          Container(
+            width: 80,
+            height: 24,
+            decoration: BoxDecoration(
+              color: Colors.white12,
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: Colors.white12,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Container(
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: Colors.white10,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -2666,32 +3988,46 @@ class _ScenarioCard extends StatelessWidget {
     final cs = theme.colorScheme;
     return GlassCard(
       padding: const EdgeInsets.all(16),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Icon(Icons.bar_chart, color: cs.primary, size: 18),
-          const SizedBox(width: 8),
-          Text('Scenarios',
-              style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
-        ]),
-        const SizedBox(height: 12),
-        _ScenarioRow(
-          label: 'Bull',
-          color: const Color(0xFF26A69A),
-          scenario: scenarios.bull,
-        ),
-        const SizedBox(height: 8),
-        _ScenarioRow(
-          label: 'Base',
-          color: cs.primary,
-          scenario: scenarios.base,
-        ),
-        const SizedBox(height: 8),
-        _ScenarioRow(
-          label: 'Bear',
-          color: const Color(0xFFEF5350),
-          scenario: scenarios.bear,
-        ),
-      ]),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.bar_chart, color: cs.primary, size: 18),
+              const SizedBox(width: 8),
+              Text(
+                'Scenarios',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Simulated signal scenarios - not financial advice',
+            style: TextStyle(color: Colors.white38, fontSize: 10.5),
+          ),
+          const SizedBox(height: 12),
+          _ScenarioRow(
+            label: 'Bull',
+            color: const Color(0xFF26A69A),
+            scenario: scenarios.bull,
+          ),
+          const SizedBox(height: 8),
+          _ScenarioRow(
+            label: 'Base',
+            color: cs.primary,
+            scenario: scenarios.base,
+          ),
+          const SizedBox(height: 8),
+          _ScenarioRow(
+            label: 'Bear',
+            color: const Color(0xFFEF5350),
+            scenario: scenarios.bear,
+          ),
+        ],
+      ),
     );
   }
 }
@@ -2710,41 +4046,64 @@ class _ScenarioRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final pct = scenario.probability.clamp(0, 100);
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Row(children: [
-        SizedBox(
-          width: 36,
-          child: Text(label,
-              style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700)),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(3),
-            child: LinearProgressIndicator(
-              value: pct / 100.0,
-              backgroundColor: color.withValues(alpha: 0.12),
-              valueColor: AlwaysStoppedAnimation<Color>(color.withValues(alpha: 0.75)),
-              minHeight: 6,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            SizedBox(
+              width: 36,
+              child: Text(
+                label,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ),
-          ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(3),
+                child: LinearProgressIndicator(
+                  value: pct / 100.0,
+                  backgroundColor: color.withValues(alpha: 0.12),
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    color.withValues(alpha: 0.75),
+                  ),
+                  minHeight: 6,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '$pct%',
+              style: TextStyle(
+                color: color,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '\$${scenario.priceTarget.toStringAsFixed(2)}',
+              style: const TextStyle(color: Colors.white70, fontSize: 11),
+            ),
+          ],
         ),
-        const SizedBox(width: 8),
-        Text('$pct%',
-            style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600)),
-        const SizedBox(width: 8),
-        Text('\$${scenario.priceTarget.toStringAsFixed(2)}',
-            style: const TextStyle(color: Colors.white70, fontSize: 11)),
-      ]),
-      const SizedBox(height: 3),
-      Padding(
-        padding: const EdgeInsets.only(left: 44),
-        child: Text(scenario.thesis,
+        const SizedBox(height: 3),
+        Padding(
+          padding: const EdgeInsets.only(left: 44),
+          child: Text(
+            scenario.thesis,
             style: const TextStyle(color: Colors.white38, fontSize: 10),
             maxLines: 2,
-            overflow: TextOverflow.ellipsis),
-      ),
-    ]);
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -2758,78 +4117,130 @@ class _PredictionCard extends StatelessWidget {
     final cs = theme.colorScheme;
     return GlassCard(
       padding: const EdgeInsets.all(16),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Icon(Icons.track_changes, color: cs.primary, size: 18),
-          const SizedBox(width: 8),
-          Text('Price Target', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
-          const Spacer(),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: cs.primary.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Text('${(prediction.probability * 100).toStringAsFixed(0)}% confidence',
-                style: TextStyle(color: cs.primary, fontSize: 10, fontWeight: FontWeight.w600)),
-          ),
-        ]),
-        const SizedBox(height: 12),
-        Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
-          _PriceColumn('Low', prediction.priceTargetLow, Colors.redAccent),
-          _PriceColumn('Target', prediction.priceTargetBase, cs.primary),
-          _PriceColumn('High', prediction.priceTargetHigh, Colors.greenAccent),
-        ]),
-        ...[
-          const SizedBox(height: 10),
-          const Divider(height: 1, color: Colors.white12),
-          const SizedBox(height: 8),
-          Row(children: [
-            const Icon(Icons.shield_outlined, size: 14, color: Colors.orange),
-            const SizedBox(width: 6),
-            Text('Stop Loss: \$${prediction.stopLossSuggestion.toStringAsFixed(2)}',
-                style: const TextStyle(color: Colors.orange, fontSize: 12)),
-            const SizedBox(width: 12),
-            Text('R/R: ${prediction.riskRewardRatio.toStringAsFixed(1)}x',
-                style: const TextStyle(color: Colors.white54, fontSize: 12)),
-          ]),
-        ],
-        // Backtest row (Phase B) — shown only when data is available
-        if (prediction.backtestWinRate != null) ...[
-          const SizedBox(height: 8),
-          const Divider(height: 1, color: Colors.white12),
-          const SizedBox(height: 8),
-          Row(children: [
-            const Icon(Icons.history, size: 13, color: Colors.white38),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Text.rich(
-                TextSpan(children: [
-                  TextSpan(
-                    text: 'Historical: ',
-                    style: const TextStyle(color: Colors.white38, fontSize: 11),
-                  ),
-                  TextSpan(
-                    text: '${(prediction.backtestWinRate! * 100).toStringAsFixed(0)}% win rate',
-                    style: const TextStyle(
-                        color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w600),
-                  ),
-                  if (prediction.backtestAvgGainPct != null)
-                    TextSpan(
-                      text: ', avg ${prediction.backtestAvgGainPct!.toStringAsFixed(1)}% move',
-                      style: const TextStyle(color: Colors.white54, fontSize: 11),
-                    ),
-                  if (prediction.backtestSampleCount != null)
-                    TextSpan(
-                      text: ' (${prediction.backtestSampleCount} instances)',
-                      style: const TextStyle(color: Colors.white38, fontSize: 10),
-                    ),
-                ]),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.track_changes, color: cs.primary, size: 18),
+              const SizedBox(width: 8),
+              Text(
+                'Price Target',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
               ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: cs.primary.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  '${(prediction.probability * 100).toStringAsFixed(0)}% confidence',
+                  style: TextStyle(
+                    color: cs.primary,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _PriceColumn('Low', prediction.priceTargetLow, Colors.redAccent),
+              _PriceColumn('Target', prediction.priceTargetBase, cs.primary),
+              _PriceColumn(
+                'High',
+                prediction.priceTargetHigh,
+                Colors.greenAccent,
+              ),
+            ],
+          ),
+          ...[
+            const SizedBox(height: 10),
+            const Divider(height: 1, color: Colors.white12),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Icon(
+                  Icons.shield_outlined,
+                  size: 14,
+                  color: Colors.orange,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  'Stop Loss: \$${prediction.stopLossSuggestion.toStringAsFixed(2)}',
+                  style: const TextStyle(color: Colors.orange, fontSize: 12),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  'R/R: ${prediction.riskRewardRatio.toStringAsFixed(1)}x',
+                  style: const TextStyle(color: Colors.white54, fontSize: 12),
+                ),
+              ],
             ),
-          ]),
+          ],
+          // Backtest row (Phase B) — shown only when data is available
+          if (prediction.backtestWinRate != null) ...[
+            const SizedBox(height: 8),
+            const Divider(height: 1, color: Colors.white12),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Icon(Icons.history, size: 13, color: Colors.white38),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: 'Historical: ',
+                          style: const TextStyle(
+                            color: Colors.white38,
+                            fontSize: 11,
+                          ),
+                        ),
+                        TextSpan(
+                          text:
+                              '${(prediction.backtestWinRate! * 100).toStringAsFixed(0)}% win rate',
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        if (prediction.backtestAvgGainPct != null)
+                          TextSpan(
+                            text:
+                                ', avg ${prediction.backtestAvgGainPct!.toStringAsFixed(1)}% move',
+                            style: const TextStyle(
+                              color: Colors.white54,
+                              fontSize: 11,
+                            ),
+                          ),
+                        if (prediction.backtestSampleCount != null)
+                          TextSpan(
+                            text:
+                                ' (${prediction.backtestSampleCount} instances)',
+                            style: const TextStyle(
+                              color: Colors.white38,
+                              fontSize: 10,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
-      ]),
+      ),
     );
   }
 }
@@ -2841,11 +4252,23 @@ class _PriceColumn extends StatelessWidget {
   const _PriceColumn(this.label, this.price, this.color);
   @override
   Widget build(BuildContext context) {
-    return Column(children: [
-      Text(label, style: const TextStyle(color: Colors.white38, fontSize: 11)),
-      const SizedBox(height: 4),
-      Text('\$${price.toStringAsFixed(2)}', style: TextStyle(color: color, fontSize: 14, fontWeight: FontWeight.w700)),
-    ]);
+    return Column(
+      children: [
+        Text(
+          label,
+          style: const TextStyle(color: Colors.white38, fontSize: 11),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '\$${price.toStringAsFixed(2)}',
+          style: TextStyle(
+            color: color,
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -2855,40 +4278,88 @@ class _CorrelationCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final sentimentColor = correlation.newsSentimentScore > 0.2 ? Colors.greenAccent
-        : correlation.newsSentimentScore < -0.2 ? Colors.redAccent : Colors.white70;
+    final sentimentColor = correlation.newsSentimentScore > 0.2
+        ? Colors.greenAccent
+        : correlation.newsSentimentScore < -0.2
+        ? Colors.redAccent
+        : Colors.white70;
     return GlassCard(
       padding: const EdgeInsets.all(16),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Icon(Icons.bubble_chart, color: theme.colorScheme.primary, size: 18),
-          const SizedBox(width: 8),
-          Text('Correlation Analysis', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
-          const Spacer(),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: sentimentColor.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Text(correlation.sentimentLabel,
-                style: TextStyle(color: sentimentColor, fontSize: 10, fontWeight: FontWeight.w700)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.bubble_chart,
+                color: theme.colorScheme.primary,
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Correlation Analysis',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: sentimentColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  correlation.sentimentLabel,
+                  style: TextStyle(
+                    color: sentimentColor,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
           ),
-        ]),
-        const SizedBox(height: 10),
-        Text(correlation.scenarioDescription,
-            style: const TextStyle(color: Colors.white70, fontSize: 12, height: 1.5)),
-        if (correlation.topHeadlines.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          ...correlation.topHeadlines.take(2).map((h) => Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('• ', style: TextStyle(color: Colors.white38, fontSize: 11)),
-              Expanded(child: Text(h, style: const TextStyle(color: Colors.white54, fontSize: 11, height: 1.4))),
-            ]),
-          )),
+          const SizedBox(height: 10),
+          Text(
+            correlation.scenarioDescription,
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 12,
+              height: 1.5,
+            ),
+          ),
+          if (correlation.topHeadlines.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            ...correlation.topHeadlines
+                .take(2)
+                .map(
+                  (h) => Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          '• ',
+                          style: TextStyle(color: Colors.white38, fontSize: 11),
+                        ),
+                        Expanded(
+                          child: Text(
+                            h,
+                            style: const TextStyle(
+                              color: Colors.white54,
+                              fontSize: 11,
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+          ],
         ],
-      ]),
+      ),
     );
   }
 }
@@ -2899,63 +4370,102 @@ class _PatternCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    if (patterns.patterns.isEmpty && patterns.supportResistance.isEmpty) return const SizedBox.shrink();
+    if (patterns.patterns.isEmpty && patterns.supportResistance.isEmpty)
+      return const SizedBox.shrink();
     return GlassCard(
       padding: const EdgeInsets.all(16),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Icon(Icons.pattern, color: theme.colorScheme.primary, size: 18),
-          const SizedBox(width: 8),
-          Text('Detected Patterns', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
-          const Spacer(),
-          Text('${patterns.patterns.length} pattern${patterns.patterns.length == 1 ? '' : 's'}',
-              style: const TextStyle(color: Colors.white38, fontSize: 11)),
-        ]),
-        if (patterns.patterns.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 6, runSpacing: 6,
-            children: patterns.patterns.take(4).map((p) {
-              final color = p.signal == 'BULLISH' ? Colors.greenAccent
-                  : p.signal == 'BEARISH' ? Colors.redAccent : Colors.white54;
-              return Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: color.withValues(alpha: 0.3)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.pattern, color: theme.colorScheme.primary, size: 18),
+              const SizedBox(width: 8),
+              Text(
+                'Detected Patterns',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
                 ),
-                child: Text(p.displayName,
-                    style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600)),
-              );
-            }).toList(),
+              ),
+              const Spacer(),
+              Text(
+                '${patterns.patterns.length} pattern${patterns.patterns.length == 1 ? '' : 's'}',
+                style: const TextStyle(color: Colors.white38, fontSize: 11),
+              ),
+            ],
           ),
-        ],
-        if (patterns.supportResistance.isNotEmpty) ...[
-          const SizedBox(height: 10),
-          const Divider(height: 1, color: Colors.white12),
-          const SizedBox(height: 8),
-          Text('S/R Levels', style: const TextStyle(color: Colors.white38, fontSize: 11)),
-          const SizedBox(height: 6),
-          Wrap(
-            spacing: 8, runSpacing: 4,
-            children: patterns.supportResistance.take(4).map((sr) {
-              final isSupport = sr.type == 'SUPPORT';
-              return Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: (isSupport ? Colors.green : Colors.red).withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text('\$${sr.price.toStringAsFixed(2)}',
+          if (patterns.patterns.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: patterns.patterns.take(4).map((p) {
+                final color = p.signal == 'BULLISH'
+                    ? Colors.greenAccent
+                    : p.signal == 'BEARISH'
+                    ? Colors.redAccent
+                    : Colors.white54;
+                return Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: color.withValues(alpha: 0.3)),
+                  ),
+                  child: Text(
+                    p.displayName,
                     style: TextStyle(
-                        color: isSupport ? Colors.greenAccent : Colors.redAccent,
-                        fontSize: 11, fontWeight: FontWeight.w600)),
-              );
-            }).toList(),
-          ),
+                      color: color,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
+          if (patterns.supportResistance.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            const Divider(height: 1, color: Colors.white12),
+            const SizedBox(height: 8),
+            Text(
+              'S/R Levels',
+              style: const TextStyle(color: Colors.white38, fontSize: 11),
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: patterns.supportResistance.take(4).map((sr) {
+                final isSupport = sr.type == 'SUPPORT';
+                return Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: (isSupport ? Colors.green : Colors.red).withValues(
+                      alpha: 0.1,
+                    ),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    '\$${sr.price.toStringAsFixed(2)}',
+                    style: TextStyle(
+                      color: isSupport ? Colors.greenAccent : Colors.redAccent,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
         ],
-      ]),
+      ),
     );
   }
 }
@@ -2967,20 +4477,38 @@ class _FundamentalQuickStats extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final ratios = <String, String>{};
-    if (fundamentals.pe != null) ratios['P/E'] = fundamentals.pe!.toStringAsFixed(1);
-    if (fundamentals.ps != null) ratios['P/S'] = fundamentals.ps!.toStringAsFixed(2);
-    if (fundamentals.ttmEps != null) ratios['EPS'] = '\$${fundamentals.ttmEps!.toStringAsFixed(2)}';
-    if (fundamentals.roe != null) ratios['ROE'] = '${fundamentals.roe!.toStringAsFixed(1)}%';
+    if (fundamentals.pe != null)
+      ratios['P/E'] = fundamentals.pe!.toStringAsFixed(1);
+    if (fundamentals.ps != null)
+      ratios['P/S'] = fundamentals.ps!.toStringAsFixed(2);
+    if (fundamentals.ttmEps != null)
+      ratios['EPS'] = '\$${fundamentals.ttmEps!.toStringAsFixed(2)}';
+    if (fundamentals.roe != null)
+      ratios['ROE'] = '${fundamentals.roe!.toStringAsFixed(1)}%';
     if (ratios.isEmpty) return const SizedBox.shrink();
     return GlassCard(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: ratios.entries.map((e) => Column(children: [
-          Text(e.key, style: const TextStyle(color: Colors.white38, fontSize: 10)),
-          const SizedBox(height: 2),
-          Text(e.value, style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700)),
-        ])).toList(),
+        children: ratios.entries
+            .map(
+              (e) => Column(
+                children: [
+                  Text(
+                    e.key,
+                    style: const TextStyle(color: Colors.white38, fontSize: 10),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    e.value,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            )
+            .toList(),
       ),
     );
   }
@@ -3000,57 +4528,95 @@ class _AnalystCtaCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return GlassCard(
       padding: const EdgeInsets.all(20),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Container(
-            width: 36, height: 36,
-            decoration: BoxDecoration(
-              color: const Color(0xFF12A28C).withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF12A28C).withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.biotech,
+                  color: Color(0xFF12A28C),
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Deep Analysis',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      'DeepSeek-R1 · Claude Sonnet · Cartesia TTS',
+                      style: TextStyle(color: Colors.white38, fontSize: 11),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          const Text(
+            'Runs the full 5-node LangGraph pipeline:\n'
+            '• Intent classification (Mistral 7B)\n'
+            '• Real-time market data & technicals\n'
+            '• Deep reasoning (DeepSeek-R1 14B)\n'
+            '• Fact verification (Claude Sonnet)\n'
+            '• Voice synthesis (Cartesia TTS)',
+            style: TextStyle(
+              color: Colors.white54,
+              fontSize: 12.5,
+              height: 1.6,
             ),
-            child: const Icon(Icons.biotech, color: Color(0xFF12A28C), size: 20),
           ),
-          const SizedBox(width: 12),
-          const Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Deep Analysis', style: TextStyle(
-                  color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700)),
-              Text('DeepSeek-R1 · Claude Sonnet · Cartesia TTS',
-                  style: TextStyle(color: Colors.white38, fontSize: 11)),
-            ]),
+          const SizedBox(height: 6),
+          const Text(
+            '⏱  ~60–90 seconds',
+            style: TextStyle(color: Colors.white38, fontSize: 11),
           ),
-        ]),
-        const SizedBox(height: 14),
-        const Text(
-          'Runs the full 5-node LangGraph pipeline:\n'
-          '• Intent classification (Mistral 7B)\n'
-          '• Real-time market data & technicals\n'
-          '• Deep reasoning (DeepSeek-R1 14B)\n'
-          '• Fact verification (Claude Sonnet)\n'
-          '• Voice synthesis (Cartesia TTS)',
-          style: TextStyle(color: Colors.white54, fontSize: 12.5, height: 1.6),
-        ),
-        const SizedBox(height: 6),
-        const Text('⏱  ~60–90 seconds',
-            style: TextStyle(color: Colors.white38, fontSize: 11)),
-        const SizedBox(height: 16),
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton.icon(
-            icon: const Icon(Icons.play_arrow_rounded, size: 20, color: Colors.white),
-            label: Text('Run Deep Analysis on $symbol',
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              icon: const Icon(
+                Icons.play_arrow_rounded,
+                size: 20,
+                color: Colors.white,
+              ),
+              label: Text(
+                'Run Deep Analysis on $symbol',
                 style: const TextStyle(
-                    color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF12A28C),
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              elevation: 0,
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF12A28C),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                elevation: 0,
+              ),
+              onPressed: onTap,
             ),
-            onPressed: onTap,
           ),
-        ),
-      ]),
+        ],
+      ),
     );
   }
 }
@@ -3059,7 +4625,8 @@ class _AnalystCtaCard extends StatelessWidget {
 class _AnalystLoadingIndicator extends StatefulWidget {
   const _AnalystLoadingIndicator();
   @override
-  State<_AnalystLoadingIndicator> createState() => _AnalystLoadingIndicatorState();
+  State<_AnalystLoadingIndicator> createState() =>
+      _AnalystLoadingIndicatorState();
 }
 
 class _AnalystLoadingIndicatorState extends State<_AnalystLoadingIndicator> {
@@ -3085,22 +4652,33 @@ class _AnalystLoadingIndicatorState extends State<_AnalystLoadingIndicator> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(mainAxisSize: MainAxisSize.min, children: [
-      const SizedBox(
-        width: 44, height: 44,
-        child: CircularProgressIndicator(
-          strokeWidth: 2.5,
-          valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF12A28C)),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const SizedBox(
+          width: 44,
+          height: 44,
+          child: CircularProgressIndicator(
+            strokeWidth: 2.5,
+            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF12A28C)),
+          ),
         ),
-      ),
-      const SizedBox(height: 20),
-      Text(_steps[_step],
-          style: const TextStyle(color: Colors.white70, fontSize: 14,
-              fontWeight: FontWeight.w600)),
-      const SizedBox(height: 6),
-      Text('Step ${_step + 1} of ${_steps.length}',
-          style: const TextStyle(color: Colors.white38, fontSize: 12)),
-    ]);
+        const SizedBox(height: 20),
+        Text(
+          _steps[_step],
+          style: const TextStyle(
+            color: Colors.white70,
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Step ${_step + 1} of ${_steps.length}',
+          style: const TextStyle(color: Colors.white38, fontSize: 12),
+        ),
+      ],
+    );
   }
 }
 
@@ -3114,22 +4692,43 @@ class _AnalystErrorCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return GlassCard(
       padding: const EdgeInsets.all(16),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Row(children: [
-          Icon(Icons.error_outline, color: Colors.redAccent, size: 18),
-          SizedBox(width: 8),
-          Text('Analysis Failed', style: TextStyle(
-              color: Colors.redAccent, fontSize: 13, fontWeight: FontWeight.w700)),
-        ]),
-        const SizedBox(height: 10),
-        Text(error, style: const TextStyle(color: Colors.white54, fontSize: 12, height: 1.5)),
-        const SizedBox(height: 14),
-        TextButton.icon(
-          icon: const Icon(Icons.refresh, size: 16, color: Color(0xFF12A28C)),
-          label: const Text('Try again', style: TextStyle(color: Color(0xFF12A28C))),
-          onPressed: onRetry,
-        ),
-      ]),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.error_outline, color: Colors.redAccent, size: 18),
+              SizedBox(width: 8),
+              Text(
+                'Analysis Failed',
+                style: TextStyle(
+                  color: Colors.redAccent,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            error,
+            style: const TextStyle(
+              color: Colors.white54,
+              fontSize: 12,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 14),
+          TextButton.icon(
+            icon: const Icon(Icons.refresh, size: 16, color: Color(0xFF12A28C)),
+            label: const Text(
+              'Try again',
+              style: TextStyle(color: Color(0xFF12A28C)),
+            ),
+            onPressed: onRetry,
+          ),
+        ],
+      ),
     );
   }
 }
@@ -3149,23 +4748,41 @@ class _VerificationWarningBanner extends StatelessWidget {
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: Colors.orange.withValues(alpha: 0.35)),
       ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Row(children: [
-          Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 16),
-          SizedBox(width: 6),
-          Text('⚠️ Analysis flagged for review',
-              style: TextStyle(color: Colors.orange,
-                  fontSize: 12, fontWeight: FontWeight.w700)),
-        ]),
-        if (claims.isNotEmpty) ...[
-          const SizedBox(height: 6),
-          ...claims.map((c) => Padding(
-            padding: const EdgeInsets.only(top: 2),
-            child: Text('• $c',
-                style: const TextStyle(color: Colors.white54, fontSize: 11, height: 1.4)),
-          )),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 16),
+              SizedBox(width: 6),
+              Text(
+                '⚠️ Analysis flagged for review',
+                style: TextStyle(
+                  color: Colors.orange,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          if (claims.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            ...claims.map(
+              (c) => Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(
+                  '• $c',
+                  style: const TextStyle(
+                    color: Colors.white54,
+                    fontSize: 11,
+                    height: 1.4,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ],
-      ]),
+      ),
     );
   }
 }
@@ -3190,74 +4807,109 @@ class _DeanCoachCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return GlassCard(
       padding: const EdgeInsets.all(16),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        // Header
-        Row(children: [
-          Container(
-            width: 28, height: 28,
-            decoration: BoxDecoration(
-              color: const Color(0xFF12A28C).withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Icon(Icons.record_voice_over,
-                color: Color(0xFF12A28C), size: 16),
-          ),
-          const SizedBox(width: 10),
-          const Text('Dean',
-              style: TextStyle(color: Colors.white,
-                  fontSize: 13, fontWeight: FontWeight.w700)),
-          const SizedBox(width: 6),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(
-              color: const Color(0xFF12A28C).withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: const Text('AI Coach',
-                style: TextStyle(color: Color(0xFF12A28C),
-                    fontSize: 9, fontWeight: FontWeight.w700)),
-          ),
-        ]),
-        const SizedBox(height: 12),
-        // Coach text inside AI block
-        Container(
-          decoration: const BoxDecoration(
-            border: Border(
-              left: BorderSide(color: Color(0xFF12A28C), width: 2),
-            ),
-          ),
-          padding: const EdgeInsets.only(left: 12),
-          child: Text(coachText,
-              style: const TextStyle(
-                  color: Colors.white, fontSize: 13.5, height: 1.6)),
-        ),
-        // Audio button (shown only when Cartesia URL is present)
-        if (audioUrl != null) ...[
-          const SizedBox(height: 14),
-          const Divider(height: 1, color: Colors.white10),
-          const SizedBox(height: 10),
-          GestureDetector(
-            onTap: onAudioTap,
-            child: Row(children: [
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Row(
+            children: [
               Container(
-                width: 34, height: 34,
+                width: 28,
+                height: 28,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF12A28C).withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(17),
+                  color: const Color(0xFF12A28C).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                child: Icon(
-                  audioPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                  color: const Color(0xFF12A28C), size: 20,
+                child: const Icon(
+                  Icons.record_voice_over,
+                  color: Color(0xFF12A28C),
+                  size: 16,
                 ),
               ),
               const SizedBox(width: 10),
-              Text(audioPlaying ? 'Playing…' : 'Play voice summary',
-                  style: const TextStyle(color: Color(0xFF12A28C),
-                      fontSize: 12, fontWeight: FontWeight.w600)),
-            ]),
+              const Text(
+                'Dean',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF12A28C).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Text(
+                  'AI Coach',
+                  style: TextStyle(
+                    color: Color(0xFF12A28C),
+                    fontSize: 9,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
           ),
+          const SizedBox(height: 12),
+          // Coach text inside AI block
+          Container(
+            decoration: const BoxDecoration(
+              border: Border(
+                left: BorderSide(color: Color(0xFF12A28C), width: 2),
+              ),
+            ),
+            padding: const EdgeInsets.only(left: 12),
+            child: Text(
+              coachText,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 13.5,
+                height: 1.6,
+              ),
+            ),
+          ),
+          // Audio button (shown only when Cartesia URL is present)
+          if (audioUrl != null) ...[
+            const SizedBox(height: 14),
+            const Divider(height: 1, color: Colors.white10),
+            const SizedBox(height: 10),
+            GestureDetector(
+              onTap: onAudioTap,
+              child: Row(
+                children: [
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF12A28C).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(17),
+                    ),
+                    child: Icon(
+                      audioPlaying
+                          ? Icons.pause_rounded
+                          : Icons.play_arrow_rounded,
+                      color: const Color(0xFF12A28C),
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    audioPlaying ? 'Playing…' : 'Play voice summary',
+                    style: const TextStyle(
+                      color: Color(0xFF12A28C),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
-      ]),
+      ),
     );
   }
 }
@@ -3271,33 +4923,48 @@ class _AnalystScenarioSection extends StatelessWidget {
   Widget build(BuildContext context) {
     return GlassCard(
       padding: const EdgeInsets.all(16),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Row(children: [
-          Icon(Icons.bar_chart, color: Color(0xFF12A28C), size: 18),
-          SizedBox(width: 8),
-          Text('Scenarios',
-              style: TextStyle(color: Colors.white,
-                  fontSize: 13, fontWeight: FontWeight.w700)),
-        ]),
-        const SizedBox(height: 14),
-        _AnalystScenarioRow(
-          label: 'BULL',
-          color: const Color(0xFF26A69A),
-          card: scenarios.bull,
-        ),
-        const SizedBox(height: 10),
-        _AnalystScenarioRow(
-          label: 'BASE',
-          color: const Color(0xFF12A28C),
-          card: scenarios.base,
-        ),
-        const SizedBox(height: 10),
-        _AnalystScenarioRow(
-          label: 'BEAR',
-          color: const Color(0xFFEF5350),
-          card: scenarios.bear,
-        ),
-      ]),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.bar_chart, color: Color(0xFF12A28C), size: 18),
+              SizedBox(width: 8),
+              Text(
+                'Scenarios',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Simulated signal scenarios - not financial advice',
+            style: TextStyle(color: Colors.white38, fontSize: 10.5),
+          ),
+          const SizedBox(height: 14),
+          _AnalystScenarioRow(
+            label: 'BULL',
+            color: const Color(0xFF26A69A),
+            card: scenarios.bull,
+          ),
+          const SizedBox(height: 10),
+          _AnalystScenarioRow(
+            label: 'BASE',
+            color: const Color(0xFF12A28C),
+            card: scenarios.base,
+          ),
+          const SizedBox(height: 10),
+          _AnalystScenarioRow(
+            label: 'BEAR',
+            color: const Color(0xFFEF5350),
+            card: scenarios.bear,
+          ),
+        ],
+      ),
     );
   }
 }
@@ -3322,36 +4989,58 @@ class _AnalystScenarioRow extends StatelessWidget {
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: color.withValues(alpha: 0.2)),
       ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.18),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Text(label,
-                style: TextStyle(color: color,
-                    fontSize: 10, fontWeight: FontWeight.w800)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              const Spacer(),
+              if (card.probability.isNotEmpty)
+                Text(
+                  card.probability,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              if (card.target.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                Text(
+                  card.target,
+                  style: const TextStyle(color: Colors.white54, fontSize: 11),
+                ),
+              ],
+            ],
           ),
-          const Spacer(),
-          if (card.probability.isNotEmpty)
-            Text(card.probability,
-                style: TextStyle(color: color,
-                    fontSize: 12, fontWeight: FontWeight.w700)),
-          if (card.target.isNotEmpty) ...[
-            const SizedBox(width: 8),
-            Text(card.target,
-                style: const TextStyle(color: Colors.white54, fontSize: 11)),
-          ],
-        ]),
-        if (card.trigger.isNotEmpty) ...[
-          const SizedBox(height: 6),
-          Text(card.trigger,
+          if (card.trigger.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              card.trigger,
               style: const TextStyle(
-                  color: Colors.white70, fontSize: 12, height: 1.4)),
+                color: Colors.white70,
+                fontSize: 12,
+                height: 1.4,
+              ),
+            ),
+          ],
         ],
-      ]),
+      ),
     );
   }
 }

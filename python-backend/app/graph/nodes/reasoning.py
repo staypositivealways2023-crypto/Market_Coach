@@ -20,6 +20,7 @@ import re
 import logging
 import httpx
 
+from app.config import settings
 from app.graph.state import AnalystState
 from app.graph.prompts import (
     TECHNICAL_PROMPT,
@@ -30,8 +31,6 @@ from app.graph.prompts import (
 
 logger = logging.getLogger(__name__)
 
-OLLAMA_URL = "http://ollama:11434/api/generate"
-MODEL = "deepseek-r1:14b"
 TIMEOUT = 120.0  # seconds
 
 
@@ -59,6 +58,15 @@ def _retry_note(flagged: list) -> str:
         f"\n\n⚠️  CORRECTION REQUIRED — previous answer had these errors:\n{items}\n"
         "Please address each point specifically in your revised answer."
     )
+
+
+def _ollama_generate_url() -> str:
+    base = settings.OLLAMA_BASE_URL.rstrip("/")
+    return f"{base}/api/generate"
+
+
+def _unreachable_error() -> str:
+    return "Deep analysis unavailable: Ollama/model not reachable"
 
 
 # ── Prompt builders ───────────────────────────────────────────────────────────
@@ -195,51 +203,60 @@ async def run(state: AnalystState) -> dict:
     intent = state.get("intent", "general")
     symbol = state.get("symbol", "N/A")
     retry_count = state.get("retry_count", 0)
+    model = settings.ANALYST_DEEPSEEK_MODEL
+    ollama_url = _ollama_generate_url()
 
     logger.info(
-        "[reasoning] intent=%s symbol=%s retry=%d — calling %s",
-        intent, symbol, retry_count, MODEL,
+        "[reasoning] intent=%s symbol=%s retry=%d model=%s url=%s",
+        intent, symbol, retry_count, model, ollama_url,
     )
 
     prompt = _build_prompt(state)
 
     payload = {
-        "model": MODEL,
+        "model": model,
         "prompt": prompt,
         "stream": False,
         "options": {
             "temperature": 0.3,   # Low temp for reproducible financial reasoning
             "top_p": 0.9,
-            "num_predict": 1500,  # ~50 s at 30 tok/s on RTX 5060 Ti
+            "num_predict": settings.ANALYST_MAX_REASONING_TOKENS,
         },
     }
 
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT) as client:
-            resp = await client.post(OLLAMA_URL, json=payload)
+            resp = await client.post(ollama_url, json=payload)
             resp.raise_for_status()
             raw = resp.json().get("response", "")
 
     except httpx.TimeoutException:
-        logger.error("[reasoning] Ollama timeout after %.0fs for %s", TIMEOUT, MODEL)
+        logger.error("[reasoning] Ollama timeout after %.0fs for %s", TIMEOUT, model)
         return {
             "cot_thinking": "",
             "reasoning_answer": "",
-            "error": f"DeepSeek-R1 timed out after {TIMEOUT:.0f}s. The model may be under load.",
+            "error": f"{_unreachable_error()} (timeout after {TIMEOUT:.0f}s)",
         }
     except httpx.HTTPStatusError as exc:
         logger.error("[reasoning] Ollama HTTP error %d: %s", exc.response.status_code, exc)
         return {
             "cot_thinking": "",
             "reasoning_answer": "",
-            "error": f"Ollama returned HTTP {exc.response.status_code}",
+            "error": f"{_unreachable_error()} (HTTP {exc.response.status_code})",
+        }
+    except httpx.RequestError as exc:
+        logger.error("[reasoning] Ollama request error: %s", exc)
+        return {
+            "cot_thinking": "",
+            "reasoning_answer": "",
+            "error": _unreachable_error(),
         }
     except Exception as exc:
         logger.exception("[reasoning] Unexpected error calling Ollama: %s", exc)
         return {
             "cot_thinking": "",
             "reasoning_answer": "",
-            "error": str(exc),
+            "error": _unreachable_error(),
         }
 
     cot, answer = _parse_deepseek_output(raw)

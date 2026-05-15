@@ -239,7 +239,15 @@ class MassiveService:
             return []
         try:
             multiplier, timespan = _parse_interval(interval)
-            from_date, to_date = _date_range(timespan, limit)
+            from_date, to_date = _date_range(multiplier, timespan, limit)
+            logger.info(
+                "[CandleRange] interval=%s period=%s:%s providerInterval=%s%s provider=polygon",
+                interval,
+                from_date,
+                to_date,
+                multiplier,
+                timespan,
+            )
 
             if _is_crypto(symbol):
                 if "-" in symbol or "/" in symbol:
@@ -277,11 +285,24 @@ class MassiveService:
                     volume=int(r.get("v", 0)),
                 ))
 
-            logger.info(f"Massive: {len(candles)} candles for {symbol} ({interval})")
-            return candles
+            candles = sorted(candles, key=lambda c: c.timestamp)
+            result_candles = candles[-limit:] if len(candles) > limit else candles
+            logger.info(
+                "[CandleEndpoint] symbol=%s interval=%s requestedLimit=%s provider=polygon rawRows=%s returned=%s",
+                symbol,
+                interval,
+                limit,
+                len(candles),
+                len(result_candles),
+            )
+            return result_candles
 
         except Exception as e:
-            logger.error(f"Massive candles error for {symbol}: {e}")
+            logger.error(
+                "[CandleError] provider=polygon interval=%s error=%s",
+                interval,
+                e,
+            )
             return []
 
     # ── Stock Info ────────────────────────────────────────────────────────────
@@ -338,7 +359,9 @@ def _parse_interval(interval: str):
         "15m": (15, "minute"),
         "30m": (30, "minute"),
         "1h":  (1,  "hour"),
+        "2h":  (2,  "hour"),
         "4h":  (4,  "hour"),
+        "12h": (12, "hour"),
         "1d":  (1,  "day"),
         "1wk": (1,  "week"),
         "1mo": (1,  "month"),
@@ -346,19 +369,24 @@ def _parse_interval(interval: str):
     return mapping.get(interval, (1, "day"))
 
 
-def _date_range(timespan: str, limit: int):
+def _date_range(multiplier: int, timespan: str, limit: int):
     """Return (from_date, to_date) strings based on timespan + limit"""
     now = datetime.utcnow()
     if timespan == "minute":
-        delta = timedelta(days=7)
+        if multiplier == 1:
+            delta = timedelta(days=5)
+        elif multiplier == 5:
+            delta = timedelta(days=30)
+        else:
+            delta = timedelta(days=60)
     elif timespan == "hour":
-        delta = timedelta(days=60)
+        delta = timedelta(days=730)
     elif timespan == "day":
-        delta = timedelta(days=max(limit * 1.5, 365))
+        delta = timedelta(days=max(limit * 1.5, 365 * 5))
     elif timespan == "week":
-        delta = timedelta(weeks=max(limit * 2, 104))
+        delta = timedelta(days=365 * 20)
     else:
-        delta = timedelta(days=365 * 3)
+        delta = timedelta(days=365 * 10)
 
     from_dt = now - delta
     return from_dt.strftime("%Y-%m-%d"), now.strftime("%Y-%m-%d")

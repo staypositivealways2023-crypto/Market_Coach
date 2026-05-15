@@ -19,6 +19,7 @@ from app.routers import analyst as analyst_router
 from app.routers import vision as vision_router
 from app.routers import orderbook as orderbook_router
 from app.routers import market_stream as market_stream_router
+from app.routers import backtest as backtest_router
 from app.config import settings
 from app.utils.logger import setup_logger
 from app.utils.rate_limit import limiter
@@ -91,6 +92,7 @@ app.include_router(vision_router.router,         prefix="/api/analyst",    tags=
 # Phase 5 — Real-Time Data
 app.include_router(orderbook_router.router,      prefix="/api/market",     tags=["Order Book & Options"])
 app.include_router(market_stream_router.router,  prefix="/api/market",     tags=["Market Stream"])
+app.include_router(backtest_router.router,       prefix="/api/backtest",   tags=["Backtest"])
 
 
 @app.get("/")

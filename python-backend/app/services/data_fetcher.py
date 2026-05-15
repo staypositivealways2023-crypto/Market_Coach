@@ -189,30 +189,200 @@ class MarketDataFetcher:
         """Get historical candles"""
 
         cache_key = f"candles:{symbol}:{interval}:{limit}"
+        stale_cache_key = f"candles_stale:{symbol}:{interval}:{limit}"
         cached = cache_manager.get(cache_key)
         if cached:
-            logger.info(f"Candles cache hit for {symbol}")
+            logger.info(
+                "[CandleProvider] symbol=%s interval=%s provider=cache returned=%s",
+                symbol,
+                interval,
+                len(cached),
+            )
+            logger.info(
+                "[CandleEndpoint] symbol=%s interval=%s requested=%s returned=%s source=cache",
+                symbol,
+                interval,
+                limit,
+                len(cached),
+            )
             return [Candle(**c) for c in cached]
 
         candles: List[Candle] = []
+        source = ""
+        min_rows = _min_expected_candles(interval, limit)
 
         # 1. Massive.com (primary)
         if self.massive.is_configured:
-            candles = await self.massive.get_candles(symbol, interval, limit)
+            try:
+                candles = await asyncio.wait_for(
+                    self.massive.get_candles(symbol, interval, limit),
+                    timeout=4.0,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "Massive candles timed out for %s (%s); falling back",
+                    symbol,
+                    interval,
+                )
+                logger.warning(
+                    "[CandleProvider] symbol=%s interval=%s provider=polygon failed reason=timeout",
+                    symbol,
+                    interval,
+                )
+            except Exception as e:
+                logger.warning(
+                    "[CandleProvider] symbol=%s interval=%s provider=polygon failed reason=%s",
+                    symbol,
+                    interval,
+                    type(e).__name__,
+                )
             if candles:
-                logger.info(f"Fetched {len(candles)} candles for {symbol} from Massive")
+                logger.info(
+                    "[CandleProvider] symbol=%s interval=%s provider=polygon returned=%s",
+                    symbol,
+                    interval,
+                    len(candles),
+                )
+                if len(candles) >= min_rows:
+                    source = "polygon"
+                else:
+                    logger.warning(
+                        "[CandleProvider] symbol=%s interval=%s provider=polygon failed reason=too_few returned=%s minExpected=%s",
+                        symbol,
+                        interval,
+                        len(candles),
+                        min_rows,
+                    )
+                    candles = []
+            else:
+                logger.warning(
+                    "[CandleProvider] symbol=%s interval=%s provider=polygon failed reason=empty",
+                    symbol,
+                    interval,
+                )
+        else:
+            logger.info(
+                "[CandleProvider] symbol=%s interval=%s provider=polygon failed reason=unconfigured",
+                symbol,
+                interval,
+            )
 
         # 2. Fallback: yfinance
         if not candles:
-            candles = await self._fetch_yfinance_candles(symbol, interval, limit)
+            try:
+                candles = await asyncio.wait_for(
+                    self._fetch_yfinance_candles(symbol, interval, limit),
+                    timeout=3.0,
+                )
+            except asyncio.TimeoutError:
+                logger.warning("yfinance candles timed out for %s (%s)", symbol, interval)
+                logger.warning(
+                    "[CandleProvider] symbol=%s interval=%s provider=yfinance failed reason=timeout",
+                    symbol,
+                    interval,
+                )
+            except Exception as e:
+                logger.warning(
+                    "[CandleProvider] symbol=%s interval=%s provider=yfinance failed reason=%s",
+                    symbol,
+                    interval,
+                    type(e).__name__,
+                )
             if candles:
-                logger.info(f"Fetched {len(candles)} candles for {symbol} from yfinance")
+                logger.info(
+                    "[CandleProvider] symbol=%s interval=%s provider=yfinance returned=%s",
+                    symbol,
+                    interval,
+                    len(candles),
+                )
+                if len(candles) >= min_rows:
+                    source = "yfinance"
+                else:
+                    logger.warning(
+                        "[CandleProvider] symbol=%s interval=%s provider=yfinance failed reason=too_few returned=%s minExpected=%s",
+                        symbol,
+                        interval,
+                        len(candles),
+                        min_rows,
+                    )
+                    candles = []
+            else:
+                logger.warning(
+                    "[CandleProvider] symbol=%s interval=%s provider=yfinance failed reason=empty",
+                    symbol,
+                    interval,
+                )
+
+        # 3. Fallback: Yahoo chart API directly
+        if not candles:
+            try:
+                candles = await self._fetch_yahoo_chart_api_candles(symbol, interval, limit)
+            except Exception as e:
+                logger.warning(
+                    "[CandleProvider] symbol=%s interval=%s provider=yahoo_chart failed reason=%s",
+                    symbol,
+                    interval,
+                    type(e).__name__,
+                )
+            if candles:
+                logger.info(
+                    "[CandleProvider] symbol=%s interval=%s provider=yahoo_chart returned=%s",
+                    symbol,
+                    interval,
+                    len(candles),
+                )
+                source = "yahoo_chart"
+            else:
+                logger.warning(
+                    "[CandleProvider] symbol=%s interval=%s provider=yahoo_chart failed reason=empty",
+                    symbol,
+                    interval,
+                )
 
         if candles:
+            payload = [c.model_dump() for c in candles]
             cache_manager.set(
                 cache_key,
-                [c.model_dump() for c in candles],
+                payload,
                 ttl=settings.CANDLE_CACHE_TTL
+            )
+            cache_manager.set(stale_cache_key, payload, ttl=86400)
+            logger.info(
+                "[CandleEndpoint] symbol=%s interval=%s requested=%s returned=%s source=%s",
+                symbol,
+                interval,
+                limit,
+                len(candles),
+                source,
+            )
+        else:
+            stale = cache_manager.get(stale_cache_key)
+            if stale:
+                logger.warning(
+                    "Returning stale candles for %s (%s) after provider failure",
+                    symbol,
+                    interval,
+                )
+                logger.info(
+                    "[CandleProvider] symbol=%s interval=%s provider=cache returned=%s warning=provider_timeout",
+                    symbol,
+                    interval,
+                    len(stale),
+                )
+                logger.info(
+                    "[CandleEndpoint] symbol=%s interval=%s requested=%s returned=%s source=stale_cache warning=provider_timeout",
+                    symbol,
+                    interval,
+                    limit,
+                    len(stale),
+                )
+                return [Candle(**c) for c in stale]
+
+            logger.error(
+                "[CandleEndpoint] symbol=%s interval=%s requested=%s returned=0 source=none",
+                symbol,
+                interval,
+                limit,
             )
 
         return candles
@@ -453,6 +623,10 @@ class MarketDataFetcher:
                     except (TypeError, ValueError):
                         return None
 
+                def _clean_int(v):
+                    f = _clean(v)
+                    return int(f) if f is not None else None
+
                 # --- fast_info first (lighter Yahoo endpoint, less rate-limited) ---
                 fi = None
                 try:
@@ -464,37 +638,72 @@ class MarketDataFetcher:
                 previous_close = None
                 high = None
                 low = None
+                volume = None
+                market_cap = None
+                pe_ratio = None
+                open_price = None
 
                 if fi:
                     price = _clean(getattr(fi, "last_price", None))
                     previous_close = _clean(getattr(fi, "previous_close", None))
                     high = _clean(getattr(fi, "day_high", None))
                     low  = _clean(getattr(fi, "day_low",  None))
+                    volume = _clean_int(getattr(fi, "last_volume", None))
+                    market_cap = _clean(getattr(fi, "market_cap", None))
 
-                # --- fall back to ticker.info (quoteSummary) only if fast_info missed price ---
+                # --- ticker.info fills fields fast_info often omits (volume, cap, PE, open) ---
                 info: dict = {}
-                if not price:
+                needs_info = (
+                    not price or
+                    volume is None or
+                    market_cap is None or
+                    pe_ratio is None or
+                    open_price is None or
+                    previous_close is None or
+                    high is None or
+                    low is None
+                )
+                if needs_info:
                     try:
                         info = ticker.info or {}
-                        price = _clean(
+                        price = price or _clean(
                             info.get("regularMarketPrice")
                             or info.get("currentPrice")
                             or info.get("ask")
                         )
-                        if not previous_close:
-                            previous_close = _clean(
-                                info.get("previousClose")
-                                or info.get("regularMarketPreviousClose")
-                            )
-                        if not high:
-                            high = _clean(info.get("dayHigh") or info.get("regularMarketDayHigh"))
-                        if not low:
-                            low  = _clean(info.get("dayLow")  or info.get("regularMarketDayLow"))
+                        previous_close = previous_close or _clean(
+                            info.get("previousClose")
+                            or info.get("regularMarketPreviousClose")
+                        )
+                        high = high or _clean(info.get("dayHigh") or info.get("regularMarketDayHigh"))
+                        low  = low  or _clean(info.get("dayLow")  or info.get("regularMarketDayLow"))
+                        volume = volume or _clean_int(
+                            info.get("volume") or info.get("regularMarketVolume")
+                        )
+                        market_cap = market_cap or info.get("marketCap")
+                        pe_ratio = info.get("trailingPE")
+                        open_price = _clean(info.get("regularMarketOpen") or info.get("open"))
                     except Exception:
-                        pass
+                        logger.debug(f"[yfinance] ticker.info unavailable for {symbol}")
 
                 if not price:
                     return None
+
+                missing = [
+                    name for name, value in {
+                        "volume": volume,
+                        "market_cap": market_cap,
+                        "pe_ratio": pe_ratio,
+                        "open": open_price,
+                    }.items()
+                    if value is None
+                ]
+                if missing:
+                    logger.debug(
+                        "[yfinance] quote %s missing fields after fallback: %s",
+                        symbol,
+                        ",".join(missing),
+                    )
 
                 prev = float(previous_close or 0)
                 change = float(price) - prev
@@ -505,12 +714,12 @@ class MarketDataFetcher:
                     price=float(price),
                     change=change,
                     change_percent=change_pct,
-                    volume=info.get("volume") or info.get("regularMarketVolume"),
-                    market_cap=info.get("marketCap"),
-                    pe_ratio=info.get("trailingPE"),
+                    volume=volume,
+                    market_cap=market_cap,
+                    pe_ratio=pe_ratio,
                     high=high,
                     low=low,
-                    open=_clean(info.get("regularMarketOpen") or info.get("open")),
+                    open=open_price,
                     previous_close=prev or None,
                     timestamp=datetime.utcnow(),
                 )
@@ -533,22 +742,41 @@ class MarketDataFetcher:
         def _sync_fetch():
             try:
                 period_map = {
-                    "1m":  "1d",
-                    "5m":  "5d",
-                    "15m": "5d",
-                    "30m": "5d",   # Yahoo supports 30m up to 60 days; 5d is safe
-                    "1h":  "1mo",
-                    "2h":  "3mo",
-                    "4h":  "3mo",
-                    "1d":  "2y",
-                    "1wk": "5y",
+                    "1m":  "5d",
+                    "5m":  "30d",
+                    "15m": "60d",
+                    "30m": "60d",
+                    "1h":  "2y",
+                    "2h":  "2y",
+                    "4h":  "2y",
+                    "12h": "2y",
+                    "1d":  "5y",
+                    "1wk": "10y",
+                    "1mo": "max",
+                }
+                base_interval_map = {
+                    "2h": "1h",
+                    "4h": "1h",
+                    "12h": "1h",
+                }
+                aggregate_hours = {
+                    "2h": 2,
+                    "4h": 4,
+                    "12h": 12,
                 }
                 # Normalise unsupported intervals; fall back to "1y" not "2y"
                 # (avoids "No data found" errors for short intraday frames).
                 period = period_map.get(interval, "1y")
+                yf_interval = base_interval_map.get(interval, interval)
+                logger.info(
+                    "[CandleRange] interval=%s period=%s providerInterval=%s provider=yfinance",
+                    interval,
+                    period,
+                    yf_interval,
+                )
                 yf_symbol = _to_yfinance_symbol(symbol)
                 ticker = yf.Ticker(yf_symbol)
-                hist = ticker.history(period=period, interval=interval)
+                hist = ticker.history(period=period, interval=yf_interval)
 
                 if hist.empty:
                     logger.warning(f"yfinance returned empty history for {symbol} ({interval})")
@@ -566,15 +794,172 @@ class MarketDataFetcher:
                         volume=int(row['Volume'])
                     ))
 
+                if interval in aggregate_hours:
+                    source_rows = len(candles)
+                    candles = _aggregate_hourly_candles(candles, aggregate_hours[interval])
+                    logger.info(
+                        "[CandleAggregate] sourceInterval=1h targetInterval=%s sourceRows=%s aggregatedRows=%s",
+                        interval,
+                        source_rows,
+                        len(candles),
+                    )
+
+                candles = _sort_candles(candles)
                 result = candles[-limit:] if len(candles) > limit else candles
-                logger.info(f"yfinance: {len(result)} candles for {symbol} ({interval})")
+                logger.info(
+                    "[CandleEndpoint] symbol=%s interval=%s requestedLimit=%s provider=yfinance rawRows=%s returned=%s",
+                    symbol,
+                    interval,
+                    limit,
+                    len(candles),
+                    len(result),
+                )
                 return result
             except Exception as e:
-                logger.error(f"yfinance candles error for {symbol}: {e}")
+                logger.error(
+                    "[CandleError] provider=yfinance interval=%s error=%s",
+                    interval,
+                    e,
+                )
                 return []
 
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, _sync_fetch)
+
+    async def _fetch_yahoo_chart_api_candles(
+        self,
+        symbol: str,
+        interval: str,
+        limit: int,
+    ) -> List[Candle]:
+        """Fetch candles directly from Yahoo chart API with short timeout."""
+        range_map = {
+            "1m": "5d",
+            "5m": "30d",
+            "15m": "60d",
+            "30m": "60d",
+            "1h": "2y",
+            "2h": "2y",
+            "4h": "2y",
+            "12h": "2y",
+            "1d": "5y",
+            "1wk": "10y",
+            "1mo": "max",
+        }
+        base_interval_map = {
+            "2h": "1h",
+            "4h": "1h",
+            "12h": "1h",
+        }
+        aggregate_hours = {
+            "2h": 2,
+            "4h": 4,
+            "12h": 12,
+        }
+
+        yf_symbol = _to_yfinance_symbol(symbol)
+        yf_interval = base_interval_map.get(interval, interval)
+        yf_range = range_map.get(interval, "5y")
+        logger.info(
+            "[CandleRange] interval=%s period=%s providerInterval=%s provider=yahoo_chart",
+            interval,
+            yf_range,
+            yf_interval,
+        )
+        url = f"https://query2.finance.yahoo.com/v8/finance/chart/{yf_symbol}"
+        params = {
+            "interval": yf_interval,
+            "range": yf_range,
+            "includePrePost": "false",
+        }
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+            "Accept": "application/json",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Origin": "https://finance.yahoo.com",
+            "Referer": "https://finance.yahoo.com/",
+        }
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    url,
+                    params=params,
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=7.0),
+                ) as resp:
+                    if resp.status != 200:
+                        logger.warning(
+                            "[CandleProvider] symbol=%s interval=%s provider=yahoo_chart failed reason=http_%s",
+                            symbol,
+                            interval,
+                            resp.status,
+                        )
+                        return []
+                    data = await resp.json()
+        except asyncio.TimeoutError:
+            logger.warning(
+                "[CandleProvider] symbol=%s interval=%s provider=yahoo_chart failed reason=timeout",
+                symbol,
+                interval,
+            )
+            return []
+
+        result = ((data.get("chart") or {}).get("result") or [None])[0]
+        if not result:
+            return []
+        timestamps = result.get("timestamp") or []
+        quote = (((result.get("indicators") or {}).get("quote") or [None])[0]) or {}
+        opens = quote.get("open") or []
+        highs = quote.get("high") or []
+        lows = quote.get("low") or []
+        closes = quote.get("close") or []
+        volumes = quote.get("volume") or []
+
+        candles: List[Candle] = []
+        for i, ts in enumerate(timestamps):
+            close = closes[i] if i < len(closes) else None
+            if close is None:
+                continue
+            open_ = opens[i] if i < len(opens) and opens[i] is not None else close
+            high = highs[i] if i < len(highs) and highs[i] is not None else close
+            low = lows[i] if i < len(lows) and lows[i] is not None else close
+            volume = volumes[i] if i < len(volumes) and volumes[i] is not None else 0
+            candles.append(Candle(
+                symbol=symbol,
+                timestamp=datetime.utcfromtimestamp(int(ts)),
+                open=float(open_),
+                high=float(high),
+                low=float(low),
+                close=float(close),
+                volume=int(float(volume or 0)),
+            ))
+
+        if interval in aggregate_hours:
+            source_rows = len(candles)
+            candles = _aggregate_hourly_candles(candles, aggregate_hours[interval])
+            logger.info(
+                "[CandleAggregate] sourceInterval=1h targetInterval=%s sourceRows=%s aggregatedRows=%s",
+                interval,
+                source_rows,
+                len(candles),
+            )
+
+        candles = _sort_candles(candles)
+        result_candles = candles[-limit:] if len(candles) > limit else candles
+        logger.info(
+            "[CandleEndpoint] symbol=%s interval=%s requestedLimit=%s provider=yahoo_chart rawRows=%s returned=%s",
+            symbol,
+            interval,
+            limit,
+            len(candles),
+            len(result_candles),
+        )
+        return result_candles
 
     async def _fetch_yfinance_info(self, symbol: str) -> Optional[StockInfo]:
         """Fetch stock info from yfinance"""
@@ -633,3 +1018,47 @@ def _to_yfinance_symbol(symbol: str) -> str:
     if s in _CRYPTO_SYMBOLS:
         return f"{s}-USD"
     return s  # regular stock ticker unchanged
+
+
+def _min_expected_candles(interval: str, limit: int) -> int:
+    if limit <= 0:
+        return 1
+    if interval == "1mo":
+        return min(limit, 192)
+    if interval == "1wk":
+        return min(limit, 240)
+    return min(limit, 400)
+
+
+def _sort_candles(candles: List[Candle]) -> List[Candle]:
+    return sorted(candles, key=lambda c: c.timestamp)
+
+
+def _aggregate_hourly_candles(candles: List[Candle], hours: int) -> List[Candle]:
+    """Aggregate Yahoo 1h candles into supported 2h/4h/12h bars."""
+    if hours <= 1 or not candles:
+        return candles
+
+    buckets: Dict[datetime, List[Candle]] = {}
+    for candle in candles:
+        ts = candle.timestamp.replace(minute=0, second=0, microsecond=0)
+        bucket_hour = (ts.hour // hours) * hours
+        bucket_start = ts.replace(hour=bucket_hour)
+        buckets.setdefault(bucket_start, []).append(candle)
+
+    aggregated: List[Candle] = []
+    for bucket_start in sorted(buckets):
+        bucket = sorted(buckets[bucket_start], key=lambda c: c.timestamp)
+        if not bucket:
+            continue
+        aggregated.append(Candle(
+            symbol=bucket[0].symbol,
+            timestamp=bucket_start,
+            open=bucket[0].open,
+            high=max(c.high for c in bucket),
+            low=min(c.low for c in bucket),
+            close=bucket[-1].close,
+            volume=sum(c.volume for c in bucket),
+        ))
+
+    return aggregated

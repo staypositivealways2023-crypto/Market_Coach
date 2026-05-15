@@ -112,6 +112,8 @@ class FundamentalService:
         # Market cap: use the already-fetched quote price × shares if available.
         # Do NOT call yf.Ticker.info here — this is a sync method in an async context.
         mkt_cap = None
+        volume = None
+        turnover = None
 
         # P/E only meaningful when EPS is positive
         pe  = _safe_div(current_price, ttm_eps) if ttm_eps and ttm_eps > 0 else None
@@ -140,11 +142,38 @@ class FundamentalService:
                 "revenue": _val(q.get("financials", {}).get("income_statement", {}), "revenues"),
             })
 
+        missing_fields = [
+            name for name, value in {
+                "volume": volume,
+                "marketCap": mkt_cap,
+                "turnover": turnover,
+            }.items()
+            if value is None
+        ]
+        logger.info(
+            "[Fundamentals] symbol=%s volume=%s marketCap=%s turnover=%s",
+            symbol,
+            volume,
+            mkt_cap,
+            turnover,
+        )
+        if missing_fields:
+            logger.warning(
+                "[Fundamentals] symbol=%s missing_fields=%s",
+                symbol,
+                ",".join(missing_fields),
+            )
+
         return {
             "symbol": symbol,
             "is_crypto": False,
+            "source": "Massive financials",
+            "period": "Trailing twelve months from latest 4 quarterly reports",
+            "formula_note": "Margins use TTM income statement values. ROE uses TTM net income divided by latest reported equity.",
             "current_price": current_price,
             "market_cap": mkt_cap,
+            "volume": volume,
+            "turnover": turnover,
             "ratios": {
                 "pe": _r(pe), "ps": _r(ps),
                 "gross_margin": _r(gm), "net_margin": _r(nm),
@@ -169,10 +198,28 @@ class FundamentalService:
         def _fetch():
             try:
                 ticker = yf.Ticker(symbol)
-                info = ticker.info or {}
             except Exception as e:
-                logger.error(f"yfinance ticker.info error for {symbol}: {e}")
+                logger.error(f"yfinance ticker init error for {symbol}: {e}")
                 return {}, []
+
+            info = {}
+            try:
+                fast = ticker.fast_info
+                info.update({
+                    "regularMarketPrice": getattr(fast, "last_price", None),
+                    "marketCap": getattr(fast, "market_cap", None),
+                    "volume": getattr(fast, "last_volume", None),
+                })
+            except Exception as e:
+                logger.warning(f"[Fundamentals] symbol={symbol} fast_info unavailable: {e}")
+
+            try:
+                slow_info = ticker.info or {}
+                for key, value in slow_info.items():
+                    if info.get(key) is None:
+                        info[key] = value
+            except Exception as e:
+                logger.warning(f"[Fundamentals] symbol={symbol} ticker.info unavailable: {e}")
 
             # Quarterly income statement
             quarterly_eps_list = []
@@ -229,6 +276,8 @@ class FundamentalService:
             current_price = float(info.get("regularMarketPrice") or info.get("currentPrice") or 0.0)
 
         mkt_cap    = info.get("marketCap")
+        volume     = info.get("volume") or info.get("regularMarketVolume")
+        turnover   = (current_price * volume) if current_price and volume else None
         ttm_rev    = info.get("totalRevenue")
         ttm_ni     = info.get("netIncomeToCommon")
         ttm_eps    = info.get("trailingEps")
@@ -265,11 +314,38 @@ class FundamentalService:
         except Exception:
             pass
 
+        missing_fields = [
+            name for name, value in {
+                "volume": volume,
+                "marketCap": mkt_cap,
+                "turnover": turnover,
+            }.items()
+            if value is None
+        ]
+        logger.info(
+            "[Fundamentals] symbol=%s volume=%s marketCap=%s turnover=%s",
+            symbol,
+            volume,
+            mkt_cap,
+            turnover,
+        )
+        if missing_fields:
+            logger.warning(
+                "[Fundamentals] symbol=%s missing_fields=%s",
+                symbol,
+                ",".join(missing_fields),
+            )
+
         return {
             "symbol": symbol,
             "is_crypto": False,
+            "source": "yfinance",
+            "period": "Trailing twelve months where available; latest quarter from provider metadata",
+            "formula_note": "Margins and ROE come from provider trailing ratios; debt/equity is normalized from provider percentage form.",
             "current_price": current_price,
             "market_cap": mkt_cap,
+            "volume": volume,
+            "turnover": turnover,
             "ratios": {
                 "pe": _r(pe), "ps": _r(ps),
                 "gross_margin": _r(gm), "net_margin": _r(nm),

@@ -110,7 +110,7 @@ async def get_quotes(symbols: str = Query(..., description="Comma-separated symb
 @router.get("/candles/{symbol}", response_model=List[Candle])
 async def get_candles(
     symbol: str,
-    interval: str = Query("1d", description="1m|5m|15m|1h|1d|1wk"),
+    interval: str = Query("1d", description="1m|5m|15m|30m|1h|2h|4h|12h|1d|1wk|1mo"),
     limit: int = Query(100, ge=1, le=500, description="Number of candles")
 ):
     """Get historical candles for a symbol"""
@@ -123,8 +123,14 @@ async def get_candles(
 
     if not candles:
         raise HTTPException(
-            status_code=404,
-            detail=f"Candles not found for {symbol}"
+            status_code=503,
+            detail={
+                "error": "candles_unavailable",
+                "symbol": symbol.upper(),
+                "interval": interval,
+                "requested": limit,
+                "message": "All candle providers failed and no stale cache is available.",
+            },
         )
 
     return candles

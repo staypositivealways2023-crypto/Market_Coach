@@ -58,3 +58,19 @@ async def get_series_history(
     result = {"series_key": series_key, "series_id": series_id, "data": data}
     cache_manager.set(cache_key, result, ttl=3600)
     return result
+
+
+@router.get("/regime/{symbol}")
+async def get_macro_regime(symbol: str):
+    """
+    Classify macro regime for a given symbol using FRED data.
+    Returns: regime (Risk-On / Risk-Off / Neutral), drivers, confidence.
+    """
+    cache_key = f"macro:regime:{symbol.upper()}"
+    cached = cache_manager.get(cache_key)
+    if cached:
+        return cached
+
+    data = await fred.get_macro_regime(symbol.upper())
+    cache_manager.set(cache_key, data, ttl=3600)
+    return data

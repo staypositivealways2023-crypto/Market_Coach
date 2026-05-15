@@ -8,6 +8,7 @@ from math import exp, log
 from app.services.monte_carlo_service import MonteCarloService
 from app.services.bayesian_service import BayesianService
 from app.services.macro_agent_service import MacroAgentService
+from app.services.reddit_service import RedditService
 
 logger = logging.getLogger(__name__)
 
@@ -18,10 +19,12 @@ class ProbabilisticReportService:
         monte_carlo_service: MonteCarloService,
         bayesian_service: BayesianService,
         macro_agent_service: MacroAgentService,
+        reddit_service: RedditService | None = None,
     ) -> None:
-        self._mc    = monte_carlo_service
-        self._bayes = bayesian_service
-        self._macro = macro_agent_service
+        self._mc     = monte_carlo_service
+        self._bayes  = bayesian_service
+        self._macro  = macro_agent_service
+        self._reddit = reddit_service or RedditService()
 
     async def generate_report(
         self,
@@ -40,13 +43,14 @@ class ProbabilisticReportService:
         On any error returns {"symbol": symbol, "error": "<description>"}.
         """
         try:
-            # 1. Run all three engines concurrently
-            mc_result, bayes_result, macro_result = await asyncio.gather(
+            # 1. Run all four engines concurrently (Reddit is fire-and-forget safe)
+            mc_result, bayes_result, macro_result, reddit_result = await asyncio.gather(
                 self._mc.simulate(symbol, horizon_days, num_simulations),
                 self._bayes.update_price_target(
                     symbol, analyst_target, analyst_confidence, horizon_days
                 ),
                 self._macro.assess_regime(symbol),
+                self._reddit.get_sentiment(symbol),
             )
 
             # 2. Propagate engine errors immediately
@@ -141,6 +145,12 @@ class ProbabilisticReportService:
                 },
                 "overall_conviction": overall_conviction,
                 "summary":            summary,
+                "reddit": None if "error" in reddit_result else {
+                    "sentiment_score":  reddit_result.get("reddit_sentiment_score", 0.0),
+                    "mention_count":    reddit_result.get("mention_count", 0),
+                    "sentiment_label":  reddit_result.get("sentiment_label", "neutral"),
+                    "top_posts":        reddit_result.get("top_posts", []),
+                },
             }
 
         except Exception as exc:  # noqa: BLE001

@@ -35,6 +35,14 @@ class FundamentalsCard extends StatelessWidget {
                   style: theme.textTheme.titleMedium
                       ?.copyWith(fontWeight: FontWeight.w700)),
               const Spacer(),
+              if (_hasMetadata)
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints.tightFor(width: 30, height: 30),
+                  icon: const Icon(Icons.info_outline, size: 16, color: Colors.white38),
+                  onPressed: () => _showDataSource(context),
+                ),
               if (data.latestQuarterDate != null)
                 Text(_quarterLabel(data.latestQuarterDate!),
                     style: theme.textTheme.bodySmall
@@ -104,6 +112,50 @@ class FundamentalsCard extends StatelessWidget {
           data.currentRatio!.toStringAsFixed(2), _crColor(data.currentRatio!)));
     }
     return list;
+  }
+
+  bool get _hasMetadata =>
+      data.source != null ||
+      data.period != null ||
+      data.fetchedAt != null ||
+      data.formulaNote != null;
+
+  void _showDataSource(BuildContext context) {
+    final theme = Theme.of(context);
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF111925),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Data source',
+                style: theme.textTheme.titleSmall
+                    ?.copyWith(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 12),
+            if (data.source != null) _MetaLine('Source', data.source!),
+            if (data.period != null) _MetaLine('Period', data.period!),
+            if (data.fetchedAt != null)
+              _MetaLine('Last updated', _dateLabel(data.fetchedAt!)),
+            if (data.formulaNote != null) _MetaLine('Formula', data.formulaNote!),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _dateLabel(String raw) {
+    try {
+      final d = DateTime.parse(raw).toLocal();
+      return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+    } catch (_) {
+      return raw;
+    }
   }
 
   String _quarterLabel(String date) {
@@ -186,6 +238,33 @@ class _Metric {
   const _Metric(this.label, this.value, this.color);
 }
 
+class _MetaLine extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _MetaLine(this.label, this.value);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label,
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: Colors.white38, fontSize: 11)),
+          const SizedBox(height: 2),
+          Text(value,
+              style: theme.textTheme.bodyMedium
+                  ?.copyWith(color: Colors.white70, fontSize: 13)),
+        ],
+      ),
+    );
+  }
+}
+
 class _MetricTile extends StatelessWidget {
   final String label;
   final String value;
@@ -238,6 +317,10 @@ class _TTMRow extends StatelessWidget {
           Expanded(child: _TTMStat('TTM Net Income', _fmt(data.ttmNetIncome!), theme)),
         if (data.marketCap != null)
           Expanded(child: _TTMStat('Market Cap', _fmt(data.marketCap!), theme)),
+        if (data.volume != null)
+          Expanded(child: _TTMStat('Volume', _fmtNumber(data.volume!), theme)),
+        if (data.turnover != null)
+          Expanded(child: _TTMStat('Turnover', _fmt(data.turnover!), theme)),
       ],
     );
   }
@@ -246,6 +329,13 @@ class _TTMRow extends StatelessWidget {
     if (v.abs() >= 1e9)  return '\$${(v / 1e9).toStringAsFixed(1)}B';
     if (v.abs() >= 1e6)  return '\$${(v / 1e6).toStringAsFixed(1)}M';
     return '\$${v.toStringAsFixed(0)}';
+  }
+
+  String _fmtNumber(double v) {
+    if (v.abs() >= 1e9) return '${(v / 1e9).toStringAsFixed(1)}B';
+    if (v.abs() >= 1e6) return '${(v / 1e6).toStringAsFixed(1)}M';
+    if (v.abs() >= 1e3) return '${(v / 1e3).toStringAsFixed(1)}K';
+    return v.toStringAsFixed(0);
   }
 }
 

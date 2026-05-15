@@ -53,10 +53,13 @@ def _route_after_verification(state: AnalystState) -> str:
 
 def _inject_error(state: AnalystState) -> dict:
     """Terminal error node — surfaces failure to the caller."""
+    flagged = state.get("flagged_claims", []) or []
+    if flagged and str(flagged[0]).startswith("Deep analysis unavailable:"):
+        return {"error": str(flagged[0])}
     return {
         "error": (
             f"Analysis could not be verified after {state.get('retry_count', 0)} retries. "
-            f"Flagged issues: {', '.join(state.get('flagged_claims', []) or ['unknown'])}"
+            f"Flagged issues: {', '.join(flagged or ['unknown'])}"
         )
     }
 

@@ -1,7 +1,6 @@
 /// CrewAI Agent Progress Sheet — Phase 9
 ///
-/// Shows a bottom sheet that streams the 4-agent analysis progress via SSE.
-/// Each agent "lights up" as it completes, then the final Scenario Card is shown.
+/// Shows a bottom sheet that runs the backend analysis and returns the result.
 library;
 
 import 'dart:async';
@@ -33,7 +32,7 @@ class _AgentState {
 
 // ── Public entry point ────────────────────────────────────────────────────────
 
-/// Shows the CrewAI streaming analysis bottom sheet.
+/// Shows the CrewAI analysis bottom sheet.
 /// Returns the final result map when done, or null if dismissed/errored.
 Future<Map<String, dynamic>?> showCrewAnalysisSheet(
   BuildContext context, {
@@ -67,8 +66,7 @@ class _CrewAnalysisSheet extends StatefulWidget {
 }
 
 class _CrewAnalysisSheetState extends State<_CrewAnalysisSheet> {
-  static const _streamTimeout = Duration(seconds: 25);
-  static const _stallTimeout = Duration(seconds: 8);
+  static const _streamTimeout = Duration(seconds: 60);
 
   final List<_AgentState> _agents = [
     _AgentState(
@@ -98,9 +96,7 @@ class _CrewAnalysisSheetState extends State<_CrewAnalysisSheet> {
   String? _notice;
   bool _done = false;
 
-  StreamSubscription<String>? _sub;
   Timer? _streamTimer;
-  Timer? _stallTimer;
   http.Client? _client;
 
   @override
@@ -113,8 +109,6 @@ class _CrewAnalysisSheetState extends State<_CrewAnalysisSheet> {
   @override
   void dispose() {
     _streamTimer?.cancel();
-    _stallTimer?.cancel();
-    _sub?.cancel();
     _client?.close();
     super.dispose();
   }
@@ -126,13 +120,6 @@ class _CrewAnalysisSheetState extends State<_CrewAnalysisSheet> {
     _streamTimer?.cancel();
     _streamTimer = Timer(_streamTimeout, () {
       _finishPartial('Analysis timed out. Showing completed agent results.');
-    });
-  }
-
-  void _armStallTimeout() {
-    _stallTimer?.cancel();
-    _stallTimer = Timer(_stallTimeout, () {
-      _finishPartial('One agent stalled. Showing completed agent results.');
     });
   }
 
@@ -159,7 +146,6 @@ class _CrewAnalysisSheetState extends State<_CrewAnalysisSheet> {
     if (_done || !mounted) return;
 
     _streamTimer?.cancel();
-    _stallTimer?.cancel();
     _client?.close();
 
     setState(() {
@@ -182,7 +168,6 @@ class _CrewAnalysisSheetState extends State<_CrewAnalysisSheet> {
 
     if (_completedAgentCount == 0) {
       _streamTimer?.cancel();
-      _stallTimer?.cancel();
       _client?.close();
       setState(() {
         _error = notice;
@@ -192,7 +177,6 @@ class _CrewAnalysisSheetState extends State<_CrewAnalysisSheet> {
     }
 
     _streamTimer?.cancel();
-    _stallTimer?.cancel();
     _client?.close();
 
     setState(() {
@@ -213,7 +197,7 @@ class _CrewAnalysisSheetState extends State<_CrewAnalysisSheet> {
     final token = await user?.getIdToken();
     final base  = APIConfig.backendBaseUrl;
     final url = Uri.parse(
-      '$base/api/analyse/${widget.symbol.toUpperCase()}/stream'
+      '$base/api/analyse/${widget.symbol.toUpperCase()}'
       '?user_level=${widget.userLevel}',
     );
 
@@ -235,65 +219,9 @@ class _CrewAnalysisSheetState extends State<_CrewAnalysisSheet> {
         return;
       }
 
-      final lines = response.stream
-          .transform(utf8.decoder)
-          .transform(const LineSplitter());
-
-      _sub = lines.listen(
-        (line) {
-          if (!line.startsWith('data: ')) return;
-          final raw = line.substring(6).trim();
-          if (raw.isEmpty) return;
-
-          try {
-            final event = jsonDecode(raw) as Map<String, dynamic>;
-            final agentName = event['agent'] as String? ?? '';
-            final status    = event['status'] as String? ?? '';
-            _armStallTimeout();
-
-            if (agentName == 'done') {
-              final res = event['result'] as Map<String, dynamic>? ?? {};
-              _finishSuccess(res);
-              return;
-            }
-
-            if (agentName == 'error') {
-              _finishPartial(
-                event['error'] as String? ??
-                    'Analysis ended early. Showing completed agent results.',
-              );
-              return;
-            }
-
-            // Update individual agent status
-            if (mounted) {
-              setState(() {
-                final idx = _agents.indexWhere((a) => a.name == agentName);
-                if (idx >= 0) {
-                  if (status == 'running') {
-                    // Mark previous agents done
-                    for (int i = 0; i < idx; i++) {
-                      _agents[i].status = _AgentStatus.done;
-                    }
-                    _agents[idx].status = _AgentStatus.running;
-                  } else if (status == 'done') {
-                    _agents[idx].status = _AgentStatus.done;
-                  } else if (status == 'error') {
-                    _agents[idx].status = _AgentStatus.error;
-                  }
-                }
-              });
-            }
-          } catch (_) {}
-        },
-        onError: (e) {
-          _finishPartial('Analysis stream failed. Showing completed agent results.');
-        },
-        onDone: () {
-          _finishPartial('Analysis stream ended before all agents finished.');
-        },
-        cancelOnError: true,
-      );
+      final body = await response.stream.bytesToString();
+      final result = jsonDecode(body) as Map<String, dynamic>;
+      _finishSuccess(result);
     } catch (e) {
       if (mounted) {
         setState(() {

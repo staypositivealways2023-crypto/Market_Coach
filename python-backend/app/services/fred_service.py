@@ -117,3 +117,82 @@ class FredService:
         """Historical series data for charting"""
         points = await self.get_series(series_id, limit=limit)
         return [p.to_dict() for p in reversed(points)]  # chronological order
+
+    async def get_macro_regime(self, symbol: str) -> dict:
+        """
+        Classify macro regime for a symbol using FRED data.
+        Returns regime (Risk-On / Risk-Off / Neutral), drivers, and confidence.
+        """
+        import asyncio
+
+        if not self.api_key:
+            return {
+                "symbol": symbol,
+                "regime": "Neutral",
+                "confidence": 0.0,
+                "drivers": [],
+                "unavailable_reason": "FRED_API_KEY not configured",
+            }
+
+        # Fetch the three key signals concurrently
+        yield_pt, fed_pt, cpi_pt = await asyncio.gather(
+            self.get_latest(SERIES["yield_curve"]),
+            self.get_latest(SERIES["fed_funds_rate"]),
+            self.get_latest(SERIES["cpi"]),
+            return_exceptions=True,
+        )
+
+        drivers = []
+        score = 0  # positive = risk-on, negative = risk-off
+
+        # Yield curve: positive spread = healthy (risk-on), inverted = risk-off
+        yield_val = yield_pt.value if isinstance(yield_pt, MacroDataPoint) and yield_pt else None
+        if yield_val is not None:
+            if yield_val > 0.5:
+                score += 2
+                drivers.append({"factor": "Yield Curve", "signal": "Positive", "value": round(yield_val, 2)})
+            elif yield_val < 0:
+                score -= 2
+                drivers.append({"factor": "Yield Curve", "signal": "Inverted", "value": round(yield_val, 2)})
+            else:
+                drivers.append({"factor": "Yield Curve", "signal": "Flat", "value": round(yield_val, 2)})
+
+        # Fed funds rate: high rates (>5%) = tightening pressure = slightly risk-off
+        fed_val = fed_pt.value if isinstance(fed_pt, MacroDataPoint) and fed_pt else None
+        if fed_val is not None:
+            if fed_val > 5.0:
+                score -= 1
+                drivers.append({"factor": "Fed Funds Rate", "signal": "Elevated", "value": round(fed_val, 2)})
+            elif fed_val < 2.0:
+                score += 1
+                drivers.append({"factor": "Fed Funds Rate", "signal": "Accommodative", "value": round(fed_val, 2)})
+            else:
+                drivers.append({"factor": "Fed Funds Rate", "signal": "Neutral", "value": round(fed_val, 2)})
+
+        # CPI: high inflation (>4%) = risk-off pressure
+        cpi_val = cpi_pt.value if isinstance(cpi_pt, MacroDataPoint) and cpi_pt else None
+        if cpi_val is not None:
+            # CPI is index level; derive signal from magnitude (>320 = elevated modern-day)
+            cpi_signal = "Elevated" if cpi_val > 310 else "Moderate"
+            if cpi_val > 310:
+                score -= 1
+            drivers.append({"factor": "CPI", "signal": cpi_signal, "value": round(cpi_val, 2)})
+
+        # Classify regime from score
+        if score >= 2:
+            regime = "Risk-On"
+        elif score <= -2:
+            regime = "Risk-Off"
+        else:
+            regime = "Neutral"
+
+        total_factors = max(len(drivers), 1)
+        confidence = round(min(abs(score) / total_factors, 1.0), 2)
+
+        return {
+            "symbol": symbol,
+            "regime": regime,
+            "confidence": confidence,
+            "score": score,
+            "drivers": drivers,
+        }

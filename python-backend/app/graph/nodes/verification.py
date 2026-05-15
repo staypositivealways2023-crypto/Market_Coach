@@ -189,6 +189,7 @@ async def run(state: AnalystState) -> dict:
     """
     retry_count = state.get("retry_count", 0)
     reasoning_answer = state.get("reasoning_answer", "")
+    reasoning_error = state.get("error")
     tool_results = state.get("tool_results") or {}
     intent = state.get("intent", "general")
 
@@ -198,6 +199,14 @@ async def run(state: AnalystState) -> dict:
     # synthesis hallucinate from its training data.
     # Fail with retry_count++ so the router's retry branch re-runs reasoning.
     if not reasoning_answer or not reasoning_answer.strip():
+        if reasoning_error and "Ollama/model not reachable" in reasoning_error:
+            logger.warning("[verification] analyst setup error: %s", reasoning_error)
+            return {
+                "verification_passed": False,
+                "verification_score": 0.0,
+                "flagged_claims": [reasoning_error],
+                "retry_count": settings.ANALYST_MAX_RETRIES,
+            }
         logger.warning(
             "[verification] reasoning_answer is empty — hard-failing to trigger retry "
             "(retry %d/%d)", retry_count, settings.ANALYST_MAX_RETRIES

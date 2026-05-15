@@ -43,12 +43,24 @@ class BinanceCandleService {
   // is already in flight.
   bool _intentionalClose = false;
 
+  String _toBinanceInterval(String interval) {
+    switch (interval) {
+      case '1wk':
+        return '1w';
+      case '1mo':
+        return '1M';
+      default:
+        return interval;
+    }
+  }
+
   Stream<List<Candle>> streamCandles(
     String symbol, {
     String interval = '1m',
     int limit = 365,
   }) {
-    final key = '$symbol-$interval';
+    final providerInterval = _toBinanceInterval(interval);
+    final key = '$symbol-$providerInterval';
 
     if (!_controllers.containsKey(key)) {
       _controllers[key] = StreamController<List<Candle>>.broadcast(
@@ -56,7 +68,7 @@ class BinanceCandleService {
           _activeKeys.add(key);
 
           // Seed history immediately (REST) so chart renders instantly
-          await _seedHistoryIfNeeded(symbol, interval, limit: limit);
+          await _seedHistoryIfNeeded(symbol, providerInterval, limit: limit);
 
           // Then connect websocket for live updates
           _reconnect();
@@ -105,7 +117,12 @@ class BinanceCandleService {
       final uri = Uri.parse(
         '$_restBaseUrl?symbol=$mapped&interval=$interval&limit=$fetchLimit',
       );
-      _log('Seeding candles via REST: $uri');
+      if (kDebugMode) {
+        debugPrint(
+          '[FetchCallSite] source=binance_rest_seed symbol=$symbol interval=$interval limit=$fetchLimit',
+        );
+      }
+      _log('Seeding candles symbol=$symbol interval=$interval via REST: $uri');
 
       final res = await http.get(uri).timeout(const Duration(seconds: 8));
       if (res.statusCode != 200) {
@@ -217,7 +234,9 @@ class BinanceCandleService {
           _log('WS stream error: $e');
           if (!_intentionalClose) _scheduleReconnect();
         },
-        onDone: () { if (!_intentionalClose) _scheduleReconnect(); },
+        onDone: () {
+          if (!_intentionalClose) _scheduleReconnect();
+        },
         cancelOnError: false,
       );
     } catch (e) {
@@ -261,12 +280,15 @@ class BinanceCandleService {
     final history = _candleHistory[key] ?? <Candle>[];
     final isClosed = k['x'] as bool;
 
+    var appendedNewCandle = false;
+
     // Update last candle if same openTime, else append
     if (history.isNotEmpty &&
         history.last.time.millisecondsSinceEpoch ==
             candle.time.millisecondsSinceEpoch) {
       history[history.length - 1] = candle;
     } else {
+      appendedNewCandle = true;
       history.add(candle);
       if (history.length > _maxCandles) history.removeAt(0);
     }
@@ -278,7 +300,9 @@ class BinanceCandleService {
     }
 
     _candleHistory[key] = history;
-    _controllers[key]?.add(List<Candle>.from(history));
+    if (appendedNewCandle || isClosed) {
+      _controllers[key]?.add(List<Candle>.from(history));
+    }
   }
 
   void _scheduleReconnect() {
@@ -333,24 +357,34 @@ class YahooFinanceCandleService {
     String range = '3mo',
   }) async {
     try {
+      const baseIntervalMap = {'2h': '1h', '4h': '1h', '12h': '1h'};
+      const aggregateHours = {'2h': 2, '4h': 4, '12h': 12};
+      final yahooInterval = baseIntervalMap[interval] ?? interval;
       final uri = Uri.parse(
-        '$_base/$symbol?interval=$interval&range=$range&includePrePost=false',
+        '$_base/$symbol?interval=$yahooInterval&range=$range&includePrePost=false',
       );
 
-      final res = await http.get(uri, headers: {
-        'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
-            '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        'Accept': 'application/json',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Origin': 'https://finance.yahoo.com',
-        'Referer': 'https://finance.yahoo.com/',
-      }).timeout(const Duration(seconds: 15));
+      final res = await http
+          .get(
+            uri,
+            headers: {
+              'User-Agent':
+                  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+                  '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+              'Accept': 'application/json',
+              'Accept-Language': 'en-US,en;q=0.9',
+              'Origin': 'https://finance.yahoo.com',
+              'Referer': 'https://finance.yahoo.com/',
+            },
+          )
+          .timeout(const Duration(seconds: 6));
 
       if (res.statusCode != 200) {
         if (kDebugMode) {
           debugPrint('[YahooCandle] HTTP ${res.statusCode} for $symbol');
-          debugPrint('[YahooCandle] Body: ${res.body.substring(0, min(200, res.body.length))}');
+          debugPrint(
+            '[YahooCandle] Body: ${res.body.substring(0, min(200, res.body.length))}',
+          );
         }
         return [];
       }
@@ -361,8 +395,9 @@ class YahooFinanceCandleService {
       if (result == null) return [];
 
       final timestamps = (result['timestamp'] as List?)?.cast<int>() ?? [];
-      final quote = (result['indicators']['quote'] as List?)?.first
-          as Map<String, dynamic>?;
+      final quote =
+          (result['indicators']['quote'] as List?)?.first
+              as Map<String, dynamic>?;
       if (quote == null || timestamps.isEmpty) return [];
 
       final opens = (quote['open'] as List?)?.cast<num?>() ?? [];
@@ -375,18 +410,28 @@ class YahooFinanceCandleService {
       for (var i = 0; i < timestamps.length; i++) {
         final c = closes.length > i ? closes[i] : null;
         if (c == null) continue; // skip null rows
-        candles.add(Candle(
-          time: DateTime.fromMillisecondsSinceEpoch(timestamps[i] * 1000),
-          open: (opens.length > i ? opens[i]?.toDouble() : null) ?? c.toDouble(),
-          high: (highs.length > i ? highs[i]?.toDouble() : null) ?? c.toDouble(),
-          low: (lows.length > i ? lows[i]?.toDouble() : null) ?? c.toDouble(),
-          close: c.toDouble(),
-          volume: (volumes.length > i ? volumes[i]?.toDouble() : null) ?? 0,
-        ));
+        candles.add(
+          Candle(
+            time: DateTime.fromMillisecondsSinceEpoch(timestamps[i] * 1000),
+            open:
+                (opens.length > i ? opens[i]?.toDouble() : null) ??
+                c.toDouble(),
+            high:
+                (highs.length > i ? highs[i]?.toDouble() : null) ??
+                c.toDouble(),
+            low: (lows.length > i ? lows[i]?.toDouble() : null) ?? c.toDouble(),
+            close: c.toDouble(),
+            volume: (volumes.length > i ? volumes[i]?.toDouble() : null) ?? 0,
+          ),
+        );
       }
 
       if (kDebugMode) {
         debugPrint('[YahooCandle] $symbol: ${candles.length} candles');
+      }
+      final hours = aggregateHours[interval];
+      if (hours != null) {
+        return _aggregateHourly(candles, hours);
       }
       return candles;
     } catch (e) {
@@ -394,5 +439,32 @@ class YahooFinanceCandleService {
       return [];
     }
   }
-}
 
+  List<Candle> _aggregateHourly(List<Candle> candles, int hours) {
+    if (hours <= 1 || candles.isEmpty) return candles;
+
+    final buckets = <DateTime, List<Candle>>{};
+    for (final candle in candles) {
+      final time = DateTime(
+        candle.time.year,
+        candle.time.month,
+        candle.time.day,
+        (candle.time.hour ~/ hours) * hours,
+      );
+      buckets.putIfAbsent(time, () => <Candle>[]).add(candle);
+    }
+
+    final starts = buckets.keys.toList()..sort();
+    return starts.map((start) {
+      final bucket = buckets[start]!..sort((a, b) => a.time.compareTo(b.time));
+      return Candle(
+        time: start,
+        open: bucket.first.open,
+        high: bucket.map((c) => c.high).reduce(max),
+        low: bucket.map((c) => c.low).reduce(min),
+        close: bucket.last.close,
+        volume: bucket.fold<double>(0, (sum, c) => sum + c.volume),
+      );
+    }).toList();
+  }
+}

@@ -3,6 +3,8 @@ class FundamentalData {
   final bool isCrypto;
   final double currentPrice;
   final double? marketCap;
+  final double? volume;
+  final double? turnover;
 
   // Ratios (stocks only)
   final double? pe;
@@ -27,11 +29,19 @@ class FundamentalData {
   // Quarterly history for chart
   final List<QuarterlyEps> quarterlyEps;
 
+  // Data transparency
+  final String? source;
+  final String? period;
+  final String? fetchedAt;
+  final String? formulaNote;
+
   const FundamentalData({
     required this.symbol,
     required this.isCrypto,
     required this.currentPrice,
     this.marketCap,
+    this.volume,
+    this.turnover,
     this.pe,
     this.ps,
     this.grossMargin,
@@ -47,6 +57,10 @@ class FundamentalData {
     this.latestQuarterRevenue,
     this.latestQuarterEps,
     this.quarterlyEps = const [],
+    this.source,
+    this.period,
+    this.fetchedAt,
+    this.formulaNote,
   });
 
   bool get hasRatios =>
@@ -67,6 +81,8 @@ class FundamentalData {
       isCrypto:      json['is_crypto'] as bool? ?? false,
       currentPrice:  (json['current_price'] as num?)?.toDouble() ?? 0,
       marketCap:     (json['market_cap'] as num?)?.toDouble(),
+      volume:        (json['volume'] as num?)?.toDouble(),
+      turnover:      (json['turnover'] as num?)?.toDouble(),
       pe:            (ratios['pe'] as num?)?.toDouble(),
       ps:            (ratios['ps'] as num?)?.toDouble(),
       grossMargin:   (ratios['gross_margin'] as num?)?.toDouble(),
@@ -82,6 +98,10 @@ class FundamentalData {
       latestQuarterRevenue: (lq['revenue'] as num?)?.toDouble(),
       latestQuarterEps:     (lq['eps'] as num?)?.toDouble(),
       quarterlyEps: qEps,
+      source: json['source'] as String?,
+      period: json['period'] as String?,
+      fetchedAt: json['fetched_at'] as String?,
+      formulaNote: json['formula_note'] as String?,
     );
   }
 }

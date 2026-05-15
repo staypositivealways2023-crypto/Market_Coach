@@ -17,42 +17,42 @@ import 'macro_dashboard_screen.dart';
 
 const _defaultStocks = [
   // Tech
-  _AssetMeta('AAPL',  'Apple Inc.',         'Tech',        false),
-  _AssetMeta('MSFT',  'Microsoft Corp.',    'Tech',        false),
-  _AssetMeta('GOOGL', 'Alphabet Inc.',      'Tech',        false),
-  _AssetMeta('META',  'Meta Platforms',     'Tech',        false),
+  _AssetMeta('AAPL', 'Apple Inc.', 'Tech', false),
+  _AssetMeta('MSFT', 'Microsoft Corp.', 'Tech', false),
+  _AssetMeta('GOOGL', 'Alphabet Inc.', 'Tech', false),
+  _AssetMeta('META', 'Meta Platforms', 'Tech', false),
   // AI
-  _AssetMeta('NVDA',  'NVIDIA Corp.',       'AI',          false),
-  _AssetMeta('AMD',   'Advanced Micro Dev.','AI',          false),
-  _AssetMeta('PLTR',  'Palantir Tech.',     'AI',          false),
+  _AssetMeta('NVDA', 'NVIDIA Corp.', 'AI', false),
+  _AssetMeta('AMD', 'Advanced Micro Dev.', 'AI', false),
+  _AssetMeta('PLTR', 'Palantir Tech.', 'AI', false),
   // EV
-  _AssetMeta('TSLA',  'Tesla Inc.',         'EV',          false),
-  _AssetMeta('RIVN',  'Rivian Automotive',  'EV',          false),
+  _AssetMeta('TSLA', 'Tesla Inc.', 'EV', false),
+  _AssetMeta('RIVN', 'Rivian Automotive', 'EV', false),
   // Energy
-  _AssetMeta('XOM',   'Exxon Mobil Corp.', 'Energy',      false),
-  _AssetMeta('CVX',   'Chevron Corp.',      'Energy',      false),
+  _AssetMeta('XOM', 'Exxon Mobil Corp.', 'Energy', false),
+  _AssetMeta('CVX', 'Chevron Corp.', 'Energy', false),
   // Finance
-  _AssetMeta('BRK.B', 'Berkshire Hathaway','Finance',     false),
-  _AssetMeta('JPM',   'JPMorgan Chase',     'Finance',     false),
-  _AssetMeta('GS',    'Goldman Sachs',      'Finance',     false),
+  _AssetMeta('BRK.B', 'Berkshire Hathaway', 'Finance', false),
+  _AssetMeta('JPM', 'JPMorgan Chase', 'Finance', false),
+  _AssetMeta('GS', 'Goldman Sachs', 'Finance', false),
   // Healthcare
-  _AssetMeta('JNJ',   'Johnson & Johnson',  'Healthcare',  false),
-  _AssetMeta('PFE',   'Pfizer Inc.',        'Healthcare',  false),
+  _AssetMeta('JNJ', 'Johnson & Johnson', 'Healthcare', false),
+  _AssetMeta('PFE', 'Pfizer Inc.', 'Healthcare', false),
   // ETFs
-  _AssetMeta('SPY',   'S&P 500 ETF',        'ETF',         false),
-  _AssetMeta('QQQ',   'Nasdaq-100 ETF',     'ETF',         false),
-  _AssetMeta('ARKK',  'ARK Innovation ETF', 'ETF',         false),
+  _AssetMeta('SPY', 'S&P 500 ETF', 'ETF', false),
+  _AssetMeta('QQQ', 'Nasdaq-100 ETF', 'ETF', false),
+  _AssetMeta('ARKK', 'ARK Innovation ETF', 'ETF', false),
   // E-commerce
-  _AssetMeta('AMZN',  'Amazon.com Inc.',    'Tech',        false),
+  _AssetMeta('AMZN', 'Amazon.com Inc.', 'Tech', false),
 ];
 
 const _defaultCrypto = [
-  _AssetMeta('BTC',  'Bitcoin',   'Crypto', true),
-  _AssetMeta('ETH',  'Ethereum',  'Crypto', true),
-  _AssetMeta('SOL',  'Solana',    'Crypto', true),
-  _AssetMeta('ADA',  'Cardano',   'Crypto', true),
-  _AssetMeta('XRP',  'Ripple',    'Crypto', true),
-  _AssetMeta('DOGE', 'Dogecoin',  'Crypto', true),
+  _AssetMeta('BTC', 'Bitcoin', 'Crypto', true),
+  _AssetMeta('ETH', 'Ethereum', 'Crypto', true),
+  _AssetMeta('SOL', 'Solana', 'Crypto', true),
+  _AssetMeta('ADA', 'Cardano', 'Crypto', true),
+  _AssetMeta('XRP', 'Ripple', 'Crypto', true),
+  _AssetMeta('DOGE', 'Dogecoin', 'Crypto', true),
 ];
 
 // ── Category definitions ──────────────────────────────────────────────────────
@@ -61,20 +61,36 @@ class _Category {
   final String label;
   final String emoji;
   final List<String> symbols;
-  const _Category({required this.label, required this.emoji, required this.symbols});
+  const _Category({
+    required this.label,
+    required this.emoji,
+    required this.symbols,
+  });
 }
 
 const _allAssets = [..._defaultStocks, ..._defaultCrypto];
 
 const _categories = [
-  _Category(label: 'Tech',       emoji: '💻', symbols: ['AAPL','MSFT','GOOGL','META','AMZN']),
-  _Category(label: 'AI',         emoji: '🤖', symbols: ['NVDA','AMD','PLTR','MSFT','GOOGL']),
-  _Category(label: 'EV',         emoji: '⚡', symbols: ['TSLA','RIVN']),
-  _Category(label: 'Energy',     emoji: '🛢️', symbols: ['XOM','CVX']),
-  _Category(label: 'Finance',    emoji: '🏦', symbols: ['BRK.B','JPM','GS']),
-  _Category(label: 'Healthcare', emoji: '💊', symbols: ['JNJ','PFE']),
-  _Category(label: 'Crypto',     emoji: '₿',  symbols: ['BTC','ETH','SOL','ADA','XRP','DOGE']),
-  _Category(label: 'ETFs',       emoji: '📦', symbols: ['SPY','QQQ','ARKK']),
+  _Category(
+    label: 'Tech',
+    emoji: '💻',
+    symbols: ['AAPL', 'MSFT', 'GOOGL', 'META', 'AMZN'],
+  ),
+  _Category(
+    label: 'AI',
+    emoji: '🤖',
+    symbols: ['NVDA', 'AMD', 'PLTR', 'MSFT', 'GOOGL'],
+  ),
+  _Category(label: 'EV', emoji: '⚡', symbols: ['TSLA', 'RIVN']),
+  _Category(label: 'Energy', emoji: '🛢️', symbols: ['XOM', 'CVX']),
+  _Category(label: 'Finance', emoji: '🏦', symbols: ['BRK.B', 'JPM', 'GS']),
+  _Category(label: 'Healthcare', emoji: '💊', symbols: ['JNJ', 'PFE']),
+  _Category(
+    label: 'Crypto',
+    emoji: '₿',
+    symbols: ['BTC', 'ETH', 'SOL', 'ADA', 'XRP', 'DOGE'],
+  ),
+  _Category(label: 'ETFs', emoji: '📦', symbols: ['SPY', 'QQQ', 'ARKK']),
 ];
 
 class _AssetMeta {
@@ -114,7 +130,10 @@ class _MarketScreenState extends State<MarketScreen> {
     super.initState();
     _fetchQuotes();
     // Refresh every 60 seconds
-    _refreshTimer = Timer.periodic(const Duration(seconds: 60), (_) => _fetchQuotes());
+    _refreshTimer = Timer.periodic(
+      const Duration(seconds: 60),
+      (_) => _fetchQuotes(),
+    );
 
     _coachingTimer = Timer.periodic(const Duration(seconds: 8), (_) {
       if (_coachingPageController.hasClients) {
@@ -160,20 +179,26 @@ class _MarketScreenState extends State<MarketScreen> {
 
   // Binance mapping: app symbol → Binance pair
   static const _binanceMap = {
-    'BTC': 'BTCUSDT', 'ETH': 'ETHUSDT', 'ADA': 'ADAUSDT',
-    'SOL': 'SOLUSDT', 'XRP': 'XRPUSDT', 'DOGE': 'DOGEUSDT',
+    'BTC': 'BTCUSDT',
+    'ETH': 'ETHUSDT',
+    'ADA': 'ADAUSDT',
+    'SOL': 'SOLUSDT',
+    'XRP': 'XRPUSDT',
+    'DOGE': 'DOGEUSDT',
   };
 
   /// Fetch crypto quotes from Binance REST (no key, reliable).
   Future<Map<String, Map<String, dynamic>>> _fetchBinanceCrypto(
-      List<String> symbols) async {
+    List<String> symbols,
+  ) async {
     try {
       final pairs = symbols
           .where((s) => _binanceMap.containsKey(s))
           .map((s) => '"${_binanceMap[s]!}"')
           .join(',');
       final uri = Uri.parse(
-          'https://api.binance.com/api/v3/ticker/24hr?symbols=[$pairs]');
+        'https://api.binance.com/api/v3/ticker/24hr?symbols=[$pairs]',
+      );
       final resp = await http.get(uri).timeout(const Duration(seconds: 10));
       if (resp.statusCode != 200) return {};
 
@@ -185,8 +210,10 @@ class _MarketScreenState extends State<MarketScreen> {
         final symbol = reverseMap[pair];
         if (symbol == null) continue;
         final price = double.tryParse(t['lastPrice'] as String? ?? '') ?? 0.0;
-        final change = double.tryParse(t['priceChangePercent'] as String? ?? '') ?? 0.0;
-        final volume = double.tryParse(t['quoteVolume'] as String? ?? '') ??
+        final change =
+            double.tryParse(t['priceChangePercent'] as String? ?? '') ?? 0.0;
+        final volume =
+            double.tryParse(t['quoteVolume'] as String? ?? '') ??
             double.tryParse(t['volume'] as String? ?? '');
         if (price > 0) {
           quotes[symbol] = {
@@ -237,8 +264,14 @@ class _MarketScreenState extends State<MarketScreen> {
         backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
         centerTitle: false,
-        title: const Text('Markets',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 20)),
+        title: const Text(
+          'Markets',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w700,
+            fontSize: 20,
+          ),
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.event_note_rounded, color: Colors.white70),
@@ -248,11 +281,14 @@ class _MarketScreenState extends State<MarketScreen> {
             ),
           ),
           IconButton(
-            icon: const Icon(Icons.manage_search_rounded, color: Colors.white70),
-            tooltip: 'Screener',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const ScreenerScreen()),
+            icon: const Icon(
+              Icons.manage_search_rounded,
+              color: Colors.white70,
             ),
+            tooltip: 'Screener',
+            onPressed: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (_) => const ScreenerScreen())),
           ),
           IconButton(
             icon: const Icon(Icons.public_rounded, color: Colors.white70),
@@ -261,168 +297,194 @@ class _MarketScreenState extends State<MarketScreen> {
               MaterialPageRoute(builder: (_) => const MacroDashboardScreen()),
             ),
           ),
-          IconButton(
-            icon: const Icon(Icons.refresh, color: Colors.white70),
-            tooltip: 'Refresh quotes',
-            onPressed: () {
-              setState(() => _loading = true);
-              _fetchQuotes();
-            },
-          ),
         ],
       ),
       body: SafeArea(
-        child: RefreshIndicator(
-          onRefresh: _fetchQuotes,
-          child: CustomScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            slivers: [
-              // ── Coaching tip ────────────────────────────────────────────────
+        child: CustomScrollView(
+          physics: const BouncingScrollPhysics(),
+          slivers: [
+            // ── Coaching tip ────────────────────────────────────────────────
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: _CoachingMessageBox(
+                  pageController: _coachingPageController,
+                  onPageChanged: (i) =>
+                      setState(() => _currentCoachingIndex = i),
+                ),
+              ),
+            ),
+
+            const SliverToBoxAdapter(child: SizedBox(height: 16)),
+
+            // ── Category chips ───────────────────────────────────────────────
+            SliverToBoxAdapter(
+              child: _CategoryChips(
+                selected: _selectedCategory,
+                onSelected: (cat) => setState(() {
+                  _selectedCategory = (_selectedCategory == cat) ? null : cat;
+                }),
+              ),
+            ),
+
+            const SliverToBoxAdapter(child: SizedBox(height: 16)),
+
+            // ── Category filtered list OR default carousels ─────────────────
+            if (!showCarousels) ...[
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                  child: _CoachingMessageBox(
-                    pageController: _coachingPageController,
-                    onPageChanged: (i) => setState(() => _currentCoachingIndex = i),
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: Row(
+                    children: [
+                      Text(
+                        _selectedCategory ?? '',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(
+                            0xFF06B6D4,
+                          ).withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: const Color(
+                              0xFF06B6D4,
+                            ).withValues(alpha: 0.4),
+                          ),
+                        ),
+                        child: Text(
+                          '${_categoryAssets.length} assets',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Color(0xFF06B6D4),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
-
-              const SliverToBoxAdapter(child: SizedBox(height: 16)),
-
-              // ── Category chips ───────────────────────────────────────────────
-              SliverToBoxAdapter(
-                child: _CategoryChips(
-                  selected: _selectedCategory,
-                  onSelected: (cat) => setState(() {
-                    _selectedCategory = (_selectedCategory == cat) ? null : cat;
-                  }),
-                ),
-              ),
-
-              const SliverToBoxAdapter(child: SizedBox(height: 16)),
-
-              // ── Category filtered list OR default carousels ─────────────────
-              if (!showCarousels) ...[
-                SliverToBoxAdapter(
-                  child: Padding(
+              SliverList(
+                delegate: SliverChildBuilderDelegate((context, i) {
+                  final asset = _categoryAssets[i];
+                  return Padding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                    child: Row(
-                      children: [
-                        Text(
-                          _selectedCategory ?? '',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700, color: Colors.white),
-                        ),
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF06B6D4).withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: const Color(0xFF06B6D4).withValues(alpha: 0.4)),
-                          ),
-                          child: Text(
-                            '${_categoryAssets.length} assets',
-                            style: const TextStyle(
-                              fontSize: 11, color: Color(0xFF06B6D4), fontWeight: FontWeight.w600),
-                          ),
-                        ),
-                      ],
+                    child: _AssetRow(
+                      asset: _toSummary(asset),
+                      loading: _loading,
                     ),
-                  ),
-                ),
-                SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                    (context, i) {
-                      final asset = _categoryAssets[i];
-                      return Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                        child: _AssetRow(asset: _toSummary(asset), loading: _loading),
-                      );
-                    },
-                    childCount: _categoryAssets.length,
-                  ),
-                ),
-              ] else ...[
-                // Stocks carousel section
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text('Stocks',
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700, color: Colors.white)),
-                        TextButton(
-                          onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                  );
+                }, childCount: _categoryAssets.length),
+              ),
+            ] else ...[
+              // Stocks carousel section
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Stocks',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.of(context).push(
+                          MaterialPageRoute(
                             builder: (_) => MarketViewAllScreen(
                               assets: _defaultStocks.map(_toSummary).toList(),
                               isCrypto: false,
                             ),
-                          )),
-                          child: const Text('See all',
-                              style: TextStyle(color: Color(0xFF06B6D4), fontSize: 13)),
+                          ),
                         ),
-                      ],
-                    ),
+                        child: const Text(
+                          'See all',
+                          style: TextStyle(
+                            color: Color(0xFF06B6D4),
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                SliverToBoxAdapter(
-                  child: _AssetCarousel(
-                    assets: _defaultStocks.take(5).map(_toSummary).toList(),
-                    loading: _loading,
-                  ),
+              ),
+              SliverToBoxAdapter(
+                child: _AssetCarousel(
+                  assets: _defaultStocks.take(5).map(_toSummary).toList(),
+                  loading: _loading,
                 ),
+              ),
 
-                const SliverToBoxAdapter(child: SizedBox(height: 16)),
+              const SliverToBoxAdapter(child: SizedBox(height: 16)),
 
-                // Crypto carousel section
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text('Crypto',
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700, color: Colors.white)),
-                        TextButton(
-                          onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+              // Crypto carousel section
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Crypto',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.of(context).push(
+                          MaterialPageRoute(
                             builder: (_) => MarketViewAllScreen(
                               assets: _defaultCrypto.map(_toSummary).toList(),
                               isCrypto: true,
                             ),
-                          )),
-                          child: const Text('See all',
-                              style: TextStyle(color: Color(0xFF06B6D4), fontSize: 13)),
+                          ),
                         ),
-                      ],
-                    ),
+                        child: const Text(
+                          'See all',
+                          style: TextStyle(
+                            color: Color(0xFF06B6D4),
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                SliverToBoxAdapter(
-                  child: _AssetCarousel(
-                    assets: _defaultCrypto.map(_toSummary).toList(),
-                    loading: _loading,
-                  ),
+              ),
+              SliverToBoxAdapter(
+                child: _AssetCarousel(
+                  assets: _defaultCrypto.map(_toSummary).toList(),
+                  loading: _loading,
                 ),
+              ),
 
-                const SliverToBoxAdapter(child: SizedBox(height: 20)),
+              const SliverToBoxAdapter(child: SizedBox(height: 20)),
 
-                // Quick Insights
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: _QuickMarketInsights(),
-                  ),
+              // Quick Insights
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _QuickMarketInsights(),
                 ),
-              ],
-
-              const SliverToBoxAdapter(child: SizedBox(height: 32)),
+              ),
             ],
-          ),
+
+            const SliverToBoxAdapter(child: SizedBox(height: 32)),
+          ],
         ),
       ),
     );
@@ -455,7 +517,10 @@ class _CategoryChips extends StatelessWidget {
               child: GestureDetector(
                 onTap: () => onSelected(cat.label),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
                   decoration: BoxDecoration(
                     gradient: isSelected
                         ? const LinearGradient(
@@ -515,15 +580,17 @@ class _AssetRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isPositive = asset.changePercent >= 0;
-    final changeColor = isPositive ? const Color(0xFF22C55E) : const Color(0xFFEF4444);
+    final changeColor = isPositive
+        ? const Color(0xFF22C55E)
+        : const Color(0xFFEF4444);
     final priceStr = asset.price > 0
         ? '\$${asset.price.toStringAsFixed(asset.price < 1 ? 4 : 2)}'
         : '—';
 
     return GestureDetector(
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => AssetChartScreen(stock: asset)),
-      ),
+      onTap: () => Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => AssetChartScreen(stock: asset))),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
@@ -549,7 +616,9 @@ class _AssetRow extends StatelessWidget {
               ),
               alignment: Alignment.center,
               child: Text(
-                asset.ticker.length <= 3 ? asset.ticker : asset.ticker.substring(0, 3),
+                asset.ticker.length <= 3
+                    ? asset.ticker
+                    : asset.ticker.substring(0, 3),
                 style: const TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.w800,
@@ -587,9 +656,12 @@ class _AssetRow extends StatelessWidget {
               children: [
                 loading
                     ? Container(
-                        width: 64, height: 14,
+                        width: 64,
+                        height: 14,
                         decoration: BoxDecoration(
-                          color: Colors.white10, borderRadius: BorderRadius.circular(4)),
+                          color: Colors.white10,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
                       )
                     : Text(
                         priceStr,
@@ -602,24 +674,36 @@ class _AssetRow extends StatelessWidget {
                 const SizedBox(height: 4),
                 loading
                     ? Container(
-                        width: 44, height: 12,
+                        width: 44,
+                        height: 12,
                         decoration: BoxDecoration(
-                          color: Colors.white10, borderRadius: BorderRadius.circular(4)),
+                          color: Colors.white10,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
                       )
                     : Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 3,
+                        ),
                         decoration: BoxDecoration(
                           color: changeColor.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(6),
                           border: Border.all(
-                              color: changeColor.withValues(alpha: 0.3), width: 0.5),
+                            color: changeColor.withValues(alpha: 0.3),
+                            width: 0.5,
+                          ),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(
-                              isPositive ? Icons.arrow_upward : Icons.arrow_downward,
-                              color: changeColor, size: 10),
+                              isPositive
+                                  ? Icons.arrow_upward
+                                  : Icons.arrow_downward,
+                              color: changeColor,
+                              size: 10,
+                            ),
                             const SizedBox(width: 2),
                             Text(
                               '${isPositive ? '+' : ''}${asset.changePercent.toStringAsFixed(2)}%',
@@ -644,22 +728,62 @@ class _AssetRow extends StatelessWidget {
 // ── Coaching messages ─────────────────────────────────────────────────────────
 
 const List<Map<String, String>> _coachingMessages = [
-  {'icon': '💡', 'message': 'Markets move in cycles - focus on learning patterns, not timing.'},
-  {'icon': '📊', 'message': 'RSI above 70 often means "overbought" - but understand why first.'},
-  {'icon': '🎯', 'message': 'Support & Resistance are key levels where price often reacts.'},
-  {'icon': '📈', 'message': 'Volume confirms trends - rising prices with volume are stronger.'},
-  {'icon': '⚖️', 'message': 'Position sizing protects your capital - never risk more than 1-2% per trade.'},
-  {'icon': '🔍', 'message': 'Always check the macro calendar before trading a micro story.'},
-  {'icon': '📉', 'message': 'Pullbacks in uptrends are opportunities - if the story hasn\'t changed.'},
-  {'icon': '🛡️', 'message': 'Stop losses go where your idea would be wrong, not just a random percent.'},
-  {'icon': '⏰', 'message': 'Patience beats prediction - let setups come to you.'},
-  {'icon': '🎓', 'message': 'Every chart tells a story - learn to read supply and demand zones.'},
+  {
+    'icon': '💡',
+    'message':
+        'Markets move in cycles - focus on learning patterns, not timing.',
+  },
+  {
+    'icon': '📊',
+    'message':
+        'RSI above 70 often means "overbought" - but understand why first.',
+  },
+  {
+    'icon': '🎯',
+    'message': 'Support & Resistance are key levels where price often reacts.',
+  },
+  {
+    'icon': '📈',
+    'message':
+        'Volume confirms trends - rising prices with volume are stronger.',
+  },
+  {
+    'icon': '⚖️',
+    'message':
+        'Position sizing protects your capital - never risk more than 1-2% per trade.',
+  },
+  {
+    'icon': '🔍',
+    'message': 'Always check the macro calendar before trading a micro story.',
+  },
+  {
+    'icon': '📉',
+    'message':
+        'Pullbacks in uptrends are opportunities - if the story hasn\'t changed.',
+  },
+  {
+    'icon': '🛡️',
+    'message':
+        'Stop losses go where your idea would be wrong, not just a random percent.',
+  },
+  {
+    'icon': '⏰',
+    'message': 'Patience beats prediction - let setups come to you.',
+  },
+  {
+    'icon': '🎓',
+    'message':
+        'Every chart tells a story - learn to read supply and demand zones.',
+  },
 ];
 
 class _CoachingMessageBox extends StatelessWidget {
   final PageController pageController;
   final ValueChanged<int> onPageChanged;
-  const _CoachingMessageBox({required this.pageController, required this.onPageChanged});
+  const _CoachingMessageBox({
+    required this.pageController,
+    required this.onPageChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -680,8 +804,13 @@ class _CoachingMessageBox extends StatelessWidget {
                 Text(msg['icon']!, style: const TextStyle(fontSize: 32)),
                 const SizedBox(width: 16),
                 Expanded(
-                  child: Text(msg['message']!,
-                      style: theme.textTheme.bodyLarge?.copyWith(color: Colors.white, height: 1.4)),
+                  child: Text(
+                    msg['message']!,
+                    style: theme.textTheme.bodyLarge?.copyWith(
+                      color: Colors.white,
+                      height: 1.4,
+                    ),
+                  ),
                 ),
               ],
             );
@@ -708,7 +837,8 @@ class _AssetCarousel extends StatelessWidget {
         physics: const BouncingScrollPhysics(),
         padding: const EdgeInsets.symmetric(horizontal: 20),
         itemCount: assets.length,
-        itemBuilder: (context, i) => _AssetCard(asset: assets[i], loading: loading),
+        itemBuilder: (context, i) =>
+            _AssetCard(asset: assets[i], loading: loading),
       ),
     );
   }
@@ -751,21 +881,26 @@ class _AssetCard extends StatelessWidget {
       child: GlassCard(
         width: 200,
         padding: const EdgeInsets.all(16),
-        onTap: () => Navigator.of(context).push(MaterialPageRoute(
-          builder: (_) => AssetChartScreen(stock: asset),
-        )),
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => AssetChartScreen(stock: asset)),
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Row(
               children: [
-                Text(asset.ticker,
-                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                Text(
+                  asset.ticker,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
                 const SizedBox(width: 6),
                 if (!loading && asset.price > 0)
                   Container(
-                    width: 6, height: 6,
+                    width: 6,
+                    height: 6,
                     decoration: BoxDecoration(
                       color: theme.colorScheme.primary,
                       shape: BoxShape.circle,
@@ -773,24 +908,33 @@ class _AssetCard extends StatelessWidget {
                   ),
               ],
             ),
-            Text(asset.name,
-                style: theme.textTheme.bodySmall?.copyWith(color: Colors.white70),
-                maxLines: 1, overflow: TextOverflow.ellipsis),
+            Text(
+              asset.name,
+              style: theme.textTheme.bodySmall?.copyWith(color: Colors.white70),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
             const Spacer(),
             loading
                 ? Container(
-                    height: 20, width: 80,
+                    height: 20,
+                    width: 80,
                     decoration: BoxDecoration(
                       color: Colors.white10,
                       borderRadius: BorderRadius.circular(4),
                     ),
                   )
-                : Text(priceStr,
-                    style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600)),
+                : Text(
+                    priceStr,
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
             const SizedBox(height: 6),
             loading
                 ? Container(
-                    height: 16, width: 60,
+                    height: 16,
+                    width: 60,
                     decoration: BoxDecoration(
                       color: Colors.white10,
                       borderRadius: BorderRadius.circular(4),
@@ -798,29 +942,40 @@ class _AssetCard extends StatelessWidget {
                   )
                 : Row(
                     children: [
-                      Icon(isPositive ? Icons.arrow_upward : Icons.arrow_downward,
-                          color: changeColor, size: 13),
+                      Icon(
+                        isPositive ? Icons.arrow_upward : Icons.arrow_downward,
+                        color: changeColor,
+                        size: 13,
+                      ),
                       const SizedBox(width: 3),
                       Text(
                         '${isPositive ? '+' : ''}${asset.changePercent.toStringAsFixed(2)}%',
                         style: theme.textTheme.bodySmall?.copyWith(
-                            color: changeColor, fontWeight: FontWeight.w600),
+                          color: changeColor,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                       const Spacer(),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
                           color: sentimentColor.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(4),
                           border: Border.all(
-                              color: sentimentColor.withValues(alpha: 0.35), width: 0.7),
+                            color: sentimentColor.withValues(alpha: 0.35),
+                            width: 0.7,
+                          ),
                         ),
                         child: Text(
                           sentimentLabel,
                           style: TextStyle(
-                              color: sentimentColor,
-                              fontSize: 9,
-                              fontWeight: FontWeight.w600),
+                            color: sentimentColor,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                     ],
@@ -845,47 +1000,73 @@ class _QuickMarketInsights extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.lightbulb_outline, color: theme.colorScheme.primary, size: 24),
+              Icon(
+                Icons.lightbulb_outline,
+                color: theme.colorScheme.primary,
+                size: 24,
+              ),
               const SizedBox(width: 12),
-              Text('Quick Market Insights',
-                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+              Text(
+                'Quick Market Insights',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 16),
-          _bullet('Tap any asset card to view live chart, indicators & AI analysis.'),
+          _bullet(
+            'Tap any asset card to view live chart, indicators & AI analysis.',
+          ),
           const SizedBox(height: 12),
-          _bullet('Prices refresh every 60 seconds. Pull down to refresh now.'),
+          _bullet('Prices update automatically while this screen is open.'),
           const SizedBox(height: 12),
-          _bullet('AI analysis uses Claude — tap "Analyse Now" inside any stock detail.'),
+          _bullet(
+            'AI analysis uses Claude — tap "Analyse Now" inside any stock detail.',
+          ),
           const SizedBox(height: 16),
-          Text('⚠️ Educational purposes only. Not financial advice.',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: Colors.white54, fontStyle: FontStyle.italic)),
+          Text(
+            '⚠️ Educational purposes only. Not financial advice.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: Colors.white54,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
         ],
       ),
     );
   }
 
   Widget _bullet(String text) {
-    return Builder(builder: (context) {
-      final theme = Theme.of(context);
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: Container(
-              width: 6, height: 6,
-              decoration: BoxDecoration(
-                color: theme.colorScheme.primary, shape: BoxShape.circle),
+    return Builder(
+      builder: (context) {
+        final theme = Theme.of(context);
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Container(
+                width: 6,
+                height: 6,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary,
+                  shape: BoxShape.circle,
+                ),
+              ),
             ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(text, style: theme.textTheme.bodyMedium?.copyWith(color: Colors.white70)),
-          ),
-        ],
-      );
-    });
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                text,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: Colors.white70,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 }

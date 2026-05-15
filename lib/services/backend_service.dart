@@ -131,13 +131,18 @@ class BackendService {
           '?interval=$interval&limit=$limit');
       final resp = await BackendHttp.get(
         uri.toString(),
-        timeout: const Duration(seconds: 20),
+        timeout: const Duration(seconds: 7),
       );
       if (resp != null && resp.statusCode == 200) {
         return (jsonDecode(resp.body) as List<dynamic>)
             .cast<Map<String, dynamic>>();
       }
-    } catch (_) {}
+      if (kDebugMode && resp != null) {
+        debugPrint('[BackendService] getCandles ${resp.statusCode}: ${resp.body}');
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('[BackendService] getCandles exception: $e');
+    }
     return [];
   }
 
@@ -578,13 +583,12 @@ class BackendService {
     return null;
   }
 
-  /// POST /api/macro-regime — classify current macro regime.
+  /// GET /api/macro/regime/{symbol} — classify current macro regime.
   Future<Map<String, dynamic>?> getMacroRegime(String symbol) async {
     try {
-      final resp = await BackendHttp.post(
-        '/api/macro-regime',
+      final resp = await BackendHttp.get(
+        '/api/macro/regime/${symbol.toUpperCase()}',
         headers: await _authHeaders(),
-        body: jsonEncode({'symbol': symbol.toUpperCase()}),
         timeout: const Duration(seconds: 20),
       );
       if (resp != null && resp.statusCode == 200) {

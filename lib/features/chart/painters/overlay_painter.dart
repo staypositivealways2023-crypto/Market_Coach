@@ -435,7 +435,7 @@ class OverlayPainter extends CustomPainter {
     }
     canvas.drawPath(path, paint);
 
-    // "VWAP" label at right edge
+    // Latest VWAP label at right edge
     double? lastVal;
     for (int i = min(vwap.length - 1, controller.candles.length - 1);
          i >= startIdx; i--) {
@@ -446,10 +446,13 @@ class OverlayPainter extends CustomPainter {
     }
     if (lastVal != null) {
       final y = yForPrice(lastVal);
+      final label = lastVal >= 1
+          ? 'VWAP ${lastVal.toStringAsFixed(2)}'
+          : 'VWAP ${lastVal.toStringAsFixed(4)}';
       final tp = TextPainter(
-        text: const TextSpan(
-          text: 'VWAP',
-          style: TextStyle(
+        text: TextSpan(
+          text: label,
+          style: const TextStyle(
               color: vwapColor, fontSize: 8, fontWeight: FontWeight.w700),
         ),
         textDirection: ui.TextDirection.ltr,

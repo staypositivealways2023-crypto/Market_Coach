@@ -4,39 +4,60 @@ class TimeframeSelector extends StatelessWidget {
   final String selectedTimeframe;
   final ValueChanged<String> onChanged;
   final bool isCrypto;
+  final List<String>? supportedTimeframes;
 
   const TimeframeSelector({
     super.key,
     required this.selectedTimeframe,
     required this.onChanged,
     this.isCrypto = false,
+    this.supportedTimeframes,
   });
 
   static const _timeframes = [
-    '1m', '5m', '15m', '30m',
-    '1h', '2h', '4h', '12h',
-    '1D', '1W', '4W',
-    '1M', '3M', '6M', '1Y', '5Y',
+    '1m',
+    '5m',
+    '15m',
+    '30m',
+    '1h',
+    '2h',
+    '4h',
+    '12h',
+    '1D',
+    '1W',
+    '4W',
+    '1M',
+    '3M',
+    '6M',
+    '1Y',
+    '5Y',
   ];
 
   @override
   Widget build(BuildContext context) {
+    final timeframes = supportedTimeframes ?? _timeframes;
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
-        children: _timeframes.map((tf) {
+        children: timeframes.map((tf) {
           final isSelected = tf == selectedTimeframe;
           return Padding(
             padding: const EdgeInsets.only(right: 4),
             child: GestureDetector(
-              onTap: () { if (tf != selectedTimeframe) onChanged(tf); },
+              onTap: () {
+                if (tf != selectedTimeframe) onChanged(tf);
+              },
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
                 decoration: BoxDecoration(
-                  color: isSelected ? const Color(0xFF12A28C) : Colors.transparent,
+                  color: isSelected
+                      ? const Color(0xFF12A28C)
+                      : Colors.transparent,
                   borderRadius: BorderRadius.circular(6),
                   border: Border.all(
-                    color: isSelected ? const Color(0xFF12A28C) : Colors.white12,
+                    color: isSelected
+                        ? const Color(0xFF12A28C)
+                        : Colors.white12,
                   ),
                 ),
                 child: Text(
